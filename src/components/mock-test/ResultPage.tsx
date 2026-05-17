@@ -5,6 +5,7 @@ import React, { useMemo } from "react";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Trophy, CheckCircle, XCircle, Clock, Target, RotateCcw, BarChart3, PieChart, BookOpen, Zap, TrendingUp } from "lucide-react";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
