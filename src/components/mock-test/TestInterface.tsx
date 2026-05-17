@@ -56,21 +56,23 @@ export const TestInterface = ({
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
 
-  // Global Timer logic
+  // Sync Timer with persistent End Time in localStorage
   useEffect(() => {
-    if (isPaused) return;
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
+    const syncTimer = () => {
+      const savedEndTime = localStorage.getItem(`test_end_${testData.id}`);
+      if (savedEndTime) {
+        const remaining = Math.max(0, Math.floor((parseInt(savedEndTime) - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        if (remaining <= 0) {
           onSubmit();
-          return 0;
         }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isPaused, onSubmit]);
+      }
+    };
+
+    syncTimer(); // Initial sync
+    const interval = setInterval(syncTimer, 1000);
+    return () => clearInterval(interval);
+  }, [testData.id, onSubmit]);
 
   // Per-Question Time Tracking
   useEffect(() => {
@@ -80,7 +82,7 @@ export const TestInterface = ({
         ...prev,
         [currentQuestion.id]: {
           ...prev[currentQuestion.id],
-          timeSpentSeconds: prev[currentQuestion.id].timeSpentSeconds + 1
+          timeSpentSeconds: (prev[currentQuestion.id]?.timeSpentSeconds || 0) + 1
         }
       }));
     }, 1000);
@@ -90,7 +92,7 @@ export const TestInterface = ({
   // Mark current question as visited
   useEffect(() => {
     setResponses(prev => {
-      if (prev[currentQuestion.id].status === 'not-visited') {
+      if (prev[currentQuestion.id]?.status === 'not-visited') {
         return {
           ...prev,
           [currentQuestion.id]: { ...prev[currentQuestion.id], status: 'not-answered' }
@@ -101,9 +103,10 @@ export const TestInterface = ({
   }, [currentQuestion.id, setResponses]);
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleOptionSelect = (optionId: string) => {
@@ -150,7 +153,7 @@ export const TestInterface = ({
 
   const sectionProgress = useMemo(() => {
     const sectionQuestions = testData.questions.filter(q => q.sectionId === currentSection?.id);
-    const answeredCount = sectionQuestions.filter(q => responses[q.id].status === 'answered' || responses[q.id].status === 'answered-marked-review').length;
+    const answeredCount = sectionQuestions.filter(q => responses[q.id]?.status === 'answered' || responses[q.id]?.status === 'answered-marked-review').length;
     return (answeredCount / (sectionQuestions.length || 1)) * 100;
   }, [currentSection, testData.questions, responses]);
 
@@ -164,7 +167,7 @@ export const TestInterface = ({
   const sectionSummaries = useMemo(() => {
     return testData.sections.map(sec => {
       const secQs = testData.questions.filter(q => q.sectionId === sec.id);
-      const attempted = secQs.filter(q => responses[q.id].selectedOptionId !== null).length;
+      const attempted = secQs.filter(q => responses[q.id]?.selectedOptionId !== null).length;
       return { title: sec.title[currentLang], total: secQs.length, attempted };
     });
   }, [testData, responses, currentLang]);
@@ -193,7 +196,7 @@ export const TestInterface = ({
              <Pause className="w-4 h-4 md:mr-2" /> <span className="hidden md:inline">Pause</span>
            </Button>
            
-           {/* Submit Test Button - Primary desktop position */}
+           {/* Submit Test Button */}
            <Button 
             onClick={() => setShowSubmitConfirm(true)} 
             className="hidden sm:flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-9 px-6 text-sm font-bold shadow-lg shadow-emerald-500/20 gap-2"
@@ -264,7 +267,7 @@ export const TestInterface = ({
                    Question {currentQuestionIndex + 1}
                  </Badge>
                  <span className="text-[10px] md:text-xs text-muted-foreground font-mono">
-                   Time Spent: {formatTime(responses[currentQuestion.id].timeSpentSeconds)}
+                   Time Spent: {formatTime(responses[currentQuestion.id]?.timeSpentSeconds || 0)}
                  </span>
                </div>
                <div className="flex items-center justify-between sm:justify-end gap-4">
@@ -306,14 +309,14 @@ export const TestInterface = ({
                   onClick={() => handleOptionSelect(option.id)}
                   className={cn(
                     "flex items-start gap-4 p-5 rounded-2xl border text-left transition-all group",
-                    responses[currentQuestion.id].selectedOptionId === option.id
+                    responses[currentQuestion.id]?.selectedOptionId === option.id
                       ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]"
                       : "bg-white/5 border-white/5 hover:border-white/20"
                   )}
                 >
                   <div className={cn(
                     "w-6 h-6 rounded-full border flex items-center justify-center shrink-0 text-[10px] font-bold",
-                    responses[currentQuestion.id].selectedOptionId === option.id
+                    responses[currentQuestion.id]?.selectedOptionId === option.id
                       ? "bg-primary border-primary text-white"
                       : "border-white/20 text-muted-foreground"
                   )}>
@@ -357,7 +360,6 @@ export const TestInterface = ({
             Clear Response
           </Button>
           
-          {/* Submit Button - Specific mobile position (always visible) */}
           <Button 
             onClick={() => setShowSubmitConfirm(true)} 
             className="sm:hidden bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-10 px-4 text-xs font-bold shadow-lg flex-1"
@@ -460,4 +462,3 @@ const SummaryItem = ({ label, value, color }: { label: string, value: number, co
     </div>
   );
 };
-

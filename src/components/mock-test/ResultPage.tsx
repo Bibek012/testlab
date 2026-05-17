@@ -6,10 +6,9 @@ import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, CheckCircle, XCircle, Clock, Target, RotateCcw, BarChart3, PieChart, BookOpen, Zap, TrendingUp } from "lucide-react";
+import { Trophy, CheckCircle, Clock, Target, RotateCcw, BookOpen, Zap, TrendingUp } from "lucide-react";
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  PieChart as RePieChart, Pie
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
 import Link from "next/link";
 
@@ -43,10 +42,10 @@ export const ResultPage = ({
 
     testData.questions.forEach(q => {
       const resp = responses[q.id];
-      if (resp.selectedOptionId === q.answer) {
+      if (resp?.selectedOptionId === q.answer) {
         correct++;
         totalScore += q.marks;
-      } else if (resp.selectedOptionId) {
+      } else if (resp?.selectedOptionId) {
         incorrect++;
         totalScore -= q.negativeMarks;
       } else {
@@ -74,8 +73,8 @@ export const ResultPage = ({
       let secIncorrect = 0;
       secQs.forEach(q => {
         const resp = responses[q.id];
-        if (resp.selectedOptionId === q.answer) secCorrect++;
-        else if (resp.selectedOptionId) secIncorrect++;
+        if (resp?.selectedOptionId === q.answer) secCorrect++;
+        else if (resp?.selectedOptionId) secIncorrect++;
       });
       return { 
         name: sec.title[userLanguage], 
@@ -147,13 +146,13 @@ export const ResultPage = ({
           {/* Quick Actions & AI Insight */}
           <div className="lg:col-span-4 space-y-6">
             <Card className="glass border-white/10 p-6">
-              <CardTitle className="text-lg font-headline font-bold mb-6">What's Next?</CardTitle>
+              <CardTitle className="text-lg font-headline font-bold mb-6">Action Center</CardTitle>
               <div className="space-y-3">
                 <Button onClick={onViewSolutions} className="w-full bg-primary h-12 rounded-xl font-bold shadow-lg shadow-primary/20 gap-2">
-                  <BookOpen className="w-4 h-4" /> View Detailed Solutions
+                  <BookOpen className="w-4 h-4" /> Review Test
                 </Button>
                 <Button variant="outline" onClick={onReattempt} className="w-full h-12 rounded-xl border-white/10 hover:bg-white/5 font-bold gap-2">
-                  <RotateCcw className="w-4 h-4" /> Reattempt Mock
+                  <RotateCcw className="w-4 h-4" /> Reattempt Test
                 </Button>
                 <Link href={dashboardUrl} className="block">
                   <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold">
@@ -168,7 +167,7 @@ export const ResultPage = ({
                  <Zap className="w-4 h-4 fill-current" /> AI Analytics Insight
                </div>
                <p className="text-xs text-muted-foreground leading-relaxed italic">
-                 "Your accuracy in <span className="text-emerald-400">{sectionData[0].name}</span> is impressive! However, your speed in <span className="text-rose-400">{sectionData[1].name}</span> is lagging. Focus on time-drills for reasoning to boost score by 15%."
+                 "Your accuracy in <span className="text-emerald-400">{sectionData[0]?.name || 'Math'}</span> is impressive! However, your speed in <span className="text-rose-400">{sectionData[1]?.name || 'Reasoning'}</span> is lagging. Focus on time-drills to boost score by 15%."
                </p>
             </div>
           </div>

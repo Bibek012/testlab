@@ -61,11 +61,17 @@ export default function StateMockTestEnginePage() {
   const handleStartTest = (lang: 'en' | 'hn') => {
     setUserLanguage(lang);
     setStartTime(Date.now());
+    
+    // Set a persistent end time for the timer
+    const testEndTime = Date.now() + (testData.durationMinutes * 60 * 1000);
+    localStorage.setItem(`test_end_${testData.id}`, testEndTime.toString());
+    
     setStep('test');
   };
 
   const handleSubmitTest = () => {
     setEndTime(Date.now());
+    localStorage.removeItem(`test_end_${testData.id}`);
     setStep('result');
   };
 
@@ -82,6 +88,7 @@ export default function StateMockTestEnginePage() {
     setResponses(initialResponses);
     setStartTime(null);
     setEndTime(null);
+    localStorage.removeItem(`test_end_${testData.id}`);
     setStep('instructions');
   };
 
