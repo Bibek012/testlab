@@ -16,10 +16,9 @@ import {
   Monitor,
   ChevronLeft,
   ChevronRight,
-  Menu,
-  X,
   LayoutGrid,
-  AlertCircle
+  AlertCircle,
+  Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
@@ -152,21 +151,27 @@ export const TestInterface = ({
   const sectionProgress = useMemo(() => {
     const sectionQuestions = testData.questions.filter(q => q.sectionId === currentSection?.id);
     const answeredCount = sectionQuestions.filter(q => responses[q.id].status === 'answered' || responses[q.id].status === 'answered-marked-review').length;
-    return (answeredCount / sectionQuestions.length) * 100;
+    return (answeredCount / (sectionQuestions.length || 1)) * 100;
   }, [currentSection, testData.questions, responses]);
+
+  const stats = useMemo(() => {
+    const total = testData.questions.length;
+    const attempted = Object.values(responses).filter(r => r.selectedOptionId !== null).length;
+    const marked = Object.values(responses).filter(r => r.status.includes('marked')).length;
+    return { total, attempted, unattempted: total - attempted, marked };
+  }, [testData.questions, responses]);
 
   const sectionSummaries = useMemo(() => {
     return testData.sections.map(sec => {
       const secQs = testData.questions.filter(q => q.sectionId === sec.id);
       const attempted = secQs.filter(q => responses[q.id].selectedOptionId !== null).length;
-      const marked = secQs.filter(q => responses[q.id].status === 'marked-review' || responses[q.id].status === 'answered-marked-review').length;
-      return { title: sec.title[currentLang], total: secQs.length, attempted, marked };
+      return { title: sec.title[currentLang], total: secQs.length, attempted };
     });
   }, [testData, responses, currentLang]);
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
-      {/* Top Bar */}
+      {/* Top Bar - Z-index ensure visible */}
       <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-4 md:px-6 shrink-0 z-50">
         <div className="flex items-center gap-3 md:gap-6 overflow-hidden">
           <div className="hidden sm:flex items-center gap-2 shrink-0">
@@ -187,8 +192,14 @@ export const TestInterface = ({
            <Button variant="ghost" size="sm" onClick={() => setIsPaused(true)} className="text-muted-foreground hover:text-white h-9 px-2 md:px-4">
              <Pause className="w-4 h-4 md:mr-2" /> <span className="hidden md:inline">Pause</span>
            </Button>
-           <Button onClick={() => setShowSubmitConfirm(true)} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-8 md:h-9 px-4 md:px-8 text-xs md:text-sm font-bold shadow-lg shadow-emerald-500/20">
-             Submit
+           
+           {/* Submit Test Button - Primary desktop position */}
+           <Button 
+            onClick={() => setShowSubmitConfirm(true)} 
+            className="hidden sm:flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-9 px-6 text-sm font-bold shadow-lg shadow-emerald-500/20 gap-2"
+           >
+             <Send className="w-4 h-4" />
+             Submit Test
            </Button>
            
            <Sheet>
@@ -275,44 +286,41 @@ export const TestInterface = ({
                </div>
             </div>
 
-            {/* Question Body */}
             <div className="space-y-6">
               <div 
-                className="text-base md:text-xl font-medium leading-relaxed text-slate-100 break-words"
+                className="text-base md:text-xl font-medium leading-relaxed text-slate-100"
                 dangerouslySetInnerHTML={{ __html: (currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string }}
               />
 
               {currentQuestion.dom_images?.map((img, i) => (
-                <div key={i} className="relative max-w-full overflow-hidden rounded-xl border border-white/10 bg-white/5 p-4 flex justify-center">
-                  <img src={img} alt="Ref" className="object-contain max-h-[300px]" />
+                <div key={i} className="flex justify-center p-4 bg-white/5 rounded-2xl border border-white/5">
+                  <img src={img} alt="Ref" className="max-h-[300px] object-contain" />
                 </div>
               ))}
             </div>
 
-            {/* Options */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
               {currentQuestion.options.map((option) => (
                 <button
                   key={option.id}
                   onClick={() => handleOptionSelect(option.id)}
                   className={cn(
-                    "flex items-start gap-3 md:gap-4 p-4 md:p-5 rounded-2xl border text-left transition-all group relative overflow-hidden",
+                    "flex items-start gap-4 p-5 rounded-2xl border text-left transition-all group",
                     responses[currentQuestion.id].selectedOptionId === option.id
                       ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]"
-                      : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/10"
+                      : "bg-white/5 border-white/5 hover:border-white/20"
                   )}
                 >
                   <div className={cn(
-                    "w-6 h-6 rounded-full border flex items-center justify-center shrink-0 text-[10px] font-bold transition-colors",
+                    "w-6 h-6 rounded-full border flex items-center justify-center shrink-0 text-[10px] font-bold",
                     responses[currentQuestion.id].selectedOptionId === option.id
                       ? "bg-primary border-primary text-white"
-                      : "border-white/20 text-muted-foreground group-hover:border-primary"
+                      : "border-white/20 text-muted-foreground"
                   )}>
                     {option.id.split('-').pop()?.toUpperCase() || ''}
                   </div>
-                  <div className="flex-1 space-y-2">
-                    {option.image && <img src={option.image} alt="Opt" className="max-h-16 md:max-h-20 rounded" />}
-                    <span className="text-sm md:text-base font-medium block leading-tight">{option[currentLang]}</span>
+                  <div className="flex-1">
+                    <span className="text-sm md:text-base font-medium">{option[currentLang]}</span>
                   </div>
                 </button>
               ))}
@@ -331,37 +339,45 @@ export const TestInterface = ({
         </aside>
       </div>
 
-      {/* Action Footer */}
-      <footer className="h-auto min-h-20 border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col sm:flex-row items-center justify-between px-4 md:px-6 py-4 sm:py-0 shrink-0 z-50 gap-4">
-        <div className="flex gap-2 w-full sm:w-auto overflow-x-auto hide-scrollbar sm:overflow-visible">
+      {/* Action Footer - Sticky and responsive */}
+      <footer className="h-auto border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between px-4 md:px-6 py-4 md:py-0 shrink-0 z-50 gap-4">
+        <div className="flex gap-2 w-full md:w-auto overflow-x-auto hide-scrollbar">
           <Button 
             variant="outline" 
             onClick={handleMarkForReview}
-            className="rounded-xl border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 font-bold text-[10px] md:text-xs h-10 md:h-11 px-3 whitespace-nowrap"
+            className="rounded-xl border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 font-bold text-[10px] md:text-xs h-10 px-4 whitespace-nowrap"
           >
             Review & Next
           </Button>
           <Button 
             variant="ghost" 
             onClick={handleClearResponse}
-            className="rounded-xl text-muted-foreground hover:bg-white/5 font-bold text-[10px] md:text-xs h-10 md:h-11 px-3 whitespace-nowrap"
+            className="rounded-xl text-muted-foreground hover:bg-white/5 font-bold text-[10px] md:text-xs h-10 px-4 whitespace-nowrap"
           >
             Clear Response
           </Button>
+          
+          {/* Submit Button - Specific mobile position (always visible) */}
+          <Button 
+            onClick={() => setShowSubmitConfirm(true)} 
+            className="sm:hidden bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-10 px-4 text-xs font-bold shadow-lg flex-1"
+          >
+            Submit
+          </Button>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+        <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
            <Button 
             variant="outline" 
             disabled={currentQuestionIndex === 0}
             onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
-            className="rounded-xl border-white/10 h-10 md:h-11 px-4 flex-1 sm:flex-none"
+            className="rounded-xl border-white/10 h-10 px-4"
            >
              <ChevronLeft className="w-5 h-5" />
            </Button>
            <Button 
             onClick={handleSaveAndNext}
-            className="bg-primary hover:bg-primary/90 text-white rounded-xl h-10 md:h-11 px-6 md:px-10 font-bold gap-2 flex-[2] sm:flex-none"
+            className="bg-primary hover:bg-primary/90 text-white rounded-xl h-10 px-6 md:px-10 font-bold gap-2 flex-1 md:flex-none"
            >
              {currentQuestionIndex === testData.questions.length - 1 ? "Save & Preview" : "Save & Next"}
              <ChevronRight className="w-4 h-4" />
@@ -369,22 +385,7 @@ export const TestInterface = ({
         </div>
       </footer>
 
-      {/* Pause Modal */}
-      <Dialog open={isPaused} onOpenChange={setIsPaused}>
-        <DialogContent className="glass border-white/10 sm:max-w-md w-[95%]">
-          <DialogHeader>
-            <DialogTitle className="text-center text-xl font-headline">Test Paused</DialogTitle>
-          </DialogHeader>
-          <div className="py-6 text-center text-muted-foreground text-sm leading-relaxed">
-            Progress saved. Take a breath and resume when ready.
-          </div>
-          <DialogFooter className="sm:justify-center">
-            <Button onClick={() => setIsPaused(false)} className="bg-primary rounded-xl w-full h-12 font-bold">Resume Test</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Submit Confirmation Upgrade */}
+      {/* Submit Confirmation Modal */}
       <Dialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
         <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="mb-6">
@@ -396,41 +397,47 @@ export const TestInterface = ({
           
           <div className="space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <SummaryItem label="Total" value={testData.questions.length} color="slate" />
-              <SummaryItem label="Attempted" value={Object.values(responses).filter(r => r.selectedOptionId !== null).length} color="emerald" />
-              <SummaryItem label="Skipped" value={testData.questions.length - Object.values(responses).filter(r => r.selectedOptionId !== null).length} color="rose" />
-              <SummaryItem label="Marked" value={Object.values(responses).filter(r => r.status.includes('marked')).length} color="indigo" />
+              <SummaryItem label="Total Questions" value={stats.total} color="slate" />
+              <SummaryItem label="Attempted" value={stats.attempted} color="emerald" />
+              <SummaryItem label="Unattempted" value={stats.unattempted} color="rose" />
+              <SummaryItem label="Marked" value={stats.marked} color="indigo" />
             </div>
 
             <div className="space-y-4">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Section-wise Overview</h4>
+              <h4 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Section Overview</h4>
               <div className="space-y-3">
                 {sectionSummaries.map((sec, i) => (
                   <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center justify-between">
                     <span className="text-sm font-medium">{sec.title}</span>
-                    <div className="flex gap-4">
-                      <div className="text-center">
-                        <div className="text-[10px] uppercase text-muted-foreground">Att.</div>
-                        <div className="text-sm font-bold">{sec.attempted}/{sec.total}</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-[10px] uppercase text-muted-foreground">Marked</div>
-                        <div className="text-sm font-bold text-indigo-400">{sec.marked}</div>
-                      </div>
-                    </div>
+                    <div className="text-sm font-bold">{sec.attempted} / {sec.total} Attempted</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground text-center bg-white/5 p-4 rounded-lg italic">
-              Once you submit, you won't be able to change your answers. Detailed analysis and solutions will be generated instantly.
+            <p className="text-xs text-muted-foreground text-center bg-white/5 p-4 rounded-lg italic border border-white/5">
+              Confirming will submit your answers for evaluation. You can review your results immediately after.
             </p>
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-3 mt-8">
             <Button variant="outline" onClick={() => setShowSubmitConfirm(false)} className="rounded-xl h-12 w-full sm:flex-1 border-white/10">Resume Test</Button>
             <Button onClick={onSubmit} className="bg-emerald-500 hover:bg-emerald-600 rounded-xl h-12 w-full sm:flex-1 font-bold shadow-lg shadow-emerald-500/20">Final Submit</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pause Modal */}
+      <Dialog open={isPaused} onOpenChange={setIsPaused}>
+        <DialogContent className="glass border-white/10 sm:max-w-md w-[95%]">
+          <DialogHeader>
+            <DialogTitle className="text-center text-xl font-headline">Test Paused</DialogTitle>
+          </DialogHeader>
+          <div className="py-6 text-center text-muted-foreground text-sm">
+            Take a short break. Your progress is saved.
+          </div>
+          <DialogFooter className="sm:justify-center">
+            <Button onClick={() => setIsPaused(false)} className="bg-primary rounded-xl w-full h-12 font-bold">Resume Test</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -449,7 +456,8 @@ const SummaryItem = ({ label, value, color }: { label: string, value: number, co
   return (
     <div className={cn("p-4 rounded-2xl border text-center", colorMap[color])}>
       <div className="text-xl font-bold">{value}</div>
-      <div className="text-[10px] uppercase font-bold opacity-70">{label}</div>
+      <div className="text-[10px] uppercase font-bold opacity-70 tracking-tighter">{label}</div>
     </div>
   );
 };
+
