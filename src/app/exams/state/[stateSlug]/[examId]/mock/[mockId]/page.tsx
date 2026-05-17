@@ -17,9 +17,9 @@ import { Loader2 } from "lucide-react";
 
 export type TestStep = 'instructions' | 'config' | 'test' | 'result' | 'solution';
 
-export default function MockTestEnginePage() {
+export default function StateMockTestEnginePage() {
   const params = useParams();
-  const category = params.category as string;
+  const stateSlug = params.stateSlug as string;
   const examId = params.examId as string;
   const mockId = params.mockId as string;
   
@@ -30,7 +30,7 @@ export default function MockTestEnginePage() {
   const [startTime, setStartTime] = useState<number | null>(null);
   const [endTime, setEndTime] = useState<number | null>(null);
 
-  const dashboardUrl = `/exams/${category}/${examId}`;
+  const dashboardUrl = `/exams/state/${stateSlug}/${examId}`;
 
   // Initialize test data
   useEffect(() => {

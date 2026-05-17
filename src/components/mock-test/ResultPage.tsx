@@ -21,9 +21,19 @@ interface Props {
   userLanguage: 'en' | 'hn';
   onReattempt: () => void;
   onViewSolutions: () => void;
+  dashboardUrl?: string;
 }
 
-export const ResultPage = ({ testData, responses, startTime, endTime, userLanguage, onReattempt, onViewSolutions }: Props) => {
+export const ResultPage = ({ 
+  testData, 
+  responses, 
+  startTime, 
+  endTime, 
+  userLanguage, 
+  onReattempt, 
+  onViewSolutions,
+  dashboardUrl = "/"
+}: Props) => {
   const metrics = useMemo(() => {
     const totalQuestions = testData.questions.length;
     let correct = 0;
@@ -145,7 +155,7 @@ export const ResultPage = ({ testData, responses, startTime, endTime, userLangua
                 <Button variant="outline" onClick={onReattempt} className="w-full h-12 rounded-xl border-white/10 hover:bg-white/5 font-bold gap-2">
                   <RotateCcw className="w-4 h-4" /> Reattempt Mock
                 </Button>
-                <Link href="/" className="block">
+                <Link href={dashboardUrl} className="block">
                   <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold">
                     Return to Dashboard
                   </Button>
