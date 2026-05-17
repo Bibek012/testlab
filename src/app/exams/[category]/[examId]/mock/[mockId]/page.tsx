@@ -1,27 +1,25 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { 
   getSampleMockTest, 
   MockTestData, 
-  UserResponse, 
-  QuestionStatus, 
-  Question 
+  UserResponse 
 } from "@/lib/mock-test-engine-data";
 import { InstructionsStep } from "@/components/mock-test/InstructionsStep";
 import { ConfigStep } from "@/components/mock-test/ConfigStep";
 import { TestInterface } from "@/components/mock-test/TestInterface";
 import { ResultPage } from "@/components/mock-test/ResultPage";
+import { SolutionInterface } from "@/components/mock-test/SolutionInterface";
 import { Loader2 } from "lucide-react";
 
-export type TestStep = 'instructions' | 'config' | 'test' | 'result';
+export type TestStep = 'instructions' | 'config' | 'test' | 'result' | 'solution';
 
 export default function MockTestEnginePage() {
   const params = useParams();
   const mockId = params.mockId as string;
-  const examId = params.examId as string;
   
   const [step, setStep] = useState<TestStep>('instructions');
   const [testData, setTestData] = useState<MockTestData | null>(null);
@@ -50,7 +48,7 @@ export default function MockTestEnginePage() {
 
   if (!testData) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen bg-[#0b1120] flex items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
       </div>
     );
@@ -67,8 +65,24 @@ export default function MockTestEnginePage() {
     setStep('result');
   };
 
+  const handleReattempt = () => {
+    const initialResponses: Record<string, UserResponse> = {};
+    testData.questions.forEach(q => {
+      initialResponses[q.id] = {
+        questionId: q.id,
+        selectedOptionId: null,
+        status: 'not-visited',
+        timeSpentSeconds: 0
+      };
+    });
+    setResponses(initialResponses);
+    setStartTime(null);
+    setEndTime(null);
+    setStep('instructions');
+  };
+
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen bg-[#0b1120] text-foreground">
       {step === 'instructions' && (
         <InstructionsStep 
           testData={testData} 
@@ -101,6 +115,17 @@ export default function MockTestEnginePage() {
           startTime={startTime!}
           endTime={endTime!}
           userLanguage={userLanguage}
+          onReattempt={handleReattempt}
+          onViewSolutions={() => setStep('solution')}
+        />
+      )}
+
+      {step === 'solution' && (
+        <SolutionInterface 
+          testData={testData}
+          userLanguage={userLanguage}
+          responses={responses}
+          onBack={() => setStep('result')}
         />
       )}
     </main>

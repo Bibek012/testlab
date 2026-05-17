@@ -1,11 +1,11 @@
 
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Trophy, CheckCircle, XCircle, Clock, Target, ArrowLeft, RotateCcw, BarChart3, PieChart } from "lucide-react";
+import { Trophy, CheckCircle, XCircle, Clock, Target, RotateCcw, BarChart3, PieChart, BookOpen, Zap, TrendingUp } from "lucide-react";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart as RePieChart, Pie
@@ -18,81 +18,113 @@ interface Props {
   startTime: number;
   endTime: number;
   userLanguage: 'en' | 'hn';
+  onReattempt: () => void;
+  onViewSolutions: () => void;
 }
 
-export const ResultPage = ({ testData, responses, startTime, endTime, userLanguage }: Props) => {
-  const totalQuestions = testData.questions.length;
-  let correct = 0;
-  let incorrect = 0;
-  let unattempted = 0;
-  let totalScore = 0;
+export const ResultPage = ({ testData, responses, startTime, endTime, userLanguage, onReattempt, onViewSolutions }: Props) => {
+  const metrics = useMemo(() => {
+    const totalQuestions = testData.questions.length;
+    let correct = 0;
+    let incorrect = 0;
+    let unattempted = 0;
+    let totalScore = 0;
 
-  testData.questions.forEach(q => {
-    const resp = responses[q.id];
-    if (resp.selectedOptionId === q.answer) {
-      correct++;
-      totalScore += q.marks;
-    } else if (resp.selectedOptionId) {
-      incorrect++;
-      totalScore -= q.negativeMarks;
-    } else {
-      unattempted++;
-    }
-  });
+    testData.questions.forEach(q => {
+      const resp = responses[q.id];
+      if (resp.selectedOptionId === q.answer) {
+        correct++;
+        totalScore += q.marks;
+      } else if (resp.selectedOptionId) {
+        incorrect++;
+        totalScore -= q.negativeMarks;
+      } else {
+        unattempted++;
+      }
+    });
 
-  const timeTaken = Math.floor((endTime - startTime) / 1000);
-  const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
+    const timeTaken = Math.floor((endTime - startTime) / 1000);
+    const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
+    const percentile = 84.5; // Mock data for percentile
 
-  const data = [
-    { name: 'Correct', value: correct, color: '#10b981' },
-    { name: 'Incorrect', value: incorrect, color: '#f43f5e' },
-    { name: 'Unattempted', value: unattempted, color: '#64748b' },
+    return { correct, incorrect, unattempted, totalScore, timeTaken, accuracy, totalQuestions, percentile };
+  }, [testData, responses, startTime, endTime]);
+
+  const chartData = [
+    { name: 'Correct', value: metrics.correct, color: '#10b981' },
+    { name: 'Incorrect', value: metrics.incorrect, color: '#f43f5e' },
+    { name: 'Unattempted', value: metrics.unattempted, color: '#64748b' },
   ];
+
+  const sectionData = useMemo(() => {
+    return testData.sections.map(sec => {
+      const secQs = testData.questions.filter(q => q.sectionId === sec.id);
+      let secCorrect = 0;
+      let secIncorrect = 0;
+      secQs.forEach(q => {
+        const resp = responses[q.id];
+        if (resp.selectedOptionId === q.answer) secCorrect++;
+        else if (resp.selectedOptionId) secIncorrect++;
+      });
+      return { 
+        name: sec.title[userLanguage], 
+        correct: secCorrect, 
+        incorrect: secIncorrect,
+        accuracy: (secCorrect + secIncorrect > 0) ? (secCorrect / (secCorrect + secIncorrect) * 100).toFixed(0) : 0
+      };
+    });
+  }, [testData, responses, userLanguage]);
 
   return (
     <div className="min-h-screen bg-[#0b1120] pb-24">
-      <div className="relative pt-32 pb-16 overflow-hidden">
+      {/* Result Hero */}
+      <div className="relative pt-24 pb-12 overflow-hidden border-b border-white/5">
         <div className="absolute top-0 left-0 w-full h-full -z-10">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px]" />
           <div className="absolute bottom-[10%] right-[-10%] w-[30%] h-[30%] bg-accent/20 rounded-full blur-[120px]" />
         </div>
 
-        <div className="container mx-auto px-6 text-center space-y-6">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest">
-            <Trophy className="w-4 h-4" />
-            Mock Test Completed
+        <div className="container mx-auto px-6 flex flex-col items-center text-center space-y-6">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white shadow-2xl shadow-primary/20">
+            <Trophy className="w-10 h-10" />
           </div>
-          <h1 className="text-4xl md:text-6xl font-headline font-bold">Analysis & <span className="gradient-text">Performance</span></h1>
-          <p className="text-muted-foreground max-w-xl mx-auto">Great job completing the mock test! Review your detailed analytics below to identify your learning gaps.</p>
+          <div className="space-y-2">
+            <h1 className="text-3xl md:text-5xl font-headline font-bold">Analysis <span className="gradient-text">Report</span></h1>
+            <p className="text-muted-foreground text-sm max-w-xl mx-auto">
+              Test Completed: <span className="text-foreground font-bold">{testData.title}</span>
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-6 max-w-6xl space-y-8">
+      <div className="container mx-auto px-6 max-w-6xl mt-12 space-y-8">
+        {/* Metric Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <ResultStatCard title="Total Score" value={totalScore.toFixed(2)} icon={Target} color="primary" />
-          <ResultStatCard title="Accuracy" value={`${accuracy.toFixed(1)}%`} icon={CheckCircle} color="emerald-400" />
-          <ResultStatCard title="Time Taken" value={`${Math.floor(timeTaken/60)}m ${timeTaken%60}s`} icon={Clock} color="accent" />
-          <ResultStatCard title="Attempted" value={`${correct + incorrect}/${totalQuestions}`} icon={BarChart3} color="indigo-400" />
+          <ResultStatCard title="Overall Score" value={metrics.totalScore.toFixed(2)} icon={Target} color="primary" trend="+12%" />
+          <ResultStatCard title="Accuracy" value={`${metrics.accuracy.toFixed(1)}%`} icon={CheckCircle} color="emerald-400" />
+          <ResultStatCard title="Percentile" value={`${metrics.percentile}%`} icon={TrendingUp} color="indigo-400" />
+          <ResultStatCard title="Speed" value={`${(metrics.timeTaken / metrics.totalQuestions).toFixed(1)}s/q`} icon={Clock} color="accent" />
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
-          <Card className="glass border-white/10 p-8 col-span-2">
+        <div className="grid lg:grid-cols-12 gap-8">
+          {/* Main Chart */}
+          <Card className="glass border-white/10 p-6 lg:col-span-8">
             <CardHeader className="px-0 pt-0 pb-8 flex flex-row items-center justify-between">
-              <CardTitle className="text-xl font-headline font-bold">Question Distribution</CardTitle>
+              <CardTitle className="text-lg font-headline font-bold">Performance Breakdown</CardTitle>
               <div className="flex gap-4">
-                <div className="flex items-center gap-2 text-xs font-medium text-emerald-400"><div className="w-3 h-3 rounded-full bg-emerald-500" /> Correct</div>
-                <div className="flex items-center gap-2 text-xs font-medium text-rose-400"><div className="w-3 h-3 rounded-full bg-rose-500" /> Wrong</div>
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-500"><div className="w-3 h-3 rounded-full bg-slate-500" /> Skipped</div>
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Correct</div>
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-400"><div className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Incorrect</div>
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500"><div className="w-2.5 h-2.5 rounded-full bg-slate-500" /> Skipped</div>
               </div>
             </CardHeader>
-            <div className="h-64 w-full">
+            <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data} layout="vertical" margin={{ left: -20 }}>
+                <BarChart data={chartData} layout="vertical" margin={{ left: -20, right: 20 }}>
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }} />
-                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
-                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={40}>
-                    {data.map((entry, index) => (
+                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={45}>
+                    {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Bar>
@@ -101,37 +133,70 @@ export const ResultPage = ({ testData, responses, startTime, endTime, userLangua
             </div>
           </Card>
 
-          <Card className="glass border-white/10 p-8">
-            <CardTitle className="text-xl font-headline font-bold mb-8">Quick Action</CardTitle>
-            <div className="space-y-4">
-               <Button className="w-full bg-primary h-12 rounded-xl font-bold shadow-lg shadow-primary/20">
-                 Review All Questions
-               </Button>
-               <Button variant="outline" className="w-full h-12 rounded-xl border-white/10 hover:bg-white/5 font-bold">
-                 <RotateCcw className="w-4 h-4 mr-2" />
-                 Attempt Again
-               </Button>
-               <Link href="/" className="block">
-                 <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold">
-                   Go to Dashboard
-                 </Button>
-               </Link>
-            </div>
-            
-            <div className="mt-8 p-6 bg-white/5 rounded-2xl border border-white/10 text-center space-y-2">
-               <PieChart className="w-8 h-8 text-accent mx-auto mb-2" />
+          {/* Quick Actions & AI Insight */}
+          <div className="lg:col-span-4 space-y-6">
+            <Card className="glass border-white/10 p-6">
+              <CardTitle className="text-lg font-headline font-bold mb-6">What's Next?</CardTitle>
+              <div className="space-y-3">
+                <Button onClick={onViewSolutions} className="w-full bg-primary h-12 rounded-xl font-bold shadow-lg shadow-primary/20 gap-2">
+                  <BookOpen className="w-4 h-4" /> View Detailed Solutions
+                </Button>
+                <Button variant="outline" onClick={onReattempt} className="w-full h-12 rounded-xl border-white/10 hover:bg-white/5 font-bold gap-2">
+                  <RotateCcw className="w-4 h-4" /> Reattempt Mock
+                </Button>
+                <Link href="/" className="block">
+                  <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold">
+                    Return to Dashboard
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+
+            <div className="p-6 bg-gradient-to-br from-indigo-500/10 to-accent/10 rounded-3xl border border-white/10 space-y-4">
+               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase">
+                 <Zap className="w-4 h-4 fill-current" /> AI Analytics Insight
+               </div>
                <p className="text-xs text-muted-foreground leading-relaxed italic">
-                 "You are stronger in {testData.sections[0].title[userLanguage]} than average students. Focus on speed in {testData.sections[1].title[userLanguage]}."
+                 "Your accuracy in <span className="text-emerald-400">{sectionData[0].name}</span> is impressive! However, your speed in <span className="text-rose-400">{sectionData[1].name}</span> is lagging. Focus on time-drills for reasoning to boost score by 15%."
                </p>
             </div>
-          </Card>
+          </div>
+        </div>
+
+        {/* Section Wise Breakdown */}
+        <div className="space-y-6">
+          <h3 className="text-xl font-headline font-bold">Sectional Performance</h3>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {sectionData.map((sec, i) => (
+              <Card key={i} className="glass border-white/10 p-6 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-bold text-sm">{sec.name}</h4>
+                  <Badge className="bg-emerald-500/10 text-emerald-400">{sec.accuracy}% Accuracy</Badge>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase">
+                      <span>Progress</span>
+                      <span>{sec.correct} Correct</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-emerald-500 rounded-full" 
+                        style={{ width: `${(sec.correct / (sec.correct + sec.incorrect || 1)) * 100}%` }} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-const ResultStatCard = ({ title, value, icon: Icon, color }: any) => (
+const ResultStatCard = ({ title, value, icon: Icon, color, trend }: any) => (
   <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden group">
     <div className={`absolute top-0 right-0 p-4 opacity-5 text-${color} group-hover:opacity-20 transition-opacity`}>
       <Icon className="w-16 h-16" />
@@ -139,8 +204,11 @@ const ResultStatCard = ({ title, value, icon: Icon, color }: any) => (
     <div className={`p-2 rounded-lg bg-${color}/10 text-${color} inline-block`}>
       <Icon className="w-5 h-5" />
     </div>
-    <div>
-      <div className="text-2xl font-bold font-headline">{value}</div>
+    <div className="relative">
+      <div className="flex items-baseline gap-2">
+        <div className="text-2xl font-bold font-headline">{value}</div>
+        {trend && <span className="text-[10px] text-emerald-400 font-bold">{trend}</span>}
+      </div>
       <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{title}</div>
     </div>
   </Card>

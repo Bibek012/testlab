@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -17,7 +18,8 @@ import {
   ChevronRight,
   Menu,
   X,
-  LayoutGrid
+  LayoutGrid,
+  AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
@@ -55,7 +57,7 @@ export const TestInterface = ({
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
 
-  // Timer logic
+  // Global Timer logic
   useEffect(() => {
     if (isPaused) return;
     const timer = setInterval(() => {
@@ -70,6 +72,21 @@ export const TestInterface = ({
     }, 1000);
     return () => clearInterval(timer);
   }, [isPaused, onSubmit]);
+
+  // Per-Question Time Tracking
+  useEffect(() => {
+    if (isPaused) return;
+    const qTimer = setInterval(() => {
+      setResponses(prev => ({
+        ...prev,
+        [currentQuestion.id]: {
+          ...prev[currentQuestion.id],
+          timeSpentSeconds: prev[currentQuestion.id].timeSpentSeconds + 1
+        }
+      }));
+    }, 1000);
+    return () => clearInterval(qTimer);
+  }, [currentQuestion.id, isPaused, setResponses]);
 
   // Mark current question as visited
   useEffect(() => {
@@ -138,18 +155,27 @@ export const TestInterface = ({
     return (answeredCount / sectionQuestions.length) * 100;
   }, [currentSection, testData.questions, responses]);
 
+  const sectionSummaries = useMemo(() => {
+    return testData.sections.map(sec => {
+      const secQs = testData.questions.filter(q => q.sectionId === sec.id);
+      const attempted = secQs.filter(q => responses[q.id].selectedOptionId !== null).length;
+      const marked = secQs.filter(q => responses[q.id].status === 'marked-review' || responses[q.id].status === 'answered-marked-review').length;
+      return { title: sec.title[currentLang], total: secQs.length, attempted, marked };
+    });
+  }, [testData, responses, currentLang]);
+
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
-      {/* Top Bar - Optimized for mobile height */}
-      <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-4 md:px-6 shrink-0">
+      {/* Top Bar */}
+      <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-4 md:px-6 shrink-0 z-50">
         <div className="flex items-center gap-3 md:gap-6 overflow-hidden">
           <div className="hidden sm:flex items-center gap-2 shrink-0">
             <Monitor className="w-5 h-5 text-primary" />
-            <h1 className="font-headline font-bold text-xs tracking-tight truncate max-w-[120px] lg:max-w-none">
+            <h1 className="font-headline font-bold text-xs tracking-tight truncate max-w-[120px] lg:max-w-none uppercase">
               {testData.examName}
             </h1>
           </div>
-          <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-3 py-1 md:px-4 md:py-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-3 py-1 md:px-4 md:py-1.5 shrink-0 border border-white/5">
             <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-accent" />
             <span className={cn("text-xs md:text-sm font-mono font-bold", timeLeft < 300 ? "text-rose-500 animate-pulse" : "text-accent")}>
               {formatTime(timeLeft)}
@@ -161,24 +187,23 @@ export const TestInterface = ({
            <Button variant="ghost" size="sm" onClick={() => setIsPaused(true)} className="text-muted-foreground hover:text-white h-9 px-2 md:px-4">
              <Pause className="w-4 h-4 md:mr-2" /> <span className="hidden md:inline">Pause</span>
            </Button>
-           <Button onClick={() => setShowSubmitConfirm(true)} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-8 md:h-9 px-3 md:px-6 text-xs md:text-sm font-bold shadow-lg shadow-emerald-500/20">
+           <Button onClick={() => setShowSubmitConfirm(true)} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-8 md:h-9 px-4 md:px-8 text-xs md:text-sm font-bold shadow-lg shadow-emerald-500/20">
              Submit
            </Button>
            
-           {/* Mobile Palette Trigger */}
            <Sheet>
              <SheetTrigger asChild>
                <Button variant="ghost" size="icon" className="lg:hidden text-muted-foreground hover:text-white">
                  <LayoutGrid className="w-5 h-5" />
                </Button>
              </SheetTrigger>
-             <SheetContent side="right" className="p-0 bg-slate-900 border-white/5 w-[85%] sm:w-[350px]">
+             <SheetContent side="right" className="p-0 bg-[#0f172a] border-white/5 w-[85%] sm:w-[350px]">
                 <SheetHeader className="p-4 border-b border-white/5 text-left">
                   <SheetTitle className="text-sm font-bold flex items-center gap-2">
                     <LayoutGrid className="w-4 h-4 text-primary" /> Question Palette
                   </SheetTitle>
                 </SheetHeader>
-                <div className="h-full">
+                <div className="h-full flex flex-col">
                   <QuestionPalette 
                     questions={testData.questions} 
                     responses={responses} 
@@ -191,8 +216,8 @@ export const TestInterface = ({
         </div>
       </header>
 
-      {/* Section Selector - Swipable on mobile */}
-      <div className="bg-slate-900/30 border-b border-white/5 flex items-center justify-between px-4 md:px-6 py-2 shrink-0">
+      {/* Section Selector */}
+      <div className="bg-slate-900/30 border-b border-white/5 flex items-center justify-between px-4 md:px-6 py-2 shrink-0 z-40">
         <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {testData.sections.map((section) => (
             <button
@@ -227,7 +252,9 @@ export const TestInterface = ({
                  <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg px-3 py-1 text-[10px] md:text-xs">
                    Question {currentQuestionIndex + 1}
                  </Badge>
-                 <span className="text-[10px] md:text-xs text-muted-foreground">Type: MCQ</span>
+                 <span className="text-[10px] md:text-xs text-muted-foreground font-mono">
+                   Time Spent: {formatTime(responses[currentQuestion.id].timeSpentSeconds)}
+                 </span>
                </div>
                <div className="flex items-center justify-between sm:justify-end gap-4">
                   <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/10">
@@ -248,7 +275,7 @@ export const TestInterface = ({
                </div>
             </div>
 
-            {/* Question Body - Fluid Typography */}
+            {/* Question Body */}
             <div className="space-y-6">
               <div 
                 className="text-base md:text-xl font-medium leading-relaxed text-slate-100 break-words"
@@ -256,13 +283,13 @@ export const TestInterface = ({
               />
 
               {currentQuestion.dom_images?.map((img, i) => (
-                <div key={i} className="relative aspect-video max-w-full overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                  <img src={img} alt="Ref" className="object-contain w-full h-full" />
+                <div key={i} className="relative max-w-full overflow-hidden rounded-xl border border-white/10 bg-white/5 p-4 flex justify-center">
+                  <img src={img} alt="Ref" className="object-contain max-h-[300px]" />
                 </div>
               ))}
             </div>
 
-            {/* Options - Grid system for flexibility */}
+            {/* Options */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
               {currentQuestion.options.map((option) => (
                 <button
@@ -294,7 +321,7 @@ export const TestInterface = ({
         </div>
 
         {/* Desktop Sidebar Palette */}
-        <aside className="hidden lg:flex w-72 xl:w-80 bg-slate-900 border-l border-white/5 flex-col overflow-hidden">
+        <aside className="hidden lg:flex w-72 xl:w-80 bg-[#0f172a] border-l border-white/5 flex-col overflow-hidden">
           <QuestionPalette 
             questions={testData.questions} 
             responses={responses} 
@@ -304,7 +331,7 @@ export const TestInterface = ({
         </aside>
       </div>
 
-      {/* Action Footer - Fixed bottom, high z-index */}
+      {/* Action Footer */}
       <footer className="h-auto min-h-20 border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col sm:flex-row items-center justify-between px-4 md:px-6 py-4 sm:py-0 shrink-0 z-50 gap-4">
         <div className="flex gap-2 w-full sm:w-auto overflow-x-auto hide-scrollbar sm:overflow-visible">
           <Button 
@@ -357,35 +384,72 @@ export const TestInterface = ({
         </DialogContent>
       </Dialog>
 
-      {/* Submit Confirmation */}
+      {/* Submit Confirmation Upgrade */}
       <Dialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
-        <DialogContent className="glass border-white/10 w-[95%] sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-headline text-xl">Final Submission</DialogTitle>
+        <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="mb-6">
+            <DialogTitle className="font-headline text-2xl flex items-center gap-2">
+              <AlertCircle className="w-6 h-6 text-amber-400" />
+              Final Submission Summary
+            </DialogTitle>
           </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-               <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-center">
-                 <div className="text-xl font-bold text-emerald-400">
-                   {Object.values(responses).filter(r => r.status === 'answered' || r.status === 'answered-marked-review').length}
-                 </div>
-                 <div className="text-[10px] uppercase font-bold text-muted-foreground">Answered</div>
-               </div>
-               <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-center">
-                 <div className="text-xl font-bold text-rose-400">
-                   {Object.values(responses).filter(r => r.status === 'not-answered' || r.status === 'marked-review').length}
-                 </div>
-                 <div className="text-[10px] uppercase font-bold text-muted-foreground">Skipped</div>
-               </div>
+          
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <SummaryItem label="Total" value={testData.questions.length} color="slate" />
+              <SummaryItem label="Attempted" value={Object.values(responses).filter(r => r.selectedOptionId !== null).length} color="emerald" />
+              <SummaryItem label="Skipped" value={testData.questions.length - Object.values(responses).filter(r => r.selectedOptionId !== null).length} color="rose" />
+              <SummaryItem label="Marked" value={Object.values(responses).filter(r => r.status.includes('marked')).length} color="indigo" />
             </div>
-            <p className="text-xs text-muted-foreground text-center">Review your attempts carefully. Once submitted, results will be generated instantly.</p>
+
+            <div className="space-y-4">
+              <h4 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Section-wise Overview</h4>
+              <div className="space-y-3">
+                {sectionSummaries.map((sec, i) => (
+                  <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center justify-between">
+                    <span className="text-sm font-medium">{sec.title}</span>
+                    <div className="flex gap-4">
+                      <div className="text-center">
+                        <div className="text-[10px] uppercase text-muted-foreground">Att.</div>
+                        <div className="text-sm font-bold">{sec.attempted}/{sec.total}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-[10px] uppercase text-muted-foreground">Marked</div>
+                        <div className="text-sm font-bold text-indigo-400">{sec.marked}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground text-center bg-white/5 p-4 rounded-lg italic">
+              Once you submit, you won't be able to change your answers. Detailed analysis and solutions will be generated instantly.
+            </p>
           </div>
-          <DialogFooter className="flex-col sm:flex-row gap-3">
-            <Button variant="outline" onClick={() => setShowSubmitConfirm(false)} className="rounded-xl h-11 w-full sm:flex-1">Keep Practicing</Button>
-            <Button onClick={onSubmit} className="bg-emerald-500 hover:bg-emerald-600 rounded-xl h-11 w-full sm:flex-1 font-bold">Final Submit</Button>
+
+          <DialogFooter className="flex-col sm:flex-row gap-3 mt-8">
+            <Button variant="outline" onClick={() => setShowSubmitConfirm(false)} className="rounded-xl h-12 w-full sm:flex-1 border-white/10">Resume Test</Button>
+            <Button onClick={onSubmit} className="bg-emerald-500 hover:bg-emerald-600 rounded-xl h-12 w-full sm:flex-1 font-bold shadow-lg shadow-emerald-500/20">Final Submit</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+};
+
+const SummaryItem = ({ label, value, color }: { label: string, value: number, color: string }) => {
+  const colorMap: Record<string, string> = {
+    slate: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+    emerald: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    rose: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+    indigo: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  };
+
+  return (
+    <div className={cn("p-4 rounded-2xl border text-center", colorMap[color])}>
+      <div className="text-xl font-bold">{value}</div>
+      <div className="text-[10px] uppercase font-bold opacity-70">{label}</div>
     </div>
   );
 };

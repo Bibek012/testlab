@@ -26,6 +26,12 @@ export interface Question {
   negativeMarks: number;
   dom_images?: string[];
   memory_images?: string[];
+  explanation?: {
+    en: string;
+    hn: string;
+    en_html?: string;
+    hn_html?: string;
+  };
 }
 
 export interface Section {
@@ -82,6 +88,11 @@ export const getSampleMockTest = (mockId: string): MockTestData => ({
       answer: 'opt-a',
       marks: 1,
       negativeMarks: 0.33,
+      explanation: {
+        en: "To solve: 2x = 15 - 5 => 2x = 10 => x = 5.",
+        hn: "हल करने के लिए: 2x = 15 - 5 => 2x = 10 => x = 5.",
+        en_html: "<p>2x + 5 = 15<br/>2x = 10<br/><strong>x = 5</strong></p>"
+      }
     },
     {
       id: 'q2',
@@ -98,6 +109,10 @@ export const getSampleMockTest = (mockId: string): MockTestData => ({
       marks: 1,
       negativeMarks: 0.33,
       dom_images: ["https://picsum.photos/seed/math1/400/200"],
+      explanation: {
+        en: "The sequence increases by 5 each time.",
+        hn: "अनुक्रम हर बार 5 से बढ़ता है।",
+      }
     },
     {
       id: 'q3',
@@ -113,6 +128,10 @@ export const getSampleMockTest = (mockId: string): MockTestData => ({
       answer: 'opt-3b',
       marks: 1,
       negativeMarks: 0.33,
+      explanation: {
+        en: "Figure B is the only one with a closed loop.",
+        hn: "आकृति B ही एकमात्र ऐसी आकृति है जिसमें बंद पाश है।",
+      }
     }
   ]
 });
