@@ -1,3 +1,28 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "hero-dashboard",
+      "description": "A futuristic educational dashboard with analytics and charts",
+      "imageUrl": "https://picsum.photos/seed/testlab-hero/800/600",
+      "imageHint": "dashboard analytics"
+    },
+    {
+      "id": "student-1",
+      "description": "Student testimonial avatar 1",
+      "imageUrl": "https://picsum.photos/seed/student1/100/100",
+      "imageHint": "portrait student"
+    },
+    {
+      "id": "student-2",
+      "description": "Student testimonial avatar 2",
+      "imageUrl": "https://picsum.photos/seed/student2/100/100",
+      "imageHint": "portrait man"
+    },
+    {
+      "id": "student-3",
+      "description": "Student testimonial avatar 3",
+      "imageUrl": "https://picsum.photos/seed/student3/100/100",
+      "imageHint": "portrait woman"
+    }
+  ]
 }
