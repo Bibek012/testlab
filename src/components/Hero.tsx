@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Play, CheckCircle2 } from "lucide-react";
 import { DashboardMockup } from "./DashboardMockup";
@@ -37,14 +38,18 @@ export const Hero = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4">
-            <Button size="lg" className="bg-primary hover:bg-primary/90 text-white rounded-full px-8 gap-2 group">
-              Start Practice
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </Button>
-            <Button size="lg" variant="outline" className="rounded-full px-8 gap-2 hover:bg-white/5">
-              <Play className="w-4 h-4 fill-current" />
-              Explore Exams
-            </Button>
+            <Link href="#exams">
+              <Button size="lg" className="bg-primary hover:bg-primary/90 text-white rounded-full px-8 h-14 gap-2 group w-full sm:w-auto">
+                Start Practice
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </Link>
+            <Link href="#exams">
+              <Button size="lg" variant="outline" className="rounded-full px-8 h-14 gap-2 hover:bg-white/5 w-full sm:w-auto">
+                <Play className="w-4 h-4 fill-current" />
+                Explore Exams
+              </Button>
+            </Link>
           </div>
 
           <div className="flex items-center gap-6 pt-4">

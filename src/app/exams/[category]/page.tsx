@@ -34,7 +34,11 @@ export default function CategoryPage() {
     [exams, searchQuery]
   );
 
-  if (!category) return null;
+  if (!category) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <p className="text-muted-foreground">Category not found.</p>
+    </div>
+  );
 
   return (
     <main className="min-h-screen">
@@ -65,16 +69,16 @@ export default function CategoryPage() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
                     placeholder="Search exams..." 
-                    className="pl-10 bg-transparent border-white/5 focus-visible:ring-primary"
+                    className="pl-10 bg-transparent border-white/5 focus-visible:ring-primary h-12"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold hover:bg-white/10 transition-colors">
+                  <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold hover:bg-white/10 transition-colors h-12">
                     <Filter className="w-3 h-3" /> Filter
                   </button>
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold hover:bg-white/10 transition-colors">
+                  <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold hover:bg-white/10 transition-colors h-12">
                     <SortAsc className="w-3 h-3" /> Sort
                   </button>
                 </div>
@@ -83,10 +87,10 @@ export default function CategoryPage() {
               {/* Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {filteredExams.map((exam) => (
-                  <ExamCard key={exam.id} exam={exam} />
+                  <ExamCard key={exam.id} exam={exam} categorySlug={categorySlug} />
                 ))}
                 {filteredExams.length === 0 && (
-                  <div className="col-span-full py-20 text-center text-muted-foreground">
+                  <div className="col-span-full py-20 text-center text-muted-foreground glass border-white/5 rounded-3xl">
                     No exams found matching your search.
                   </div>
                 )}

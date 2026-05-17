@@ -9,7 +9,6 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { ExamCard } from "@/components/ExamCard";
 import { ExamSidebar } from "@/components/ExamSidebar";
 import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { STATES, STATE_EXAMS } from "@/lib/exam-data";
 import { CTASection } from "@/components/CTASection";
 import { StatsSection } from "@/components/StatsSection";
@@ -34,7 +33,11 @@ export default function StateExamsPage() {
     [exams, searchQuery]
   );
 
-  if (!state) return null;
+  if (!state) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <p className="text-muted-foreground">State not found.</p>
+    </div>
+  );
 
   return (
     <main className="min-h-screen">
@@ -76,8 +79,13 @@ export default function StateExamsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {filteredExams.map((exam) => (
-                  <ExamCard key={exam.id} exam={exam} />
+                  <ExamCard key={exam.id} exam={exam} categorySlug="state" stateSlug={stateSlug} />
                 ))}
+                {filteredExams.length === 0 && (
+                  <div className="col-span-full py-20 text-center text-muted-foreground glass border-white/5 rounded-3xl">
+                    No exams found for this state.
+                  </div>
+                )}
               </div>
             </div>
 
