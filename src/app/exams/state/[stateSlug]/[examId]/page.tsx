@@ -97,7 +97,7 @@ export default function StateExamDashboardPage() {
           <div className="grid lg:grid-cols-12 gap-8">
             <div className="lg:col-span-8 space-y-12">
               <PerformanceOverview />
-              <MockTestList examId={examId} />
+              <MockTestList examId={examId} categorySlug="state" stateSlug={stateSlug} />
             </div>
 
             <div className="lg:col-span-4 space-y-8">

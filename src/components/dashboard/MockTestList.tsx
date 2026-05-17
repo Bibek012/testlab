@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { 
@@ -17,7 +18,13 @@ import { MOCK_TESTS, TestType, SUBJECTS_BY_EXAM } from "@/lib/mock-test-data";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-export const MockTestList = ({ examId }: { examId: string }) => {
+interface MockTestListProps {
+  examId: string;
+  categorySlug: string;
+  stateSlug?: string;
+}
+
+export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListProps) => {
   const [activeType, setActiveType] = useState<TestType | 'All'>('All');
   const [activeSubject, setActiveSubject] = useState<string | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,7 +39,6 @@ export const MockTestList = ({ examId }: { examId: string }) => {
     return matchesType && matchesSubject && matchesSearch;
   });
 
-  // Show subject filters only for Subject/Chapter tests
   const showSubjectFilters = activeType === 'Subject Test' || activeType === 'Chapter Test';
 
   return (
@@ -49,7 +55,7 @@ export const MockTestList = ({ examId }: { examId: string }) => {
                 key={type}
                 onClick={() => {
                   setActiveType(type);
-                  setActiveSubject('All'); // Reset subject when type changes
+                  setActiveSubject('All');
                 }}
                 className={cn(
                   "whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold transition-all border",
@@ -76,7 +82,6 @@ export const MockTestList = ({ examId }: { examId: string }) => {
         </div>
       </div>
 
-      {/* Conditional Subject Pills */}
       <AnimatePresence>
         {showSubjectFilters && (
           <motion.div 
@@ -105,69 +110,76 @@ export const MockTestList = ({ examId }: { examId: string }) => {
         )}
       </AnimatePresence>
 
-      {/* Test Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
         <AnimatePresence mode="popLayout">
-          {filteredTests.map((test) => (
-            <motion.div
-              layout
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              key={test.id}
-              className="group relative glass border-white/10 rounded-[1.5rem] md:rounded-[2rem] p-6 md:p-8 hover:border-primary/50 transition-all duration-500 overflow-hidden flex flex-col h-full"
-            >
-              <div className="absolute top-0 right-0 p-4 md:p-6 flex flex-wrap justify-end gap-1.5">
-                {test.isFree && <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[9px] px-1.5">Free</Badge>}
-                {test.isNew && <Badge className="bg-primary/20 text-primary border-primary/30 text-[9px] px-1.5">New</Badge>}
-                {test.isPopular && <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[9px] px-1.5">Popular</Badge>}
-              </div>
+          {filteredTests.map((test) => {
+            const mockUrl = stateSlug 
+              ? `/exams/state/${stateSlug}/${examId}/mock/${test.id}`
+              : `/exams/${categorySlug}/${examId}/mock/${test.id}`;
 
-              <div className="mb-6 mt-2">
-                <div className="text-[9px] md:text-[10px] font-bold text-accent uppercase tracking-widest mb-1.5">{test.type}</div>
-                <h3 className="text-lg md:text-xl font-headline font-bold leading-tight group-hover:text-primary transition-colors pr-12 sm:pr-0">
-                  {test.title}
-                </h3>
-              </div>
+            return (
+              <motion.div
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                key={test.id}
+                className="group relative glass border-white/10 rounded-[1.5rem] md:rounded-[2rem] p-6 md:p-8 hover:border-primary/50 transition-all duration-500 overflow-hidden flex flex-col h-full"
+              >
+                <div className="absolute top-0 right-0 p-4 md:p-6 flex flex-wrap justify-end gap-1.5">
+                  {test.isFree && <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[9px] px-1.5">Free</Badge>}
+                  {test.isNew && <Badge className="bg-primary/20 text-primary border-primary/30 text-[9px] px-1.5">New</Badge>}
+                  {test.isPopular && <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[9px] px-1.5">Popular</Badge>}
+                </div>
 
-              <div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <HelpCircle className="w-3 h-3 shrink-0" />
-                    <span className="text-[8px] md:text-[9px] uppercase font-bold tracking-tighter truncate">Questions</span>
+                <div className="mb-6 mt-2">
+                  <div className="text-[9px] md:text-[10px] font-bold text-accent uppercase tracking-widest mb-1.5">{test.type}</div>
+                  <h3 className="text-lg md:text-xl font-headline font-bold leading-tight group-hover:text-primary transition-colors pr-12 sm:pr-0">
+                    {test.title}
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <HelpCircle className="w-3 h-3 shrink-0" />
+                      <span className="text-[8px] md:text-[9px] uppercase font-bold tracking-tighter truncate">Questions</span>
+                    </div>
+                    <div className="text-xs md:text-sm font-bold">{test.questions}</div>
                   </div>
-                  <div className="text-xs md:text-sm font-bold">{test.questions}</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <Clock className="w-3 h-3 shrink-0" />
-                    <span className="text-[8px] md:text-[9px] uppercase font-bold tracking-tighter truncate">Duration</span>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Clock className="w-3 h-3 shrink-0" />
+                      <span className="text-[8px] md:text-[9px] uppercase font-bold tracking-tighter truncate">Duration</span>
+                    </div>
+                    <div className="text-xs md:text-sm font-bold">{test.duration}m</div>
                   </div>
-                  <div className="text-xs md:text-sm font-bold">{test.duration}m</div>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <Star className="w-3 h-3 shrink-0" />
-                    <span className="text-[8px] md:text-[9px] uppercase font-bold tracking-tighter truncate">Rating</span>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <Star className="w-3 h-3 shrink-0" />
+                      <span className="text-[8px] md:text-[9px] uppercase font-bold tracking-tighter truncate">Rating</span>
+                    </div>
+                    <div className="text-xs md:text-sm font-bold text-amber-400">{test.rating}</div>
                   </div>
-                  <div className="text-xs md:text-sm font-bold text-amber-400">{test.rating}</div>
                 </div>
-              </div>
 
-              <div className="mt-auto flex flex-col sm:flex-row items-start sm:items-center justify-between pt-6 border-t border-white/5 gap-4">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Users className="w-4 h-4" />
-                  <span>{test.attempts.toLocaleString()} attempts</span>
+                <div className="mt-auto flex flex-col sm:flex-row items-start sm:items-center justify-between pt-6 border-t border-white/5 gap-4">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Users className="w-4 h-4" />
+                    <span>{test.attempts.toLocaleString()} attempts</span>
+                  </div>
+                  <Link href={mockUrl} className="w-full sm:w-auto">
+                    <Button className="w-full sm:w-auto rounded-full bg-white/5 hover:bg-primary hover:text-white border-white/10 transition-all gap-2 px-6">
+                      <Play className="w-4 h-4 fill-current" />
+                      Start
+                    </Button>
+                  </Link>
                 </div>
-                <Button className="w-full sm:w-auto rounded-full bg-white/5 hover:bg-primary hover:text-white border-white/10 transition-all gap-2 px-6">
-                  <Play className="w-4 h-4 fill-current" />
-                  Start
-                </Button>
-              </div>
 
-              <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-all" />
-            </motion.div>
-          ))}
+                <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-all" />
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
         
         {filteredTests.length === 0 && (

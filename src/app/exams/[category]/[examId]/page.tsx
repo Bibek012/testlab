@@ -103,7 +103,7 @@ export default function ExamDashboardPage() {
               </section>
 
               <section className="pt-4 md:pt-8">
-                <MockTestList examId={examId} />
+                <MockTestList examId={examId} categorySlug={categorySlug} />
               </section>
             </div>
 
