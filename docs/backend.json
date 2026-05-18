@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -138,6 +139,7 @@
         "hn": { "type": "string" },
         "en_html": { "type": "string" },
         "hn_html": { "type": "string" },
+        "status": { "type": "string", "enum": ["Draft", "Verified", "Needs Review", "Published"] },
         "options": {
           "type": "array",
           "items": {
