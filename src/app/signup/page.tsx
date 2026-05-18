@@ -4,8 +4,9 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/firebase";
+import { useAuth, useFirestore } from "@/firebase";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,12 +23,13 @@ export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false);
   
   const auth = useAuth();
+  const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
+    if (!auth || !db) return;
 
     if (password !== confirmPassword) {
       toast({
@@ -41,13 +43,31 @@ export default function SignUpPage() {
     setIsLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(userCredential.user, { displayName: fullName });
+      const user = userCredential.user;
+      
+      await updateProfile(user, { displayName: fullName });
+      
+      // CREATE FIRESTORE PROFILE
+      // Defaulting to super-admin for development convenience
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: user.email,
+        displayName: fullName,
+        role: "super-admin", 
+        status: "active",
+        subscriptionType: "free",
+        createdAt: serverTimestamp(),
+        lastActive: serverTimestamp(),
+        streak: 0,
+        testsAttempted: 0,
+        totalScore: 0
+      });
       
       toast({
         title: "Account created",
-        description: "Welcome to Testlab!",
+        description: "Welcome to Testlab! You have been granted Admin access for development.",
       });
-      router.push("/");
+      router.push("/admin"); // Redirect directly to admin to verify
     } catch (error: any) {
       toast({
         variant: "destructive",
