@@ -43,125 +43,19 @@
       },
       "required": ["uid", "testId", "score"]
     },
-    "TestProgress": {
-      "title": "Active Test Progress",
-      "description": "Transient state of an ongoing test for resume functionality.",
+    "PlatformSettings": {
+      "title": "Platform Settings",
+      "description": "Global configuration for platform behavior and branding.",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "testId": { "type": "string" },
-        "currentQuestionIndex": { "type": "number" },
-        "timeLeftSeconds": { "type": "number" },
-        "responses": { "type": "object" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
+        "platformName": { "type": "string" },
+        "supportEmail": { "type": "string" },
+        "supportPhone": { "type": "string" },
+        "maintenanceMode": { "type": "boolean" },
+        "featureFlags": { "type": "object" },
+        "mockDefaults": { "type": "object" },
+        "branding": { "type": "object" }
       }
-    },
-    "Bookmark": {
-      "title": "Question Bookmark",
-      "description": "A saved question for a specific user.",
-      "type": "object",
-      "properties": {
-        "uid": { "type": "string" },
-        "questionId": { "type": "string" },
-        "mockId": { "type": "string" },
-        "examId": { "type": "string" },
-        "sectionId": { "type": "string" },
-        "bookmarkedAt": { "type": "string", "format": "date-time" },
-        "questionData": { "type": "object" }
-      },
-      "required": ["uid", "questionId", "mockId"]
-    },
-    "Announcement": {
-      "title": "Platform Announcement",
-      "description": "Global or targeted messages sent by admins.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "message": { "type": "string" },
-        "type": { "type": "string", "enum": ["info", "exam", "mock", "system"], "default": "info" },
-        "targetType": { "type": "string", "enum": ["all", "exam", "category", "state"], "default": "all" },
-        "targetId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "status": { "type": "string", "enum": ["Draft", "Published", "Archived"], "default": "Draft" }
-      },
-      "required": ["title", "message"]
-    },
-    "UserNotification": {
-      "title": "User Notification",
-      "description": "Individual notifications for a user.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "uid": { "type": "string" },
-        "title": { "type": "string" },
-        "message": { "type": "string" },
-        "type": { "type": "string" },
-        "link": { "type": "string" },
-        "isRead": { "type": "boolean", "default": false },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["uid", "title", "message"]
-    },
-    "ExamCategory": {
-      "title": "Exam Category",
-      "description": "Top-level groupings like SSC, Banking, or State Exams.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "slug": { "type": "string" },
-        "description": { "type": "string" },
-        "iconName": { "type": "string" },
-        "order": { "type": "number" }
-      },
-      "required": ["title", "slug"]
-    },
-    "Exam": {
-      "title": "Exam",
-      "description": "Specific competitive exams like SSC CGL or BPSC.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "slug": { "type": "string" },
-        "categoryId": { "type": "string" },
-        "stateSlug": { "type": "string" },
-        "description": { "type": "string" },
-        "difficulty": { "type": "string", "enum": ["Easy", "Intermediate", "Hard"] },
-        "testsCount": { "type": "number", "default": 0 },
-        "questionsCount": { "type": "number", "default": 0 },
-        "isActive": { "type": "boolean", "default": true }
-      },
-      "required": ["name", "slug", "categoryId"]
-    },
-    "MockTest": {
-      "title": "Mock Test",
-      "description": "Definition of a mock test series or practice set.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "slug": { "type": "string" },
-        "categoryId": { "type": "string" },
-        "examId": { "type": "string" },
-        "type": { "type": "string", "enum": ["Full Test", "Subject Test", "Chapter Test", "Previous Year", "Daily Quiz", "Mini Mock"] },
-        "subject": { "type": "string" },
-        "chapter": { "type": "string" },
-        "durationMinutes": { "type": "number" },
-        "totalQuestions": { "type": "number" },
-        "totalMarks": { "type": "number" },
-        "negativeMarks": { "type": "number" },
-        "languages": { "type": "array", "items": { "type": "string" } },
-        "instructions": { "type": "string" },
-        "isFree": { "type": "boolean", "default": true },
-        "status": { "type": "string", "enum": ["Draft", "Published", "Hidden", "Scheduled", "Archived"], "default": "Draft" },
-        "visibility": { "type": "string", "enum": ["Public", "Premium", "Private"], "default": "Public" },
-        "scheduledAt": { "type": "string", "format": "date-time" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["title", "slug", "examId", "type"]
     }
   },
   "auth": {
@@ -172,45 +66,9 @@
       "schema": "User",
       "description": "Stores user profile and aggregate stats."
     },
-    "/users/{userId}/bookmarks/{bookmarkId}": {
-      "schema": "Bookmark",
-      "description": "User saved questions."
-    },
-    "/users/{userId}/notifications/{notificationId}": {
-      "schema": "UserNotification",
-      "description": "Individual user notifications."
-    },
-    "/announcements/{announcementId}": {
-      "schema": "Announcement",
-      "description": "Global platform announcements."
-    },
-    "/attempts/{attemptId}": {
-      "schema": "TestAttempt",
-      "description": "Historical records of every test submitted."
-    },
-    "/progress/{userId}/activeTests/{testId}": {
-      "schema": "TestProgress",
-      "description": "Real-time sync of current test state."
-    },
-    "/examCategories/{categoryId}": {
-      "schema": "ExamCategory",
-      "description": "Core exam categories."
-    },
-    "/exams/{examId}": {
-      "schema": "Exam",
-      "description": "Specific competitive exams."
-    },
-    "/mockTests/{mockId}": {
-      "schema": "MockTest",
-      "description": "Detailed configuration of each mock test."
-    },
-    "/mockTests/{mockId}/sections/{sectionId}": {
-      "schema": "MockSection",
-      "description": "Sections within a specific mock test."
-    },
-    "/mockTests/{mockId}/questions/{questionId}": {
-      "schema": "MockQuestion",
-      "description": "Questions within a specific mock test."
+    "/settings/{settingId}": {
+      "schema": "PlatformSettings",
+      "description": "Global system configurations."
     }
   }
 }
