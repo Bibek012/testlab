@@ -87,7 +87,6 @@ export const ResultPage = ({
 
   return (
     <div className="min-h-screen bg-[#0b1120] pb-24">
-      {/* Result Hero */}
       <div className="relative pt-24 pb-12 overflow-hidden border-b border-white/5">
         <div className="absolute top-0 left-0 w-full h-full -z-10">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px]" />
@@ -108,7 +107,6 @@ export const ResultPage = ({
       </div>
 
       <div className="container mx-auto px-6 max-w-6xl mt-12 space-y-8">
-        {/* Metric Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <ResultStatCard title="Overall Score" value={metrics.totalScore.toFixed(2)} icon={Target} color="primary" trend="+12%" />
           <ResultStatCard title="Accuracy" value={`${metrics.accuracy.toFixed(1)}%`} icon={CheckCircle} color="emerald-400" />
@@ -117,7 +115,6 @@ export const ResultPage = ({
         </div>
 
         <div className="grid lg:grid-cols-12 gap-8">
-          {/* Main Chart */}
           <Card className="glass border-white/10 p-6 lg:col-span-8">
             <CardHeader className="px-0 pt-0 pb-8 flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-headline font-bold">Performance Breakdown</CardTitle>
@@ -143,7 +140,6 @@ export const ResultPage = ({
             </div>
           </Card>
 
-          {/* Quick Actions & AI Insight */}
           <div className="lg:col-span-4 space-y-6">
             <Card className="glass border-white/10 p-6">
               <CardTitle className="text-lg font-headline font-bold mb-6">Action Center</CardTitle>
@@ -173,7 +169,6 @@ export const ResultPage = ({
           </div>
         </div>
 
-        {/* Section Wise Breakdown */}
         <div className="space-y-6">
           <h3 className="text-xl font-headline font-bold">Sectional Performance</h3>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
