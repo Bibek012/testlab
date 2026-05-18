@@ -15,7 +15,8 @@ import {
   ChevronRight,
   FolderOpen,
   MapPin,
-  Globe
+  Globe,
+  Loader2
 } from "lucide-react";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { 
@@ -59,7 +60,6 @@ import { STATES } from "@/lib/exam-data";
 export default function ExamManagementPage() {
   const db = useFirestore();
   
-  // Real-time collections stabilized with useMemoFirebase
   const categoriesQuery = useMemoFirebase(() => 
     db ? query(collection(db, "examCategories"), orderBy("order", "asc")) : null, 
   [db]);
@@ -74,12 +74,10 @@ export default function ExamManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | "all">("all");
   
-  // Modals state
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
 
-  // Filtered Exams
   const filteredExams = useMemo(() => {
     if (!exams) return [];
     return exams.filter(exam => {
@@ -109,7 +107,6 @@ export default function ExamManagementPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold">Exam <span className="text-accent">Hierarchy</span></h1>
@@ -135,7 +132,6 @@ export default function ExamManagementPage() {
       </div>
 
       <div className="grid lg:grid-cols-12 gap-8">
-        {/* Categories Sidebar */}
         <aside className="lg:col-span-3 space-y-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Categories</h3>
@@ -168,7 +164,6 @@ export default function ExamManagementPage() {
           </div>
         </aside>
 
-        {/* Exams List Area */}
         <main className="lg:col-span-9 space-y-6">
           <Card className="glass border-white/10 overflow-hidden">
             <CardHeader className="p-6 border-b border-white/5 bg-white/[0.02]">
@@ -176,7 +171,7 @@ export default function ExamManagementPage() {
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Search exams by name or slug..." 
+                    placeholder="Search exams by name..." 
                     className="pl-10 bg-white/5 border-white/5 h-10 rounded-xl"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -196,18 +191,20 @@ export default function ExamManagementPage() {
                     <tr className="border-b border-white/5 bg-white/[0.01]">
                       <th className="px-6 py-4 font-semibold text-muted-foreground">Exam Name</th>
                       <th className="px-6 py-4 font-semibold text-muted-foreground">Category</th>
-                      <th className="px-6 py-4 font-semibold text-muted-foreground">Hierarchy</th>
+                      <th className="px-6 py-4 font-semibold text-muted-foreground">URL Slug</th>
                       <th className="px-6 py-4 font-semibold text-muted-foreground">Status</th>
                       <th className="px-6 py-4 font-semibold text-muted-foreground text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {filteredExams.map((exam) => (
+                    {examsLoading ? (
+                      <tr><td colSpan={5} className="p-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto opacity-20" /></td></tr>
+                    ) : filteredExams.map((exam) => (
                       <tr key={exam.id} className="hover:bg-white/[0.02] transition-colors group">
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
                             <span className="font-bold text-foreground">{exam.name}</span>
-                            <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest">{exam.slug}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest">{exam.id.slice(0, 8)}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -216,16 +213,7 @@ export default function ExamManagementPage() {
                           </Badge>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            {exam.stateSlug ? (
-                              <div className="flex items-center gap-1.5 text-accent font-medium">
-                                <MapPin className="w-3 h-3" />
-                                {STATES.find(s => s.slug === exam.stateSlug)?.name}
-                              </div>
-                            ) : (
-                              <span className="opacity-50">— National —</span>
-                            )}
-                          </div>
+                           <span className="text-xs font-mono text-accent">{exam.slug}</span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
@@ -243,7 +231,7 @@ export default function ExamManagementPage() {
                         <td className="px-6 py-4 text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10">
                                 <MoreVertical className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -252,10 +240,7 @@ export default function ExamManagementPage() {
                                 className="cursor-pointer gap-2"
                                 onClick={() => { setEditingItem(exam); setIsExamModalOpen(true); }}
                               >
-                                <Edit2 className="w-3.5 h-3.5" /> Edit Exam
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer gap-2">
-                                <Eye className="w-3.5 h-3.5" /> View Mocks
+                                <Edit2 className="w-3.5 h-3.5" /> Edit
                               </DropdownMenuItem>
                               <DropdownMenuItem 
                                 className="cursor-pointer gap-2"
@@ -275,19 +260,6 @@ export default function ExamManagementPage() {
                         </td>
                       </tr>
                     ))}
-                    {filteredExams.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-20 text-center">
-                          <div className="flex flex-col items-center gap-4 text-muted-foreground">
-                            <FolderOpen className="w-12 h-12 opacity-10" />
-                            <p>No exams found matching your criteria.</p>
-                            <Button variant="outline" className="border-white/10" onClick={() => { setSearchQuery(""); setActiveCategory("all"); }}>
-                              Clear Filters
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -296,14 +268,12 @@ export default function ExamManagementPage() {
         </main>
       </div>
 
-      {/* Category Modal */}
       <CategoryModal 
         isOpen={isCategoryModalOpen} 
         onClose={() => setIsCategoryModalOpen(false)}
         editingItem={editingItem}
       />
 
-      {/* Exam Modal */}
       <ExamModal 
         isOpen={isExamModalOpen} 
         onClose={() => setIsExamModalOpen(false)}
@@ -337,7 +307,7 @@ function CategoryModal({ isOpen, onClose, editingItem }: any) {
     } catch (e) {
       console.error(e);
     } finally {
-      setIsSaving(true);
+      setIsSaving(false);
     }
   };
 
@@ -346,7 +316,6 @@ function CategoryModal({ isOpen, onClose, editingItem }: any) {
       <DialogContent className="glass border-white/10 sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{editingItem ? "Edit Category" : "New Category"}</DialogTitle>
-          <DialogDescription>Create a top-level grouping for your exams.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
@@ -356,35 +325,29 @@ function CategoryModal({ isOpen, onClose, editingItem }: any) {
               placeholder="e.g. SSC, Banking" 
               className="bg-white/5 border-white/10"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) => {
+                const title = e.target.value;
+                setFormData({ 
+                  ...formData, 
+                  title, 
+                  slug: editingItem ? formData.slug : title.toLowerCase().replace(/\s+/g, '-') 
+                });
+              }}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="slug">Slug (URL Path)</Label>
+            <Label htmlFor="slug">URL Slug</Label>
             <Input 
               id="slug" 
-              placeholder="e.g. ssc, banking" 
               className="bg-white/5 border-white/10 font-mono"
               value={formData.slug}
               onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="desc">Description</Label>
-            <Input 
-              id="desc" 
-              placeholder="Short description..." 
-              className="bg-white/5 border-white/10"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            />
-          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} className="border-white/10">Cancel</Button>
-          <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-white" disabled={isSaving}>
-            {editingItem ? "Update Category" : "Create Category"}
-          </Button>
+          <Button onClick={handleSave} className="bg-primary text-white" disabled={isSaving}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -431,18 +394,32 @@ function ExamModal({ isOpen, onClose, editingItem, categories }: any) {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="glass border-white/10 sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{editingItem ? "Edit Exam" : "New Exam Listing"}</DialogTitle>
-          <DialogDescription>Add or update a specific competitive exam.</DialogDescription>
+          <DialogTitle>{editingItem ? "Edit Exam" : "New Exam"}</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-4 py-4">
           <div className="col-span-2 space-y-2">
             <Label htmlFor="examName">Exam Name</Label>
             <Input 
               id="examName" 
-              placeholder="e.g. SSC CGL 2024" 
               className="bg-white/5 border-white/10"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => {
+                const name = e.target.value;
+                setFormData({ 
+                  ...formData, 
+                  name, 
+                  slug: editingItem ? formData.slug : name.toLowerCase().replace(/\s+/g, '-') 
+                });
+              }}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="examSlug">URL Slug</Label>
+            <Input 
+              id="examSlug" 
+              className="bg-white/5 border-white/10 font-mono"
+              value={formData.slug}
+              onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
             />
           </div>
           <div className="space-y-2">
@@ -452,7 +429,7 @@ function ExamModal({ isOpen, onClose, editingItem, categories }: any) {
               onValueChange={(val) => setFormData({ ...formData, categoryId: val })}
             >
               <SelectTrigger className="bg-white/5 border-white/10">
-                <SelectValue placeholder="Select category" />
+                <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
                 {categories.map((cat: any) => (
@@ -462,40 +439,13 @@ function ExamModal({ isOpen, onClose, editingItem, categories }: any) {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>State Selection (Optional)</Label>
-            <Select 
-              value={formData.stateSlug} 
-              onValueChange={(val) => setFormData({ ...formData, stateSlug: val })}
-            >
-              <SelectTrigger className="bg-white/5 border-white/10">
-                <SelectValue placeholder="Select state" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">National / No State</SelectItem>
-                {STATES.map((state) => (
-                  <SelectItem key={state.slug} value={state.slug}>{state.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="examSlug">Slug</Label>
-            <Input 
-              id="examSlug" 
-              placeholder="e.g. ssc-cgl" 
-              className="bg-white/5 border-white/10 font-mono"
-              value={formData.slug}
-              onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
-            />
-          </div>
-          <div className="space-y-2">
             <Label>Difficulty</Label>
             <Select 
               value={formData.difficulty} 
               onValueChange={(val) => setFormData({ ...formData, difficulty: val })}
             >
               <SelectTrigger className="bg-white/5 border-white/10">
-                <SelectValue placeholder="Intermediate" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Easy">Easy</SelectItem>
@@ -504,22 +454,18 @@ function ExamModal({ isOpen, onClose, editingItem, categories }: any) {
               </SelectContent>
             </Select>
           </div>
-          <div className="col-span-2 space-y-4 pt-2">
-             <div className="flex items-center justify-between">
-                <Label htmlFor="active" className="cursor-pointer">Published & Visible</Label>
-                <Switch 
-                  id="active" 
-                  checked={formData.isActive}
-                  onCheckedChange={(val) => setFormData({ ...formData, isActive: val })}
-                />
-             </div>
+          <div className="col-span-2 space-y-2">
+            <Label>Description</Label>
+            <Input 
+              className="bg-white/5 border-white/10"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} className="border-white/10">Cancel</Button>
-          <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-white" disabled={isSaving}>
-            {editingItem ? "Save Changes" : "Create Exam"}
-          </Button>
+          <Button onClick={handleSave} className="bg-primary text-white" disabled={isSaving}>Save Exam</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

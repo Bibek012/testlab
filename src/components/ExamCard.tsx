@@ -9,15 +9,17 @@ import { Files, HelpCircle, ArrowRight } from "lucide-react";
 import { Exam } from "@/lib/exam-data";
 
 interface ExamCardProps {
-  exam: Exam;
+  exam: any; // Using dynamic type for Firestore data
   categorySlug: string;
   stateSlug?: string;
 }
 
 export const ExamCard = ({ exam, categorySlug, stateSlug }: ExamCardProps) => {
+  // Use slug for routing, fallback to ID if slug missing
+  const examSlug = exam.slug || exam.id;
   const href = stateSlug 
-    ? `/exams/state/${stateSlug}/${exam.id}`
-    : `/exams/${categorySlug}/${exam.id}`;
+    ? `/exams/state/${stateSlug}/${examSlug}`
+    : `/exams/${categorySlug}/${examSlug}`;
 
   return (
     <Link href={href} className="block group">
@@ -32,7 +34,7 @@ export const ExamCard = ({ exam, categorySlug, stateSlug }: ExamCardProps) => {
                 'text-green-400 border-green-400/30 bg-green-400/5'}
             `}
           >
-            {exam.difficulty}
+            {exam.difficulty || 'Intermediate'}
           </Badge>
         </div>
 
@@ -43,11 +45,11 @@ export const ExamCard = ({ exam, categorySlug, stateSlug }: ExamCardProps) => {
         <div className="grid grid-cols-2 gap-4 mb-8">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Files className="w-4 h-4 text-primary" />
-            <span>{exam.tests} Mocks</span>
+            <span>{exam.testsCount || exam.tests || 0} Mocks</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <HelpCircle className="w-4 h-4 text-accent" />
-            <span>{exam.questions} Qs</span>
+            <span>{exam.questionsCount || exam.questions || 0} Qs</span>
           </div>
         </div>
 

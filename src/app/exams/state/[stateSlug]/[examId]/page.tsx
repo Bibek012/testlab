@@ -10,31 +10,46 @@ import { PerformanceOverview } from "@/components/dashboard/PerformanceOverview"
 import { MockTestList } from "@/components/dashboard/MockTestList";
 import { DailyGoal } from "@/components/dashboard/DailyGoal";
 import { Leaderboard } from "@/components/dashboard/Leaderboard";
-import { STATES, STATE_EXAMS } from "@/lib/exam-data";
-import { Rocket, Sparkles, BookOpen, Users, Play, ChevronRight } from "lucide-react";
+import { STATES } from "@/lib/exam-data";
+import { Rocket, Sparkles, BookOpen, Users, Play, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, query, where, limit } from "firebase/firestore";
+import { ResourceNotFound } from "@/components/ResourceNotFound";
 
 export default function StateExamDashboardPage() {
   const params = useParams();
   const stateSlug = params.stateSlug as string;
-  const examId = params.examId as string;
+  const examSlug = params.examId as string;
+  const db = useFirestore();
 
   const state = useMemo(() => 
     STATES.find(s => s.slug === stateSlug), 
     [stateSlug]
   );
 
-  const exam = useMemo(() => 
-    (STATE_EXAMS[stateSlug] || []).find(e => e.id === examId),
-    [stateSlug, examId]
-  );
+  // Fetch Exam by Slug for this State
+  const examQuery = useMemoFirebase(() => 
+    db ? query(
+      collection(db, "exams"), 
+      where("stateSlug", "==", stateSlug), 
+      where("slug", "==", examSlug), 
+      limit(1)
+    ) : null,
+  [db, stateSlug, examSlug]);
+  const { data: exams, loading } = useCollection<any>(examQuery);
+  const exam = exams?.[0];
 
-  if (!exam || !state) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <p className="text-muted-foreground">Exam not found.</p>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!exam || !state) return <ResourceNotFound type="Exam" backUrl={`/exams/state/${stateSlug}`} />;
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -72,11 +87,11 @@ export default function StateExamDashboardPage() {
               <div className="flex flex-wrap gap-6 pt-2">
                  <div className="flex items-center gap-2 text-sm font-medium">
                     <BookOpen className="w-4 h-4 text-primary" />
-                    <span>{exam.tests} Mocks</span>
+                    <span>{exam.testsCount || 0} Mocks</span>
                  </div>
                  <div className="flex items-center gap-2 text-sm font-medium">
                     <Sparkles className="w-4 h-4 text-accent" />
-                    <span>{exam.questions} Questions</span>
+                    <span>{exam.questionsCount || 0} Questions</span>
                  </div>
                  <div className="flex items-center gap-2 text-sm font-medium">
                     <Users className="w-4 h-4 text-emerald-400" />
@@ -97,25 +112,12 @@ export default function StateExamDashboardPage() {
           <div className="grid lg:grid-cols-12 gap-8">
             <div className="lg:col-span-8 space-y-12">
               <PerformanceOverview />
-              <MockTestList examId={examId} categorySlug="state" stateSlug={stateSlug} />
+              <MockTestList examId={exam.id} categorySlug="state" stateSlug={stateSlug} />
             </div>
 
             <div className="lg:col-span-4 space-y-8">
               <DailyGoal />
               <Leaderboard />
-              
-              <div className="p-8 glass border-white/10 rounded-[2.5rem] relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:rotate-12 transition-transform">
-                   <Sparkles className="w-20 h-20 text-accent" />
-                 </div>
-                 <h4 className="text-lg font-headline font-bold mb-4">Recommended</h4>
-                 <p className="text-sm text-muted-foreground mb-6">
-                    Boost your {state.name} GK score with our specialized "State Culture" set.
-                 </p>
-                 <Button variant="outline" className="w-full rounded-xl border-white/10 hover:bg-white/5">
-                    View Drill
-                 </Button>
-              </div>
             </div>
           </div>
         </div>

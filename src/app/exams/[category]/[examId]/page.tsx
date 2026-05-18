@@ -10,33 +10,53 @@ import { PerformanceOverview } from "@/components/dashboard/PerformanceOverview"
 import { MockTestList } from "@/components/dashboard/MockTestList";
 import { DailyGoal } from "@/components/dashboard/DailyGoal";
 import { Leaderboard } from "@/components/dashboard/Leaderboard";
-import { CATEGORIES, EXAMS_BY_CATEGORY } from "@/lib/exam-data";
-import { Rocket, Sparkles, BookOpen, Clock, Users, Play, ChevronRight, Loader2 } from "lucide-react";
+import { Rocket, Sparkles, BookOpen, Users, Play, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResourceNotFound } from "@/components/ResourceNotFound";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, query, where, limit } from "firebase/firestore";
 
 export default function ExamDashboardPage() {
   const params = useParams();
   const categorySlug = params.category as string;
-  const examId = params.examId as string;
+  const examSlug = params.examId as string;
+  const db = useFirestore();
 
-  const category = useMemo(() => 
-    CATEGORIES.find(c => c.slug === categorySlug), 
-    [categorySlug]
-  );
+  // 1. Fetch Category by Slug
+  const catQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "examCategories"), where("slug", "==", categorySlug), limit(1)) : null,
+  [db, categorySlug]);
+  const { data: categories, loading: catLoading } = useCollection<any>(catQuery);
+  const category = categories?.[0];
 
-  const exam = useMemo(() => 
-    (EXAMS_BY_CATEGORY[categorySlug] || []).find(e => e.id === examId),
-    [categorySlug, examId]
-  );
+  // 2. Fetch Exam by Slug within Category
+  const examQuery = useMemoFirebase(() => 
+    db && category ? query(
+      collection(db, "exams"), 
+      where("categoryId", "==", category.id), 
+      where("slug", "==", examSlug), 
+      limit(1)
+    ) : null,
+  [db, category, examSlug]);
+  const { data: exams, loading: examLoading } = useCollection<any>(examQuery);
+  const exam = exams?.[0];
+
+  if (catLoading || (category && examLoading)) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-muted-foreground animate-pulse font-headline font-bold uppercase tracking-widest text-xs">Synchronizing Dashboard...</p>
+      </div>
+    );
+  }
 
   if (!category) {
     return <ResourceNotFound type="Category" backUrl="/#exams" />;
   }
 
   if (!exam) {
-    return <ResourceNotFound type="Exam" message={`The exam series '${examId}' could not be found in our database.`} backUrl={`/exams/${categorySlug}`} />;
+    return <ResourceNotFound type="Exam" message={`The exam series '${examSlug}' could not be found.`} backUrl={`/exams/${categorySlug}`} />;
   }
 
   return (
@@ -44,7 +64,6 @@ export default function ExamDashboardPage() {
       <Navbar />
 
       <div className="pt-24 md:pt-32 pb-16 md:pb-24 relative overflow-hidden">
-        {/* Animated Dynamic Glows */}
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/10 md:bg-primary/20 rounded-full blur-[100px] md:blur-[160px] -z-10 animate-pulse-slow" />
         <div className="absolute bottom-[20%] right-[-10%] w-[40%] h-[40%] bg-accent/10 md:bg-accent/20 rounded-full blur-[100px] md:blur-[160px] -z-10" />
 
@@ -54,7 +73,6 @@ export default function ExamDashboardPage() {
             { label: exam.name }
           ]} />
 
-          {/* Header Section */}
           <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 items-end mb-12 md:mb-16">
             <div className="lg:col-span-8 space-y-4 md:space-y-6">
               <div className="flex items-center gap-3 md:gap-4">
@@ -63,7 +81,7 @@ export default function ExamDashboardPage() {
                 </div>
                 <div className="space-y-1 overflow-hidden">
                   <Badge variant="outline" className="text-[8px] md:text-[10px] uppercase font-bold tracking-widest text-accent border-accent/20">
-                    Premium Test Series
+                    {exam.difficulty || 'Bilingual'} Series
                   </Badge>
                   <h1 className="text-3xl md:text-4xl lg:text-6xl font-headline font-bold leading-tight tracking-tight truncate">
                     {exam.name} <span className="gradient-text">Dashboard</span>
@@ -71,21 +89,21 @@ export default function ExamDashboardPage() {
                 </div>
               </div>
               <p className="text-sm md:text-lg text-muted-foreground leading-relaxed max-w-2xl">
-                Elevate your preparation with AI-powered analytics, high-yield mock tests, and real-time performance tracking for {exam.name}.
+                {exam.description}
               </p>
               
               <div className="flex flex-wrap gap-4 md:gap-6 pt-2">
                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
                     <BookOpen className="w-4 h-4 text-primary" />
-                    <span>{exam.tests} Mocks</span>
+                    <span>{exam.testsCount || 0} Mocks</span>
                  </div>
                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
                     <Sparkles className="w-4 h-4 text-accent" />
-                    <span>{exam.questions} Questions</span>
+                    <span>{exam.questionsCount || 0} Questions</span>
                  </div>
                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
                     <Users className="w-4 h-4 text-emerald-400" />
-                    <span>Active Competition</span>
+                    <span>Live Aspirants</span>
                  </div>
               </div>
             </div>
@@ -93,7 +111,7 @@ export default function ExamDashboardPage() {
             <div className="lg:col-span-4 flex justify-start lg:justify-end">
                <Button size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white rounded-2xl h-14 md:h-16 px-8 md:px-10 font-bold text-base md:text-lg gap-3 shadow-xl shadow-primary/20 group">
                   <Play className="w-5 h-5 fill-current" />
-                  Continue Prep
+                  Attempt Mock
                   <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                </Button>
             </div>
@@ -104,13 +122,13 @@ export default function ExamDashboardPage() {
               <section>
                 <div className="flex items-center justify-between mb-6 md:mb-8">
                   <h3 className="text-lg md:text-xl font-headline font-bold uppercase tracking-widest">Performance Insights</h3>
-                  <Badge className="bg-white/5 border-white/10 text-[10px]">Updated 5m ago</Badge>
+                  <Badge className="bg-white/5 border-white/10 text-[10px]">Real-time</Badge>
                 </div>
                 <PerformanceOverview />
               </section>
 
               <section className="pt-4 md:pt-8">
-                <MockTestList examId={examId} categorySlug={categorySlug} />
+                <MockTestList examId={exam.id} categorySlug={categorySlug} />
               </section>
             </div>
 
@@ -121,24 +139,16 @@ export default function ExamDashboardPage() {
                  <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:rotate-12 transition-transform">
                    <Sparkles className="w-16 h-16 md:w-20 md:h-20 text-accent" />
                  </div>
-                 <h4 className="text-lg font-headline font-bold mb-3 md:mb-4">Recommended for You</h4>
+                 <h4 className="text-lg font-headline font-bold mb-3 md:mb-4">Intelligence Feed</h4>
                  <p className="text-xs md:text-sm text-muted-foreground mb-6 leading-relaxed">
-                    Based on your weak performance in Reasoning, we recommend trying "Logical Deductions Set 4".
+                    Personalized recommendations based on your performance in {exam.name} will appear here.
                  </p>
                  <Button variant="outline" className="w-full rounded-xl border-white/10 hover:bg-white/5 h-11 text-xs md:text-sm">
-                    View Recommendation
+                    View Insights
                  </Button>
               </section>
 
               <Leaderboard />
-              
-              <div className="p-1 rounded-[1.5rem] md:rounded-[2.5rem] bg-gradient-to-br from-indigo-500/20 to-accent/20">
-                <div className="glass bg-card/60 rounded-[1.4rem] md:rounded-[2.4rem] p-6 md:p-8 text-center space-y-4">
-                   <h5 className="font-bold text-sm md:text-base">Unlock Full Access</h5>
-                   <p className="text-[10px] md:text-xs text-muted-foreground">Get premium mocks, detailed solutions, and video courses for {exam.name}.</p>
-                   <Button className="w-full bg-accent hover:bg-accent/90 text-white rounded-xl h-11 md:h-12 font-bold shadow-lg shadow-accent/20">Go Premium</Button>
-                </div>
-              </div>
             </div>
           </div>
         </div>
