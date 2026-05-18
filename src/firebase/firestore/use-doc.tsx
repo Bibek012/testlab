@@ -30,6 +30,7 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
         setError(null);
       },
       async (serverError: FirestoreError) => {
+        console.error(`useDoc Error [${ref.path}]:`, serverError);
         if (serverError.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
             path: ref.path,
@@ -45,7 +46,7 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
     );
 
     return () => unsubscribe();
-  }, [ref]);
+  }, [ref]); // ref should be memoized by the caller using useMemoFirebase
 
   return { data, loading, error };
 }

@@ -1,7 +1,10 @@
+'use client';
+
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { firebaseConfig, isFirebaseConfigValid } from './config';
+import { useMemo, useRef } from 'react';
 
 export function initializeFirebase(): {
   firebaseApp: FirebaseApp | null;
@@ -14,22 +17,35 @@ export function initializeFirebase(): {
   }
 
   try {
-    console.log("Firebase: Initializing app...");
     const firebaseApp =
       getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    
-    console.log("Firebase: Connecting to Firestore...");
     const firestore = getFirestore(firebaseApp);
-    
-    console.log("Firebase: Connecting to Auth...");
     const auth = getAuth(firebaseApp);
 
     console.log("Firebase: Successfully initialized services.");
     return { firebaseApp, firestore, auth };
   } catch (error) {
-    console.error("Firebase: Initialization failed critical check:", error);
+    console.error("Firebase: Initialization failed:", error);
     return { firebaseApp: null, firestore: null, auth: null };
   }
+}
+
+/**
+ * A utility hook to stabilize Firebase references (CollectionReference, DocumentReference, Query).
+ * This prevents infinite re-render loops in hooks like useCollection and useDoc.
+ */
+export function useMemoFirebase<T>(factory: () => T, deps: any[]): T {
+  const ref = useRef<T>(null);
+  const depsRef = useRef<any[]>([]);
+
+  const depsChanged = deps.some((dep, i) => dep !== depsRef.current[i]);
+
+  if (depsChanged || !ref.current) {
+    ref.current = factory();
+    depsRef.current = deps;
+  }
+
+  return ref.current;
 }
 
 export * from './provider';

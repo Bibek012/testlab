@@ -30,6 +30,7 @@ export function useCollection<T = DocumentData>(query: Query<T> | null) {
         setError(null);
       },
       async (serverError: FirestoreError) => {
+        console.error("useCollection Error:", serverError);
         if (serverError.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
             path: (query as any)._query?.path?.toString() || 'unknown',
@@ -45,7 +46,7 @@ export function useCollection<T = DocumentData>(query: Query<T> | null) {
     );
 
     return () => unsubscribe();
-  }, [query]);
+  }, [query]); // query should be memoized by the caller using useMemoFirebase
 
   return { data, loading, error };
 }
