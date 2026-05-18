@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { RichTextRenderer } from "@/components/mock-test/RichTextRenderer";
+import { QuestionImage } from "@/components/mock-test/QuestionImage";
 import { 
   Dialog, 
   DialogContent, 
@@ -52,7 +54,7 @@ export default function BookmarksPage() {
     if (!bookmarks) return [];
     return bookmarks.filter(b => {
       const q = b.questionData;
-      const text = (q.en + q.hn).toLowerCase();
+      const text = (q.en + q.hn + (q.en_html || '') + (q.hn_html || '')).toLowerCase();
       return text.includes(searchQuery.toLowerCase());
     });
   }, [bookmarks, searchQuery]);
@@ -122,7 +124,7 @@ export default function BookmarksPage() {
                     <div className="space-y-2">
                       {bookmarks?.slice(0, 5).map((b: any) => (
                         <div key={b.id} className="text-xs text-muted-foreground truncate hover:text-foreground transition-colors cursor-pointer">
-                          {b.questionData[selectedLang]}
+                          {b.questionData[selectedLang] || b.questionData[`${selectedLang}_html`]}
                         </div>
                       ))}
                     </div>
@@ -186,18 +188,18 @@ function QuestionBookmarkCard({ bookmark, lang, onDelete }: any) {
     <Card className="glass border-white/10 overflow-hidden group hover:border-primary/40 transition-all duration-300">
       <CardContent className="p-6 md:p-8">
         <div className="flex flex-col md:flex-row justify-between items-start gap-6">
-           <div className="flex-1 space-y-4">
+           <div className="flex-1 space-y-4 overflow-hidden">
               <div className="flex flex-wrap items-center gap-3">
-                 <Badge variant="outline" className="bg-white/5 border-white/10 text-[10px]">{bookmark.examId}</Badge>
-                 <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-[10px]">{bookmark.sectionId}</Badge>
-                 <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                 <Badge variant="outline" className="bg-white/5 border-white/10 text-[10px] uppercase font-bold tracking-widest">{bookmark.examId}</Badge>
+                 <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-[10px] uppercase font-bold tracking-widest">{bookmark.sectionId}</Badge>
+                 <span className="text-[10px] text-muted-foreground flex items-center gap-1.5 uppercase font-bold tracking-widest">
                    <Clock className="w-3 h-3" /> 
                    Saved {bookmark.bookmarkedAt?.toDate ? new Date(bookmark.bookmarkedAt.toDate()).toLocaleDateString() : 'Recently'}
                  </span>
               </div>
               
               <div className="text-sm md:text-lg font-medium leading-relaxed line-clamp-3">
-                 <div dangerouslySetInnerHTML={{ __html: q[`${lang}_html`] || q[lang] }} />
+                 <RichTextRenderer content={q[`${lang}_html`] || q[lang]} />
               </div>
 
               <div className="flex items-center gap-4 pt-4">
@@ -209,15 +211,18 @@ function QuestionBookmarkCard({ bookmark, lang, onDelete }: any) {
                     </DialogTrigger>
                     <DialogContent className="glass border-white/10 sm:max-w-2xl max-h-[85vh] overflow-y-auto custom-scrollbar">
                        <DialogHeader>
-                          <DialogTitle className="flex items-center gap-2 text-sm uppercase tracking-widest text-accent">
-                            <HelpCircle className="w-4 h-4" /> Question Review
+                          <DialogTitle className="flex items-center gap-2 text-sm uppercase tracking-widest text-accent font-bold">
+                            <HelpCircle className="w-4 h-4" /> Saved Question Review
                           </DialogTitle>
                        </DialogHeader>
                        <div className="space-y-8 py-6">
                           <div className="space-y-6">
-                             <div className="text-xl font-medium leading-relaxed" dangerouslySetInnerHTML={{ __html: q[`${lang}_html`] || q[lang] }} />
+                             <RichTextRenderer 
+                                content={q[`${lang}_html`] || q[lang]} 
+                                className="text-xl font-medium leading-relaxed text-slate-100" 
+                             />
                              {q.dom_images?.map((img: string, i: number) => (
-                               <img key={i} src={img} className="rounded-2xl border border-white/10 max-h-[300px] object-contain mx-auto" alt="Question Ref" />
+                               <QuestionImage key={i} src={img} alt={`Figure ${i+1}`} />
                              ))}
                           </div>
                           
@@ -227,11 +232,13 @@ function QuestionBookmarkCard({ bookmark, lang, onDelete }: any) {
                                  "p-4 rounded-xl border flex gap-3 text-sm font-medium",
                                  q.answer === opt.id ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400" : "bg-white/5 border-white/5"
                                )}>
-                                  <div className={cn("w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold", q.answer === opt.id ? "bg-emerald-500 text-white" : "bg-white/10 text-muted-foreground")}>
+                                  <div className={cn("w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0", q.answer === opt.id ? "bg-emerald-500 text-white" : "bg-white/10 text-muted-foreground")}>
                                      {opt.id.split('-').pop()?.toUpperCase()}
                                   </div>
-                                  {opt[lang]}
-                                  {q.answer === opt.id && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                                  <div className="flex-1 overflow-hidden">
+                                    <RichTextRenderer content={opt[`${lang}_html`] || opt[lang]} className="text-sm" />
+                                  </div>
+                                  {q.answer === opt.id && <CheckCircle2 className="w-4 h-4 ml-auto shrink-0" />}
                                </div>
                              ))}
                           </div>
@@ -241,7 +248,10 @@ function QuestionBookmarkCard({ bookmark, lang, onDelete }: any) {
                                <div className="text-[10px] font-bold text-primary uppercase tracking-widest flex items-center gap-2">
                                   <Zap className="w-4 h-4 fill-current" /> Detailed Solution
                                </div>
-                               <div className="text-sm text-muted-foreground leading-relaxed" dangerouslySetInnerHTML={{ __html: q.explanation[`${lang}_html`] || q.explanation[lang] }} />
+                               <RichTextRenderer 
+                                  content={q.explanation[`${lang}_html`] || q.explanation[lang]} 
+                                  className="text-sm text-muted-foreground leading-relaxed" 
+                               />
                             </div>
                           )}
                        </div>
@@ -252,7 +262,7 @@ function QuestionBookmarkCard({ bookmark, lang, onDelete }: any) {
                  </Button>
               </div>
            </div>
-           <div className="hidden md:block">
+           <div className="hidden md:block shrink-0">
               <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-primary/20 group-hover:text-primary transition-all">
                  <ArrowUpRight className="w-6 h-6 opacity-20 group-hover:opacity-100" />
               </div>

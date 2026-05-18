@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QuestionPalette } from "./QuestionPalette";
+import { RichTextRenderer } from "./RichTextRenderer";
+import { QuestionImage } from "./QuestionImage";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useUser, useFirestore, useCollection } from "@/firebase";
 import { doc, setDoc, deleteDoc, serverTimestamp, collection } from "firebase/firestore";
@@ -174,14 +176,14 @@ export const SolutionInterface = ({
               <div className="flex items-center gap-3">
                  <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg">Question {currentIndex + 1}</Badge>
               </div>
-              <div 
+              
+              <RichTextRenderer 
+                content={(currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string}
                 className="text-lg md:text-xl font-medium text-slate-100"
-                dangerouslySetInnerHTML={{ __html: (currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string }}
               />
+
               {currentQuestion.dom_images?.map((img, i) => (
-                <div key={i} className="flex justify-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <img src={img} alt="Ref" className="max-h-[300px] object-contain" />
-                </div>
+                <QuestionImage key={i} src={img} alt={`Solution Figure ${i+1}`} />
               ))}
             </div>
 
@@ -207,8 +209,11 @@ export const SolutionInterface = ({
                     <div className={cn("w-6 h-6 rounded-full border flex items-center justify-center text-[10px] font-bold shrink-0", badgeStyle)}>
                       {option.id.split('-').pop()?.toUpperCase()}
                     </div>
-                    <div className="flex-1">
-                      <div className="text-sm md:text-base font-medium">{option[currentLang]}</div>
+                    <div className="flex-1 overflow-hidden">
+                      <RichTextRenderer 
+                        content={(option[`${currentLang}_html` as keyof typeof option] || option[currentLang as keyof typeof option]) as string}
+                        className="text-sm md:text-base font-medium"
+                      />
                     </div>
                     {isCorrectOption && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
                     {isUserSelected && !isCorrect && <XCircle className="w-5 h-5 text-rose-400 shrink-0" />}
@@ -223,9 +228,9 @@ export const SolutionInterface = ({
                 <div className="flex items-center gap-2 text-primary font-bold uppercase tracking-widest text-xs">
                   <Zap className="w-4 h-4 fill-current" /> Detailed Solution
                 </div>
-                <div 
+                <RichTextRenderer 
+                  content={(currentQuestion.explanation[`${currentLang}_html` as keyof typeof currentQuestion.explanation] || currentQuestion.explanation[currentLang as keyof typeof currentQuestion.explanation]) as string}
                   className="text-sm md:text-base text-muted-foreground leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: (currentQuestion.explanation[`${currentLang}_html` as keyof typeof currentQuestion.explanation] || currentQuestion.explanation[currentLang as keyof typeof currentQuestion.explanation]) as string }}
                 />
               </div>
             )}

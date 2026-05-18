@@ -42,6 +42,8 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RichTextRenderer } from "@/components/mock-test/RichTextRenderer";
+import { QuestionImage } from "@/components/mock-test/QuestionImage";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { logAction } from "@/services/audit";
@@ -233,15 +235,14 @@ export default function UploadJsonPage() {
       await sectionsBatch.commit();
       setUploadProgress(40);
 
-      // Atomic Batch write for questions (handles standard exam sizes)
-      // Note: For 500+ questions, multiple chunks are needed, but for MVP standard mocks, 1 batch is efficient.
+      // Atomic Batch write for questions
       const questionsBatch = writeBatch(db);
       questions.forEach((q: any) => {
         const qRef = doc(db, "mockTests", selectedMockId, "questions", q.id);
         questionsBatch.set(qRef, { 
           ...q, 
           mockId: selectedMockId,
-          status: 'Published', // Auto-publish on successful import
+          status: 'Published', 
           updatedAt: serverTimestamp()
         });
       });
@@ -257,7 +258,7 @@ export default function UploadJsonPage() {
       });
 
       // Log the Action
-      await logAction(db, user, "import_json", selectedMockId, "mockTest", `Uploaded ${questions.length} questions.`);
+      await logAction(db, user, "import_json", selectedMockId, "mockTest", `Uploaded ${questions.length} questions with KaTeX support.`);
       
       setUploadProgress(100);
       toast({
@@ -286,7 +287,7 @@ export default function UploadJsonPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold">Content <span className="text-accent">Pipeline</span></h1>
-          <p className="text-muted-foreground text-sm mt-1">Industrial-grade JSON ingestion engine for bilingual mock tests.</p>
+          <p className="text-muted-foreground text-sm mt-1">Industrial-grade JSON ingestion engine for bilingual mock tests (KaTeX enabled).</p>
         </div>
         <Button variant="outline" className="gap-2 rounded-xl border-white/10" onClick={() => window.history.back()}>
           <ArrowLeft className="w-4 h-4" /> Exit Pipeline
@@ -403,7 +404,7 @@ export default function UploadJsonPage() {
           </Button>
         </div>
 
-        {/* Step 2: Validation Report & Intelligence */}
+        {/* Step 2: Validation Report & Preview */}
         <div className="lg:col-span-8 space-y-6">
           {validation ? (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
@@ -483,7 +484,7 @@ export default function UploadJsonPage() {
                  </Card>
               </div>
 
-              {/* Data Preview */}
+              {/* Simulation Preview */}
               <Tabs defaultValue="preview" className="w-full">
                 <TabsList className="bg-white/5 p-1 rounded-xl mb-6">
                   <TabsTrigger value="preview" className="rounded-lg gap-2"><Eye className="w-3.5 h-3.5" /> Simulation Preview</TabsTrigger>
@@ -495,7 +496,7 @@ export default function UploadJsonPage() {
                       <SummaryMetric label="Sections" value={validation.summary.sections} icon={Database} />
                       <SummaryMetric label="Bilingual" value={validation.summary.bilingual ? "Full" : "Partial"} icon={Eye} color={validation.summary.bilingual ? "text-emerald-400" : "text-amber-400"} />
                       <SummaryMetric label="Assets" value={validation.summary.images} icon={UploadCloud} />
-                      <SummaryMetric label="Enhanced" value={validation.summary.hasHtml ? "HTML" : "Plain"} icon={Zap} />
+                      <SummaryMetric label="KaTeX" value={validation.summary.hasHtml ? "On" : "Off"} icon={Zap} />
                    </div>
                 </TabsContent>
 
@@ -505,20 +506,25 @@ export default function UploadJsonPage() {
                       {parsedData.questions?.slice(0, 15).map((q: any, i: number) => (
                         <div key={i} className="space-y-4 p-6 border border-white/5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-colors group">
                           <div className="flex items-center justify-between">
-                            <Badge variant="outline" className="text-[10px]">Question {i+1} • {q.id}</Badge>
-                            <Badge className="bg-accent/10 text-accent text-[10px]">{q.sectionId}</Badge>
+                            <Badge variant="outline" className="text-[10px] uppercase tracking-tighter">Question {i+1} • {q.id}</Badge>
+                            <Badge className="bg-accent/10 text-accent text-[10px] uppercase font-bold">{q.sectionId}</Badge>
                           </div>
                           <div className="space-y-6">
-                            <div className="text-base font-medium text-slate-100 pl-4 border-l-2 border-primary/40 py-1">
-                              <div dangerouslySetInnerHTML={{ __html: q.en_html || q.en }} />
-                            </div>
+                            <RichTextRenderer 
+                              content={q.en_html || q.en} 
+                              className="text-base font-medium text-slate-100 pl-4 border-l-2 border-primary/40 py-1" 
+                            />
                             {q.hn && (
-                              <div className="text-base text-slate-300 pl-4 border-l-2 border-accent/40 py-1">
-                                <div dangerouslySetInnerHTML={{ __html: q.hn_html || q.hn }} />
-                              </div>
+                              <RichTextRenderer 
+                                content={q.hn_html || q.hn} 
+                                className="text-base text-slate-300 pl-4 border-l-2 border-accent/40 py-1" 
+                              />
                             )}
+                            {q.dom_images?.map((img: string, j: number) => (
+                               <QuestionImage key={j} src={img} alt={`Ingestion Preview ${j}`} />
+                            ))}
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {q.options?.map((opt: any) => (
                               <div key={opt.id} className={cn(
                                 "p-3 text-[11px] rounded-xl border flex gap-3 items-center",
@@ -530,15 +536,17 @@ export default function UploadJsonPage() {
                                 )}>
                                   {opt.id.split('-').pop()?.toUpperCase()}
                                 </div>
-                                <span className="truncate">{opt.en}</span>
+                                <div className="flex-1 overflow-hidden">
+                                   <RichTextRenderer content={opt.en_html || opt.en} className="text-[11px] font-medium" />
+                                </div>
                               </div>
                             ))}
                           </div>
                         </div>
                       ))}
                       {parsedData.questions?.length > 15 && (
-                        <div className="p-8 text-center text-xs text-muted-foreground italic border-t border-white/5">
-                           Showing first 15 questions. Total questions in file: {parsedData.questions.length}
+                        <div className="p-8 text-center text-xs text-muted-foreground italic border-t border-white/5 uppercase tracking-widest">
+                           Simulation limited to first 15 questions. Total: {parsedData.questions.length}
                         </div>
                       )}
                     </div>
@@ -552,8 +560,8 @@ export default function UploadJsonPage() {
                  <FileJson className="w-12 h-12" />
               </div>
               <div className="text-center">
-                 <p className="font-headline font-bold text-xl uppercase tracking-widest">Waiting for Input</p>
-                 <p className="text-sm mt-1">Upload a mock test JSON to begin automatic verification.</p>
+                 <p className="font-headline font-bold text-xl uppercase tracking-widest">Waiting for Ingestion</p>
+                 <p className="text-sm mt-1">Upload a mock test JSON to begin real-time verification.</p>
               </div>
             </div>
           )}

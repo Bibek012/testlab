@@ -26,6 +26,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { RichTextRenderer } from "@/components/mock-test/RichTextRenderer";
+import { QuestionImage } from "@/components/mock-test/QuestionImage";
 import { 
   Select, 
   SelectContent, 
@@ -125,8 +127,8 @@ function QuestionEditorContent() {
         <div className="lg:col-span-8 space-y-6">
           <Tabs defaultValue="editor" className="w-full">
             <TabsList className="bg-white/5 p-1 rounded-xl mb-6">
-              <TabsTrigger value="editor" className="rounded-lg gap-2"><Edit2 className="w-3.5 h-3.5" /> Core Editor</TabsTrigger>
-              <TabsTrigger value="preview" className="rounded-lg gap-2"><Eye className="w-3.5 h-3.5" /> Reality Preview</TabsTrigger>
+              <TabsTrigger value="editor" className="rounded-lg gap-2">Core Editor</TabsTrigger>
+              <TabsTrigger value="preview" className="rounded-lg gap-2">Simulated Preview</TabsTrigger>
             </TabsList>
 
             <TabsContent value="editor" className="space-y-6">
@@ -156,12 +158,12 @@ function QuestionEditorContent() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs uppercase font-bold text-muted-foreground">HTML Enhanced Version (Optional)</Label>
+                    <Label className="text-xs uppercase font-bold text-muted-foreground">HTML Enhanced Version (KaTeX Supported)</Label>
                     <Textarea 
                       className="bg-white/5 border-white/10 min-h-[120px] font-mono text-sm text-emerald-400"
                       value={formData[`${activeLang}_html`] || ""}
                       onChange={(e) => setFormData({ ...formData, [`${activeLang}_html`]: e.target.value })}
-                      placeholder="<p>Standard <strong>HTML</strong> supported here...</p>"
+                      placeholder="<p>Use $x^2$ for inline math or $$...$$ for blocks.</p>"
                     />
                   </div>
                 </div>
@@ -187,19 +189,19 @@ function QuestionEditorContent() {
                          </div>
                          <div className="flex-1 grid md:grid-cols-2 gap-4">
                             <div className="space-y-1">
-                               <Label className="text-[10px] uppercase opacity-50">English Option</Label>
+                               <Label className="text-[10px] uppercase opacity-50">English Option HTML</Label>
                                <Input 
-                                 className="bg-white/5 border-white/5 h-10" 
-                                 value={opt.en} 
-                                 onChange={(e) => updateOption(opt.id, 'en', e.target.value)}
+                                 className="bg-white/5 border-white/5 h-10 font-mono text-xs" 
+                                 value={opt.en_html || opt.en} 
+                                 onChange={(e) => updateOption(opt.id, 'en_html', e.target.value)}
                                />
                             </div>
                             <div className="space-y-1">
-                               <Label className="text-[10px] uppercase opacity-50">Hindi Option</Label>
+                               <Label className="text-[10px] uppercase opacity-50">Hindi Option HTML</Label>
                                <Input 
-                                 className="bg-white/5 border-white/5 h-10" 
-                                 value={opt.hn}
-                                 onChange={(e) => updateOption(opt.id, 'hn', e.target.value)}
+                                 className="bg-white/5 border-white/5 h-10 font-mono text-xs" 
+                                 value={opt.hn_html || opt.hn}
+                                 onChange={(e) => updateOption(opt.id, 'hn_html', e.target.value)}
                                />
                             </div>
                          </div>
@@ -214,11 +216,11 @@ function QuestionEditorContent() {
                  <div className="space-y-4">
                     <Textarea 
                       className="bg-white/5 border-white/10 min-h-[150px]"
-                      placeholder="Provide a detailed step-by-step solution..."
-                      value={formData.explanation?.[activeLang] || ""}
+                      placeholder="Use HTML and KaTeX for detailed proofs..."
+                      value={formData.explanation?.[`${activeLang}_html`] || formData.explanation?.[activeLang] || ""}
                       onChange={(e) => setFormData({ 
                         ...formData, 
-                        explanation: { ...formData.explanation, [activeLang]: e.target.value } 
+                        explanation: { ...formData.explanation, [`${activeLang}_html`]: e.target.value } 
                       })}
                     />
                  </div>
@@ -228,7 +230,7 @@ function QuestionEditorContent() {
             <TabsContent value="preview" className="space-y-8 pb-32">
                <div className="p-8 border border-white/10 rounded-[2rem] bg-slate-900/50 space-y-8">
                   <div className="flex items-center justify-between">
-                     <Badge className="bg-primary/20 text-primary border-primary/10">PREVIEW MODE</Badge>
+                     <Badge className="bg-primary/20 text-primary border-primary/10 uppercase tracking-widest text-[10px]">Production Simulation</Badge>
                      <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/10">
                         <button onClick={() => setActiveLang('en')} className={cn("px-3 py-1 text-xs font-bold rounded", activeLang === 'en' ? "bg-accent text-white" : "text-muted-foreground")}>EN</button>
                         <button onClick={() => setActiveLang('hn')} className={cn("px-3 py-1 text-xs font-bold rounded", activeLang === 'hn' ? "bg-accent text-white" : "text-muted-foreground")}>HN</button>
@@ -236,12 +238,12 @@ function QuestionEditorContent() {
                   </div>
 
                   <div className="space-y-6">
-                    <div 
+                    <RichTextRenderer 
+                      content={formData[`${activeLang}_html`] || formData[activeLang]}
                       className="text-xl md:text-2xl font-medium leading-relaxed text-slate-100"
-                      dangerouslySetInnerHTML={{ __html: formData[`${activeLang}_html`] || formData[activeLang] }}
                     />
                     {formData.dom_images?.map((img: string, i: number) => (
-                      <img key={i} src={img} className="max-h-[300px] object-contain rounded-xl border border-white/5" alt="Ref" />
+                      <QuestionImage key={i} src={img} alt="Editor Preview" />
                     ))}
                   </div>
 
@@ -252,24 +254,31 @@ function QuestionEditorContent() {
                         formData.answer === opt.id ? "bg-emerald-500/10 border-emerald-500/40" : "bg-white/5 border-white/5"
                       )}>
                          <div className={cn(
-                           "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold",
+                           "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
                            formData.answer === opt.id ? "bg-emerald-500 text-white" : "bg-white/10 text-muted-foreground"
                          )}>{opt.id.split('-').pop()?.toUpperCase()}</div>
-                         <div className="text-sm font-medium">{opt[activeLang]}</div>
-                         {formData.answer === opt.id && <CheckCircle2 className="w-5 h-5 ml-auto text-emerald-400" />}
+                         <div className="flex-1 overflow-hidden">
+                           <RichTextRenderer 
+                            content={opt[`${activeLang}_html`] || opt[activeLang]}
+                            className="text-sm font-medium"
+                           />
+                         </div>
+                         {formData.answer === opt.id && <CheckCircle2 className="w-5 h-5 ml-auto text-emerald-400 shrink-0" />}
                       </div>
                     ))}
                   </div>
 
-                  <div className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
-                     <h5 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
-                        <Zap className="w-4 h-4 fill-current" /> Detailed Solution
-                     </h5>
-                     <div 
-                        className="text-sm text-muted-foreground leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: formData.explanation?.[`${activeLang}_html`] || formData.explanation?.[activeLang] }}
-                     />
-                  </div>
+                  {(formData.explanation?.[`${activeLang}_html`] || formData.explanation?.[activeLang]) && (
+                    <div className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
+                       <h5 className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                          <Zap className="w-4 h-4 fill-current" /> Detailed Solution
+                       </h5>
+                       <RichTextRenderer 
+                          content={formData.explanation?.[`${activeLang}_html`] || formData.explanation?.[activeLang]}
+                          className="text-sm text-muted-foreground leading-relaxed"
+                       />
+                    </div>
+                  )}
                </div>
             </TabsContent>
           </Tabs>
@@ -354,7 +363,7 @@ function QuestionEditorContent() {
               </div>
               <ul className="text-xs text-muted-foreground space-y-2">
                  <li className="flex items-center gap-2">
-                    <div className={cn("w-1.5 h-1.5 rounded-full", formData.en && formData.hn ? "bg-emerald-400" : "bg-rose-400")} /> 
+                    <div className={cn("w-1.5 h-1.5 rounded-full", (formData.en || formData.en_html) && (formData.hn || formData.hn_html) ? "bg-emerald-400" : "bg-rose-400")} /> 
                     Bilingual text presence
                  </li>
                  <li className="flex items-center gap-2">
@@ -362,7 +371,7 @@ function QuestionEditorContent() {
                     Correct answer selected
                  </li>
                  <li className="flex items-center gap-2">
-                    <div className={cn("w-1.5 h-1.5 rounded-full", formData.explanation?.en ? "bg-emerald-400" : "bg-rose-400")} /> 
+                    <div className={cn("w-1.5 h-1.5 rounded-full", formData.explanation?.en || formData.explanation?.en_html ? "bg-emerald-400" : "bg-rose-400")} /> 
                     Detailed solution provided
                  </li>
               </ul>

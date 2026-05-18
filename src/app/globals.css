@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -76,6 +77,31 @@
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* Exam Content Rich Text Styles (to handle dangerouslySetInnerHTML) */
+.prose-exam {
+  @apply text-foreground leading-relaxed overflow-x-auto;
+}
+.prose-exam p { @apply mb-4 last:mb-0; }
+.prose-exam strong { @apply font-bold text-white; }
+.prose-exam b { @apply font-bold text-white; }
+.prose-exam em { @apply italic; }
+.prose-exam i { @apply italic; }
+.prose-exam u { @apply underline decoration-primary/50; }
+.prose-exam table { @apply w-full border-collapse mb-4 border border-white/10; }
+.prose-exam th { @apply bg-white/5 font-bold p-2 text-left border border-white/10; }
+.prose-exam td { @apply p-2 text-left border border-white/10; }
+.prose-exam ul { @apply list-disc pl-5 mb-4 space-y-1; }
+.prose-exam ol { @apply list-decimal pl-5 mb-4 space-y-1; }
+.prose-exam img { @apply max-w-full h-auto inline-block rounded-lg my-2; }
+
+/* KaTeX Global Overrides */
+.katex-display {
+  @apply my-4 overflow-x-auto overflow-y-hidden py-2;
+}
+.katex {
+  @apply text-inherit;
 }
 
 @keyframes pulse-slow {

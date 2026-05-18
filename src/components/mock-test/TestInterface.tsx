@@ -21,11 +21,14 @@ import {
   Send,
   Bookmark,
   BookmarkCheck,
-  Loader2
+  Loader2,
+  Languages
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { QuestionPalette } from "./QuestionPalette";
+import { RichTextRenderer } from "./RichTextRenderer";
+import { QuestionImage } from "./QuestionImage";
 import { 
   Dialog, 
   DialogContent, 
@@ -116,7 +119,7 @@ export const TestInterface = ({
     setTargetEndTime(parseInt(savedEndTime));
   }, [testData.id, testData.durationMinutes]);
 
-  // Per-Question Time Tracking (Isolate current question timer)
+  // Per-Question Time Tracking
   useEffect(() => {
     if (isPaused || showSubmitConfirm) return;
     const qTimer = setInterval(() => {
@@ -304,17 +307,6 @@ export const TestInterface = ({
                  <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg px-3 py-1 text-[10px] md:text-xs">
                    Question {currentQuestionIndex + 1}
                  </Badge>
-                 <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={toggleBookmark}
-                    className={cn(
-                      "h-8 w-8 p-0 rounded-full",
-                      isBookmarked ? "text-accent bg-accent/10" : "text-muted-foreground hover:bg-white/5"
-                    )}
-                 >
-                    {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
-                 </Button>
                </div>
                <div className="flex items-center justify-between sm:justify-end gap-4">
                   <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/10">
@@ -336,15 +328,13 @@ export const TestInterface = ({
             </div>
 
             <div className="space-y-6 animate-in fade-in duration-300">
-              <div 
-                className="text-base md:text-xl font-medium leading-relaxed text-slate-100"
-                dangerouslySetInnerHTML={{ __html: (currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string }}
+              <RichTextRenderer 
+                content={(currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string}
+                className="text-base md:text-xl font-medium leading-relaxed"
               />
 
               {currentQuestion.dom_images?.map((img, i) => (
-                <div key={i} className="flex justify-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <img src={img} alt="Ref" className="max-h-[300px] object-contain" loading="lazy" />
-                </div>
+                <QuestionImage key={i} src={img} alt={`Figure for Q${currentQuestionIndex + 1}`} />
               ))}
             </div>
 
@@ -368,8 +358,11 @@ export const TestInterface = ({
                   )}>
                     {option.id.split('-').pop()?.toUpperCase() || ''}
                   </div>
-                  <div className="flex-1">
-                    <span className="text-sm md:text-base font-medium">{option[currentLang]}</span>
+                  <div className="flex-1 overflow-hidden">
+                    <RichTextRenderer 
+                      content={(option[`${currentLang}_html` as keyof typeof option] || option[currentLang as keyof typeof option]) as string}
+                      className="text-sm md:text-base font-medium"
+                    />
                   </div>
                 </button>
               ))}
