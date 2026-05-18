@@ -51,6 +51,38 @@
         "responses": { "type": "object" },
         "lastUpdated": { "type": "string", "format": "date-time" }
       }
+    },
+    "ExamCategory": {
+      "title": "Exam Category",
+      "description": "Top-level groupings like SSC, Banking, or State Exams.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "description": { "type": "string" },
+        "iconName": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["title", "slug"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Specific competitive exams like SSC CGL or BPSC.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "stateSlug": { "type": "string", "description": "Optional state slug for state-level exams" },
+        "description": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["Easy", "Intermediate", "Hard"] },
+        "testsCount": { "type": "number", "default": 0 },
+        "questionsCount": { "type": "number", "default": 0 },
+        "isActive": { "type": "boolean", "default": true }
+      },
+      "required": ["name", "slug", "categoryId"]
     }
   },
   "auth": {
@@ -68,6 +100,14 @@
     "/progress/{userId}/activeTests/{testId}": {
       "schema": "TestProgress",
       "description": "Real-time sync of current test state."
+    },
+    "/examCategories/{categoryId}": {
+      "schema": "ExamCategory",
+      "description": "Core exam categories."
+    },
+    "/exams/{examId}": {
+      "schema": "Exam",
+      "description": "Specific competitive exams."
     }
   }
 }
