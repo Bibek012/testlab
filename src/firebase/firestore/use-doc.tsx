@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -27,22 +26,25 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
           setError(null);
         } else {
           setData(null);
-          // Distinguish between 'loading' and 'doesn't exist'
           setError(new Error("Document does not exist"));
         }
         setLoading(false);
       },
       async (serverError: FirestoreError) => {
-        console.error(`useDoc Error [${ref.path}]:`, serverError);
-        
+        // SILENT LOGGING: Prevent disruptive dev overlays for connection/permission issues.
+
         if (serverError.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
             path: ref.path,
             operation: 'get',
           } satisfies SecurityRuleContext);
+          
           errorEmitter.emit('permission-error', permissionError);
           setError(permissionError);
+        } else if (serverError.code === 'unavailable') {
+          setError(new Error("Server unreachable. Operating in offline mode."));
         } else {
+          console.warn("Firestore [useDoc] non-critical error:", serverError.message);
           setError(serverError);
         }
         setLoading(false);
@@ -50,7 +52,7 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
     );
 
     return () => unsubscribe();
-  }, [ref]); // ref should be memoized by the caller using useMemoFirebase
+  }, [ref]);
 
   return { data, loading, error };
 }

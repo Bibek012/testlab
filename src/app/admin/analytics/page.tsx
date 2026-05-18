@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useMemo } from "react";
@@ -14,7 +13,8 @@ import {
   ArrowUpRight,
   Filter,
   Loader2,
-  Activity
+  Activity,
+  WifiOff
 } from "lucide-react";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, limit } from "firebase/firestore";
@@ -28,18 +28,18 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { format } from "date-fns";
+import { ErrorState } from "@/components/ErrorState";
 
 export default function AnalyticsOverviewPage() {
   const db = useFirestore();
   
-  // Real-time fetching of attempts
   const attemptsQuery = useMemoFirebase(() => 
     db ? query(collection(db, "attempts"), orderBy("completedAt", "desc"), limit(1000)) : null,
   [db]);
-  const { data: attempts, loading: attemptsLoading } = useCollection<any>(attemptsQuery);
+  const { data: attempts, loading: attemptsLoading, error: attemptsError } = useCollection<any>(attemptsQuery);
 
   const usersQuery = useMemoFirebase(() => db ? collection(db, "users") : null, [db]);
-  const { data: users } = useCollection<any>(usersQuery);
+  const { data: users, error: usersError } = useCollection<any>(usersQuery);
 
   const mocksQuery = useMemoFirebase(() => db ? collection(db, "mockTests") : null, [db]);
   const { data: mocks } = useCollection<any>(mocksQuery);
@@ -48,8 +48,8 @@ export default function AnalyticsOverviewPage() {
     if (!attempts) return { total: 0, avgAccuracy: 0, avgScore: 0, totalTime: 0, completion: 0 };
     
     const total = attempts.length;
-    const avgAccuracy = attempts.reduce((acc: number, curr: any) => acc + (curr.accuracy || 0), 0) / total;
-    const avgScore = attempts.reduce((acc: number, curr: any) => acc + (curr.score || 0), 0) / total;
+    const avgAccuracy = attempts.reduce((acc: number, curr: any) => acc + (curr.accuracy || 0), 0) / (total || 1);
+    const avgScore = attempts.reduce((acc: number, curr: any) => acc + (curr.score || 0), 0) / (total || 1);
     const totalTime = attempts.reduce((acc: number, curr: any) => acc + (curr.timeTakenSeconds || 0), 0);
     
     return {
@@ -62,7 +62,6 @@ export default function AnalyticsOverviewPage() {
     };
   }, [attempts, users, mocks]);
 
-  // Chart Data: Activity over time (grouped by day)
   const activityData = useMemo(() => {
     if (!attempts) return [];
     const days: Record<string, number> = {};
@@ -78,6 +77,18 @@ export default function AnalyticsOverviewPage() {
       <div className="h-[80vh] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
         <p className="text-muted-foreground animate-pulse">Aggregating platform intelligence...</p>
+      </div>
+    );
+  }
+
+  // Handle connection errors gracefully without crashing
+  if (attemptsError || usersError) {
+    return (
+      <div className="p-8">
+        <ErrorState 
+          error={attemptsError || usersError} 
+          onRetry={() => window.location.reload()} 
+        />
       </div>
     );
   }
@@ -110,7 +121,6 @@ export default function AnalyticsOverviewPage() {
       </div>
 
       <div className="grid lg:grid-cols-12 gap-8">
-        {/* Main Activity Chart */}
         <Card className="lg:col-span-8 glass border-white/10 p-6">
           <CardHeader className="px-0 pt-0 pb-8 flex flex-row items-center justify-between">
             <div>
@@ -141,7 +151,6 @@ export default function AnalyticsOverviewPage() {
           </div>
         </Card>
 
-        {/* Quick Links / Navigation */}
         <div className="lg:col-span-4 space-y-6">
           <Card className="glass border-white/10 p-6">
             <CardTitle className="text-lg font-headline font-bold mb-4">Deep Dives</CardTitle>
@@ -163,7 +172,6 @@ export default function AnalyticsOverviewPage() {
         </div>
       </div>
 
-      {/* Recent Attempts Table */}
       <Card className="glass border-white/10 overflow-hidden">
         <CardHeader className="p-6 bg-white/[0.02] border-b border-white/5 flex flex-row items-center justify-between">
            <div>

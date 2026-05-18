@@ -30,15 +30,24 @@ export function useCollection<T = DocumentData>(query: Query<T> | null) {
         setError(null);
       },
       async (serverError: FirestoreError) => {
-        console.error("useCollection Error:", serverError);
+        // SILENT LOGGING: Do not use console.error for permission or connection issues
+        // as it triggers disruptive Next.js dev overlays.
+        
         if (serverError.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
             path: (query as any)._query?.path?.toString() || 'unknown',
             operation: 'list',
           } satisfies SecurityRuleContext);
+          
+          // The error emitter will be caught by the FirebaseErrorListener
           errorEmitter.emit('permission-error', permissionError);
           setError(permissionError);
+        } else if (serverError.code === 'unavailable') {
+          // Soft error for connectivity issues
+          setError(new Error("Connecting to server... Your data will sync once online."));
         } else {
+          // For other unexpected errors, we can log but be mindful of the overlay
+          console.warn("Firestore [useCollection] non-critical error:", serverError.message);
           setError(serverError);
         }
         setLoading(false);
@@ -46,7 +55,7 @@ export function useCollection<T = DocumentData>(query: Query<T> | null) {
     );
 
     return () => unsubscribe();
-  }, [query]); // query should be memoized by the caller using useMemoFirebase
+  }, [query]);
 
   return { data, loading, error };
 }
