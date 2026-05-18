@@ -16,7 +16,8 @@ import {
   Settings,
   Rocket,
   ChevronLeft,
-  Send
+  Send,
+  BellRing
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -41,6 +42,7 @@ const menuItems = [
   { title: "Upload JSON", icon: UploadCloud, href: "/admin/upload-json" },
   { title: "Questions", icon: HelpCircle, href: "/admin/questions" },
   { title: "Publishing", icon: Send, href: "/admin/publishing" },
+  { title: "Announcements", icon: BellRing, href: "/admin/announcements" },
   { title: "Analytics", icon: BarChart3, href: "/admin/analytics" },
   { title: "Users", icon: Users, href: "/admin/users" },
   { title: "Reports", icon: FileWarning, href: "/admin/reports" },

@@ -71,6 +71,38 @@
       },
       "required": ["uid", "questionId", "mockId"]
     },
+    "Announcement": {
+      "title": "Platform Announcement",
+      "description": "Global or targeted messages sent by admins.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "exam", "mock", "system"], "default": "info" },
+        "targetType": { "type": "string", "enum": ["all", "exam", "category", "state"], "default": "all" },
+        "targetId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Draft", "Published", "Archived"], "default": "Draft" }
+      },
+      "required": ["title", "message"]
+    },
+    "UserNotification": {
+      "title": "User Notification",
+      "description": "Individual notifications for a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "link": { "type": "string" },
+        "isRead": { "type": "boolean", "default": false },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "title", "message"]
+    },
     "ExamCategory": {
       "title": "Exam Category",
       "description": "Top-level groupings like SSC, Banking, or State Exams.",
@@ -143,6 +175,14 @@
     "/users/{userId}/bookmarks/{bookmarkId}": {
       "schema": "Bookmark",
       "description": "User saved questions."
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": "UserNotification",
+      "description": "Individual user notifications."
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Global platform announcements."
     },
     "/attempts/{attemptId}": {
       "schema": "TestAttempt",

@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Menu, X, Rocket, Search, Bell, LogOut, User, LayoutDashboard, Bookmark } from "lucide-react";
+import { Menu, X, Rocket, Search, LogOut, User, LayoutDashboard, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useUser, useAuth } from "@/firebase";
@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { NotificationDropdown } from "./NotificationDropdown";
 
 export const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -81,10 +82,13 @@ export const Navbar = () => {
           ))}
         </div>
 
-        <div className="hidden lg:flex items-center gap-4">
+        <div className="hidden lg:flex items-center gap-2 md:gap-4">
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
             <Search className="w-5 h-5" />
           </Button>
+          
+          {user && <NotificationDropdown />}
+          
           {user && (
             <Link href="/bookmarks">
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
@@ -92,9 +96,7 @@ export const Navbar = () => {
               </Button>
             </Link>
           )}
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-            <Bell className="w-5 h-5" />
-          </Button>
+
           <div className="h-4 w-px bg-white/10 mx-2" />
           
           {loading ? (
@@ -154,9 +156,7 @@ export const Navbar = () => {
 
         {/* Mobile Toggle */}
         <div className="flex lg:hidden items-center gap-2">
-          <Button variant="ghost" size="icon" className="text-muted-foreground h-9 w-9">
-            <Search className="w-5 h-5" />
-          </Button>
+          {user && <NotificationDropdown />}
           <button
             className="text-foreground p-2 rounded-lg bg-white/5 border border-white/10 active:scale-95 transition-transform"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -204,7 +204,7 @@ export const Navbar = () => {
           <div className="flex flex-col gap-3 pt-4">
             {user ? (
               <>
-                <Button variant="outline" className="w-full h-12 rounded-xl border-white/10" onClick={() => router.push('/dashboard')}>
+                <Button variant="outline" className="w-full h-12 rounded-xl border-white/10" onClick={() => { setIsMobileMenuOpen(false); router.push('/dashboard'); }}>
                   Dashboard
                 </Button>
                 <Button variant="destructive" className="w-full h-12 rounded-xl" onClick={handleLogout}>
