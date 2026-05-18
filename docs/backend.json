@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "User": {
@@ -11,6 +10,10 @@
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "role": { "type": "string", "enum": ["student", "moderator", "admin", "super-admin"], "default": "student" },
+        "status": { "type": "string", "enum": ["active", "suspended", "banned"], "default": "active" },
+        "subscriptionType": { "type": "string", "enum": ["free", "premium"], "default": "free" },
         "streak": { "type": "number", "default": 0 },
         "testsAttempted": { "type": "number", "default": 0 },
         "totalScore": { "type": "number", "default": 0 },
