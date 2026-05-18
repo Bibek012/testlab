@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -23,14 +24,17 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
       (snapshot: DocumentSnapshot<T>) => {
         if (snapshot.exists()) {
           setData({ ...snapshot.data()!, id: snapshot.id });
+          setError(null);
         } else {
           setData(null);
+          // Distinguish between 'loading' and 'doesn't exist'
+          setError(new Error("Document does not exist"));
         }
         setLoading(false);
-        setError(null);
       },
       async (serverError: FirestoreError) => {
         console.error(`useDoc Error [${ref.path}]:`, serverError);
+        
         if (serverError.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
             path: ref.path,

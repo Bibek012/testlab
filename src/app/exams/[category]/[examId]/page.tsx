@@ -11,9 +11,10 @@ import { MockTestList } from "@/components/dashboard/MockTestList";
 import { DailyGoal } from "@/components/dashboard/DailyGoal";
 import { Leaderboard } from "@/components/dashboard/Leaderboard";
 import { CATEGORIES, EXAMS_BY_CATEGORY } from "@/lib/exam-data";
-import { Rocket, Sparkles, BookOpen, Clock, Users, Play, ChevronRight } from "lucide-react";
+import { Rocket, Sparkles, BookOpen, Clock, Users, Play, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ResourceNotFound } from "@/components/ResourceNotFound";
 
 export default function ExamDashboardPage() {
   const params = useParams();
@@ -30,7 +31,13 @@ export default function ExamDashboardPage() {
     [categorySlug, examId]
   );
 
-  if (!exam || !category) return null;
+  if (!category) {
+    return <ResourceNotFound type="Category" backUrl="/#exams" />;
+  }
+
+  if (!exam) {
+    return <ResourceNotFound type="Exam" message={`The exam series '${examId}' could not be found in our database.`} backUrl={`/exams/${categorySlug}`} />;
+  }
 
   return (
     <main className="min-h-screen bg-background text-foreground overflow-x-hidden">
