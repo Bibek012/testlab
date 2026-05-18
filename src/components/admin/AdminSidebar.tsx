@@ -15,7 +15,8 @@ import {
   FileWarning, 
   Settings,
   Rocket,
-  ChevronLeft
+  ChevronLeft,
+  Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -39,6 +40,7 @@ const menuItems = [
   { title: "Mock Tests", icon: Files, href: "/admin/mock-tests" },
   { title: "Upload JSON", icon: UploadCloud, href: "/admin/upload-json" },
   { title: "Questions", icon: HelpCircle, href: "/admin/questions" },
+  { title: "Publishing", icon: Send, href: "/admin/publishing" },
   { title: "Analytics", icon: BarChart3, href: "/admin/analytics" },
   { title: "Users", icon: Users, href: "/admin/users" },
   { title: "Reports", icon: FileWarning, href: "/admin/reports" },

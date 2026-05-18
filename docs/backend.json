@@ -104,7 +104,9 @@
         "languages": { "type": "array", "items": { "type": "string" } },
         "instructions": { "type": "string" },
         "isFree": { "type": "boolean", "default": true },
-        "status": { "type": "string", "enum": ["Draft", "Published", "Hidden", "Scheduled"] },
+        "status": { "type": "string", "enum": ["Draft", "Published", "Hidden", "Scheduled", "Archived"], "default": "Draft" },
+        "visibility": { "type": "string", "enum": ["Public", "Premium", "Private"], "default": "Public" },
+        "scheduledAt": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
