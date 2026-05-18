@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Menu, X, Rocket, Search, Bell, LogOut, User, LayoutDashboard } from "lucide-react";
+import { Menu, X, Rocket, Search, Bell, LogOut, User, LayoutDashboard, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useUser, useAuth } from "@/firebase";
@@ -85,6 +85,13 @@ export const Navbar = () => {
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
             <Search className="w-5 h-5" />
           </Button>
+          {user && (
+            <Link href="/bookmarks">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                <Bookmark className="w-5 h-5" />
+              </Button>
+            </Link>
+          )}
           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
             <Bell className="w-5 h-5" />
           </Button>
@@ -115,6 +122,10 @@ export const Navbar = () => {
                 <DropdownMenuItem className="focus:bg-white/5 cursor-pointer">
                   <User className="mr-2 h-4 w-4" />
                   <span>My Profile</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/bookmarks')} className="focus:bg-white/5 cursor-pointer">
+                  <Bookmark className="mr-2 h-4 w-4" />
+                  <span>Saved Questions</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem className="focus:bg-white/5 cursor-pointer">
                   <LayoutDashboard className="mr-2 h-4 w-4" />
@@ -181,6 +192,15 @@ export const Navbar = () => {
               {link.name}
             </Link>
           ))}
+          {user && (
+            <Link
+              href="/bookmarks"
+              className="text-lg font-medium py-3 hover:text-primary transition-colors border-b border-white/5"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              Saved Questions
+            </Link>
+          )}
           <div className="flex flex-col gap-3 pt-4">
             {user ? (
               <>

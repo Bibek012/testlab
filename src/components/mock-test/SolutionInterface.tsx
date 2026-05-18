@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { 
   MockTestData, 
   UserResponse, 
@@ -18,11 +18,15 @@ import {
   XCircle,
   HelpCircle,
   Clock,
-  Zap
+  Zap,
+  Bookmark,
+  BookmarkCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QuestionPalette } from "./QuestionPalette";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useUser, useFirestore, useCollection } from "@/firebase";
+import { doc, setDoc, deleteDoc, serverTimestamp, collection } from "firebase/firestore";
 
 interface Props {
   testData: MockTestData;
@@ -37,13 +41,43 @@ export const SolutionInterface = ({
   responses, 
   onBack 
 }: Props) => {
+  const { user } = useUser();
+  const db = useFirestore();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentLang, setCurrentLang] = useState<'en' | 'hn'>(initialLang);
+
+  const { data: bookmarks } = useCollection<any>(
+    user && db ? collection(db, 'users', user.uid, 'bookmarks') : null
+  );
 
   const currentQuestion = testData.questions[currentIndex];
   const response = responses[currentQuestion.id];
   const isCorrect = response.selectedOptionId === currentQuestion.answer;
   const isSkipped = response.selectedOptionId === null;
+
+  const isBookmarked = useMemo(() => {
+    return bookmarks?.some(b => b.questionId === currentQuestion.id);
+  }, [bookmarks, currentQuestion.id]);
+
+  const toggleBookmark = async () => {
+    if (!user || !db) return;
+    const bookmarkId = currentQuestion.id;
+    const ref = doc(db, 'users', user.uid, 'bookmarks', bookmarkId);
+
+    if (isBookmarked) {
+      await deleteDoc(ref);
+    } else {
+      await setDoc(ref, {
+        uid: user.uid,
+        questionId: currentQuestion.id,
+        mockId: testData.id,
+        examId: testData.examName,
+        sectionId: currentQuestion.sectionId,
+        bookmarkedAt: serverTimestamp(),
+        questionData: currentQuestion
+      });
+    }
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -113,6 +147,17 @@ export const SolutionInterface = ({
                 ) : (
                   <Badge className="bg-rose-500/10 text-rose-400 gap-2 h-8 px-4"><XCircle className="w-4 h-4" /> Incorrect Answer</Badge>
                 )}
+                <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={toggleBookmark}
+                    className={cn(
+                      "h-8 w-8 p-0 rounded-full",
+                      isBookmarked ? "text-accent bg-accent/10" : "text-muted-foreground hover:bg-white/5"
+                    )}
+                 >
+                    {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                 </Button>
                 <div className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5" /> Time Spent: {formatTime(response.timeSpentSeconds)}
                 </div>

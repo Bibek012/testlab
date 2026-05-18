@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -54,6 +55,21 @@
         "responses": { "type": "object" },
         "lastUpdated": { "type": "string", "format": "date-time" }
       }
+    },
+    "Bookmark": {
+      "title": "Question Bookmark",
+      "description": "A saved question for a specific user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "questionId": { "type": "string" },
+        "mockId": { "type": "string" },
+        "examId": { "type": "string" },
+        "sectionId": { "type": "string" },
+        "bookmarkedAt": { "type": "string", "format": "date-time" },
+        "questionData": { "type": "object" }
+      },
+      "required": ["uid", "questionId", "mockId"]
     },
     "ExamCategory": {
       "title": "Exam Category",
@@ -114,66 +130,6 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "slug", "examId", "type"]
-    },
-    "MockSection": {
-      "title": "Mock Section",
-      "description": "A section within a mock test (e.g., Mathematics).",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "mockId": { "type": "string" },
-        "title": {
-          "type": "object",
-          "properties": {
-            "en": { "type": "string" },
-            "hn": { "type": "string" }
-          }
-        },
-        "order": { "type": "number" }
-      }
-    },
-    "MockQuestion": {
-      "title": "Mock Question",
-      "description": "A specific question within a mock test.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "mockId": { "type": "string" },
-        "sectionId": { "type": "string" },
-        "en": { "type": "string" },
-        "hn": { "type": "string" },
-        "en_html": { "type": "string" },
-        "hn_html": { "type": "string" },
-        "status": { "type": "string", "enum": ["Draft", "Verified", "Needs Review", "Published"] },
-        "options": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": { "type": "string" },
-              "en": { "type": "string" },
-              "hn": { "type": "string" },
-              "en_html": { "type": "string" },
-              "hn_html": { "type": "string" },
-              "image": { "type": "string" }
-            }
-          }
-        },
-        "answer": { "type": "string" },
-        "marks": { "type": "number" },
-        "negativeMarks": { "type": "number" },
-        "dom_images": { "type": "array", "items": { "type": "string" } },
-        "memory_images": { "type": "array", "items": { "type": "string" } },
-        "explanation": {
-          "type": "object",
-          "properties": {
-            "en": { "type": "string" },
-            "hn": { "type": "string" },
-            "en_html": { "type": "string" },
-            "hn_html": { "type": "string" }
-          }
-        }
-      }
     }
   },
   "auth": {
@@ -183,6 +139,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "Stores user profile and aggregate stats."
+    },
+    "/users/{userId}/bookmarks/{bookmarkId}": {
+      "schema": "Bookmark",
+      "description": "User saved questions."
     },
     "/attempts/{attemptId}": {
       "schema": "TestAttempt",

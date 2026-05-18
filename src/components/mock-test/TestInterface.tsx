@@ -18,7 +18,9 @@ import {
   ChevronRight,
   LayoutGrid,
   AlertCircle,
-  Send
+  Send,
+  Bookmark,
+  BookmarkCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
@@ -31,6 +33,8 @@ import {
   DialogFooter 
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useUser, useFirestore, useCollection } from "@/firebase";
+import { doc, setDoc, deleteDoc, serverTimestamp, collection, query } from "firebase/firestore";
 
 interface Props {
   testData: MockTestData;
@@ -47,14 +51,45 @@ export const TestInterface = ({
   setResponses, 
   onSubmit 
 }: Props) => {
+  const { user } = useUser();
+  const db = useFirestore();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentLang, setCurrentLang] = useState<'en' | 'hn'>(initialLang);
   const [timeLeft, setTimeLeft] = useState(testData.durationMinutes * 60);
   const [isPaused, setIsPaused] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
+  // Fetch bookmarks once
+  const { data: bookmarks } = useCollection<any>(
+    user && db ? collection(db, 'users', user.uid, 'bookmarks') : null
+  );
+
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
+
+  const isBookmarked = useMemo(() => {
+    return bookmarks?.some(b => b.questionId === currentQuestion.id);
+  }, [bookmarks, currentQuestion.id]);
+
+  const toggleBookmark = async () => {
+    if (!user || !db) return;
+    const bookmarkId = currentQuestion.id;
+    const ref = doc(db, 'users', user.uid, 'bookmarks', bookmarkId);
+
+    if (isBookmarked) {
+      await deleteDoc(ref);
+    } else {
+      await setDoc(ref, {
+        uid: user.uid,
+        questionId: currentQuestion.id,
+        mockId: testData.id,
+        examId: testData.examName,
+        sectionId: currentQuestion.sectionId,
+        bookmarkedAt: serverTimestamp(),
+        questionData: currentQuestion // Store a snapshot for easy rendering in bookmarks page
+      });
+    }
+  };
 
   // Sync Timer with persistent End Time in localStorage
   useEffect(() => {
@@ -174,7 +209,7 @@ export const TestInterface = ({
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
-      {/* Top Bar - Z-index ensure visible */}
+      {/* Top Bar */}
       <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-4 md:px-6 shrink-0 z-50">
         <div className="flex items-center gap-3 md:gap-6 overflow-hidden">
           <div className="hidden sm:flex items-center gap-2 shrink-0">
@@ -196,7 +231,6 @@ export const TestInterface = ({
              <Pause className="w-4 h-4 md:mr-2" /> <span className="hidden md:inline">Pause</span>
            </Button>
            
-           {/* Submit Test Button */}
            <Button 
             onClick={() => setShowSubmitConfirm(true)} 
             className="hidden sm:flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-9 px-6 text-sm font-bold shadow-lg shadow-emerald-500/20 gap-2"
@@ -266,6 +300,17 @@ export const TestInterface = ({
                  <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg px-3 py-1 text-[10px] md:text-xs">
                    Question {currentQuestionIndex + 1}
                  </Badge>
+                 <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={toggleBookmark}
+                    className={cn(
+                      "h-8 w-8 p-0 rounded-full",
+                      isBookmarked ? "text-accent bg-accent/10" : "text-muted-foreground hover:bg-white/5"
+                    )}
+                 >
+                    {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                 </Button>
                  <span className="text-[10px] md:text-xs text-muted-foreground font-mono">
                    Time Spent: {formatTime(responses[currentQuestion.id]?.timeSpentSeconds || 0)}
                  </span>
@@ -342,7 +387,7 @@ export const TestInterface = ({
         </aside>
       </div>
 
-      {/* Action Footer - Sticky and responsive */}
+      {/* Action Footer */}
       <footer className="h-auto border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between px-4 md:px-6 py-4 md:py-0 shrink-0 z-50 gap-4">
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto hide-scrollbar">
           <Button 
@@ -387,7 +432,7 @@ export const TestInterface = ({
         </div>
       </footer>
 
-      {/* Submit Confirmation Modal */}
+      {/* Modals */}
       <Dialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
         <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="mb-6">
@@ -429,7 +474,6 @@ export const TestInterface = ({
         </DialogContent>
       </Dialog>
 
-      {/* Pause Modal */}
       <Dialog open={isPaused} onOpenChange={setIsPaused}>
         <DialogContent className="glass border-white/10 sm:max-w-md w-[95%]">
           <DialogHeader>
