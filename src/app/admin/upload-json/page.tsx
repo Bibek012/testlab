@@ -17,7 +17,7 @@ import {
   Info,
   Languages
 } from "lucide-react";
-import { useFirestore, useCollection, useUser } from "@/firebase";
+import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase";
 import { 
   collection, 
   doc, 
@@ -66,9 +66,14 @@ export default function UploadJsonPage() {
   const { user } = useUser();
   const { toast } = useToast();
   
-  const { data: categories } = useCollection(db ? query(collection(db, "examCategories"), orderBy("title", "asc")) : null);
-  const { data: exams } = useCollection(db ? query(collection(db, "exams"), orderBy("name", "asc")) : null);
-  const { data: mockTests } = useCollection(db ? query(collection(db, "mockTests"), orderBy("title", "asc")) : null);
+  const catsQuery = useMemoFirebase(() => db ? query(collection(db, "examCategories"), orderBy("title", "asc")) : null, [db]);
+  const { data: categories } = useCollection(catsQuery);
+
+  const exsQuery = useMemoFirebase(() => db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, [db]);
+  const { data: exams } = useCollection(exsQuery);
+
+  const mtQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests"), orderBy("title", "asc")) : null, [db]);
+  const { data: mockTests } = useCollection(mtQuery);
 
   const [selectedMockId, setSelectedMockId] = useState<string>("");
   const [selectedExamId, setSelectedExamId] = useState<string>("");

@@ -1,16 +1,20 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 
 export const StatsSection = () => {
   const db = useFirestore();
 
-  // Fetch real counts for stats
-  const { data: exams } = useCollection(db ? collection(db, "exams") : null);
-  const { data: mocks } = useCollection(db ? collection(db, "mockTests") : null);
-  const { data: users } = useCollection(db ? collection(db, "users") : null);
+  const examsQuery = useMemoFirebase(() => db ? collection(db, "exams") : null, [db]);
+  const { data: exams } = useCollection(examsQuery);
+
+  const mocksQuery = useMemoFirebase(() => db ? collection(db, "mockTests") : null, [db]);
+  const { data: mocks } = useCollection(mocksQuery);
+
+  const usersQuery = useMemoFirebase(() => db ? collection(db, "users") : null, [db]);
+  const { data: users } = useCollection(usersQuery);
 
   const stats = useMemo(() => [
     { label: "Mock Tests", value: mocks?.length ? `${mocks.length}+` : "1,000+", color: "from-primary to-accent" },

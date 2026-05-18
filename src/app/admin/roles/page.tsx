@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -16,7 +15,7 @@ import {
   Mail,
   Shield
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, doc, updateDoc, orderBy } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,7 +55,7 @@ export default function StaffRolesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Fetch all users who have a role other than 'student'
-  const staffQuery = useMemo(() => 
+  const staffQuery = useMemoFirebase(() => 
     db ? query(collection(db, "users"), where("role", "!=", "student")) : null, 
   [db]);
 

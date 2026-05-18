@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useMemo } from "react";
@@ -23,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useUser, useFirestore, useCollection } from "@/firebase";
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, limit, doc, updateDoc, writeBatch } from "firebase/firestore";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -33,13 +32,13 @@ export const NotificationDropdown = () => {
   const { user } = useUser();
   const db = useFirestore();
 
-  const notificationsQuery = useMemo(() => 
+  const notificationsQuery = useMemoFirebase(() => 
     user && db ? query(
       collection(db, "users", user.uid, "notifications"), 
       orderBy("createdAt", "desc"), 
       limit(20)
     ) : null, 
-  [user, db]);
+  [user?.uid, db]);
 
   const { data: notifications, loading } = useCollection<any>(notificationsQuery);
 

@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -27,7 +26,7 @@ import { QuestionPalette } from "./QuestionPalette";
 import { RichTextRenderer } from "./RichTextRenderer";
 import { QuestionImage } from "./QuestionImage";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useUser, useFirestore, useCollection } from "@/firebase";
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { doc, setDoc, deleteDoc, serverTimestamp, collection } from "firebase/firestore";
 
 interface Props {
@@ -48,9 +47,10 @@ export const SolutionInterface = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentLang, setCurrentLang] = useState<'en' | 'hn'>(initialLang);
 
-  const { data: bookmarks } = useCollection<any>(
-    user && db ? collection(db, 'users', user.uid, 'bookmarks') : null
-  );
+  const bmQuery = useMemoFirebase(() => 
+    user && db ? collection(db, 'users', user.uid, 'bookmarks') : null, 
+  [user?.uid, db]);
+  const { data: bookmarks } = useCollection<any>(bmQuery);
 
   const currentQuestion = testData.questions[currentIndex];
   const response = responses[currentQuestion.id];

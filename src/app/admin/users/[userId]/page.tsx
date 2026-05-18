@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useMemo } from "react";
@@ -22,7 +21,7 @@ import {
   User as UserIcon,
   CheckCircle2
 } from "lucide-react";
-import { useFirestore, useDoc, useCollection } from "@/firebase";
+import { useFirestore, useDoc, useCollection, useMemoFirebase } from "@/firebase";
 import { doc, query, collection, where, orderBy, updateDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,10 +38,10 @@ export default function UserProfileDetailPage() {
   const router = useRouter();
   const db = useFirestore();
 
-  const userRef = useMemo(() => db ? doc(db, "users", userId as string) : null, [db, userId]);
+  const userRef = useMemoFirebase(() => db ? doc(db, "users", userId as string) : null, [db, userId]);
   const { data: user, loading: userLoading } = useDoc<any>(userRef);
 
-  const attemptsQuery = useMemo(() => 
+  const attemptsQuery = useMemoFirebase(() => 
     db ? query(collection(db, "attempts"), where("uid", "==", userId), orderBy("completedAt", "desc")) : null, 
   [db, userId]);
   const { data: attempts, loading: attemptsLoading } = useCollection<any>(attemptsQuery);
