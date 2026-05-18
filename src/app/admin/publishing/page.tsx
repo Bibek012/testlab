@@ -18,7 +18,7 @@ import {
   ChevronRight,
   Loader2
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,8 +39,13 @@ export default function PublishingDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
-  const { data: mockTests, loading } = useCollection(db ? query(collection(db, "mockTests"), orderBy("updatedAt", "desc")) : null);
-  const { data: exams } = useCollection(db ? query(collection(db, "exams")) : null);
+  const mockTestsQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "mockTests"), orderBy("updatedAt", "desc")) : null,
+  [db]);
+  const { data: mockTests, loading } = useCollection(mockTestsQuery);
+
+  const examsQuery = useMemoFirebase(() => db ? query(collection(db, "exams")) : null, [db]);
+  const { data: exams } = useCollection(examsQuery);
 
   const filteredMocks = useMemo(() => {
     if (!mockTests) return [];
@@ -96,7 +101,7 @@ export default function PublishingDashboard() {
               placeholder="Search tests to publish..." 
               className="pl-10 bg-white/5 border-white/5 h-11 rounded-xl"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => searchQuery(e.target.value)}
             />
           </div>
           <div className="flex gap-2 w-full md:w-auto">

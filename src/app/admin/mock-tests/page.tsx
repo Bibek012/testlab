@@ -19,7 +19,7 @@ import {
   Eye,
   ChevronDown
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { 
   collection, 
   addDoc, 
@@ -68,10 +68,21 @@ const STATUS_OPTIONS = ["Draft", "Published", "Hidden", "Scheduled"];
 export default function MockTestManagementPage() {
   const db = useFirestore();
   
-  // Data fetching
-  const { data: categories } = useCollection(db ? query(collection(db, "examCategories"), orderBy("title", "asc")) : null);
-  const { data: exams } = useCollection(db ? query(collection(db, "exams"), orderBy("name", "asc")) : null);
-  const { data: mockTests, loading: mocksLoading } = useCollection(db ? query(collection(db, "mockTests"), orderBy("createdAt", "desc")) : null);
+  // Data fetching stabilized with useMemoFirebase
+  const categoriesQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "examCategories"), orderBy("title", "asc")) : null, 
+  [db]);
+  const { data: categories } = useCollection(categoriesQuery);
+
+  const examsQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, 
+  [db]);
+  const { data: exams } = useCollection(examsQuery);
+
+  const mockTestsQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "mockTests"), orderBy("createdAt", "desc")) : null, 
+  [db]);
+  const { data: mockTests, loading: mocksLoading } = useCollection(mockTestsQuery);
 
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [activeTab, setActiveTab] = useState<"all" | "Draft" | "Published">("all");
@@ -271,7 +282,7 @@ export default function MockTestManagementPage() {
                         <Badge className={cn(
                           "h-6 gap-1.5",
                           mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                          mock.status === 'Draft' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                          mock.status === 'Draft' ? "bg-amber-500/10 text-amber-400 border-emerald-500/20" :
                           "bg-slate-500/10 text-slate-400 border-slate-500/20"
                         )}>
                           <div className={cn("w-1.5 h-1.5 rounded-full", 

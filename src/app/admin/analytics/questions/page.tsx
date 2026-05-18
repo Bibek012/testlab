@@ -15,7 +15,7 @@ import {
   ImageIcon,
   Languages
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, limit, collectionGroup } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,13 +29,13 @@ export default function QuestionAnalyticsPage() {
   const db = useFirestore();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: attempts, loading: attemptsLoading } = useCollection<any>(
-    db ? collection(db, "attempts") : null
-  );
+  const attemptsQuery = useMemoFirebase(() => db ? collection(db, "attempts") : null, [db]);
+  const { data: attempts, loading: attemptsLoading } = useCollection<any>(attemptsQuery);
 
-  const { data: questions, loading: qsLoading } = useCollection<any>(
-    db ? query(collectionGroup(db, "questions"), limit(100)) : null
-  );
+  const questionsQuery = useMemoFirebase(() => 
+    db ? query(collectionGroup(db, "questions"), limit(100)) : null,
+  [db]);
+  const { data: questions, loading: qsLoading } = useCollection<any>(questionsQuery);
 
   const questionStats = useMemo(() => {
     if (!attempts || !questions) return [];

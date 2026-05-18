@@ -17,7 +17,7 @@ import {
   MapPin,
   Globe
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { 
   collection, 
   addDoc, 
@@ -59,9 +59,14 @@ import { STATES } from "@/lib/exam-data";
 export default function ExamManagementPage() {
   const db = useFirestore();
   
-  // Real-time collections
-  const categoriesQuery = useMemo(() => db ? query(collection(db, "examCategories"), orderBy("order", "asc")) : null, [db]);
-  const examsQuery = useMemo(() => db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, [db]);
+  // Real-time collections stabilized with useMemoFirebase
+  const categoriesQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "examCategories"), orderBy("order", "asc")) : null, 
+  [db]);
+
+  const examsQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, 
+  [db]);
 
   const { data: categories, loading: catsLoading } = useCollection(categoriesQuery);
   const { data: exams, loading: examsLoading } = useCollection(examsQuery);

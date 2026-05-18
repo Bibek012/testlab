@@ -18,7 +18,7 @@ import {
   Eye,
   Trash2
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,9 +41,10 @@ export default function UserManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
-  const { data: users, loading } = useCollection<any>(
-    db ? query(collection(db, "users"), orderBy("createdAt", "desc")) : null
-  );
+  const usersQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "users"), orderBy("createdAt", "desc")) : null,
+  [db]);
+  const { data: users, loading } = useCollection<any>(usersQuery);
 
   const filteredUsers = useMemo(() => {
     if (!users) return [];
@@ -80,6 +81,7 @@ export default function UserManagementPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold">User <span className="text-accent">Registry</span></h1>

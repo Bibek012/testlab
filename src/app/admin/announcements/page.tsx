@@ -16,9 +16,12 @@ import {
   AlertCircle,
   Users,
   Target,
-  Loader2
+  Loader2,
+  Info,
+  Zap,
+  Settings
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, addDoc, deleteDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,11 +55,13 @@ export default function AnnouncementManagementPage() {
   const [editingAnnouncement, setEditingAnnouncement] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: announcements, loading } = useCollection(
-    db ? query(collection(db, "announcements"), orderBy("createdAt", "desc")) : null
-  );
+  const announcementsQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "announcements"), orderBy("createdAt", "desc")) : null,
+  [db]);
+  const { data: announcements, loading } = useCollection(announcementsQuery);
 
-  const { data: categories } = useCollection(db ? collection(db, "examCategories") : null);
+  const categoriesQuery = useMemoFirebase(() => db ? collection(db, "examCategories") : null, [db]);
+  const { data: categories } = useCollection(categoriesQuery);
 
   const filteredAnnouncements = useMemo(() => {
     if (!announcements) return [];

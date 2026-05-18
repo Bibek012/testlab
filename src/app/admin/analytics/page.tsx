@@ -16,7 +16,7 @@ import {
   Loader2,
   Activity
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, limit } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,12 +33,16 @@ export default function AnalyticsOverviewPage() {
   const db = useFirestore();
   
   // Real-time fetching of attempts
-  const { data: attempts, loading: attemptsLoading } = useCollection<any>(
-    db ? query(collection(db, "attempts"), orderBy("completedAt", "desc"), limit(1000)) : null
-  );
+  const attemptsQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "attempts"), orderBy("completedAt", "desc"), limit(1000)) : null,
+  [db]);
+  const { data: attempts, loading: attemptsLoading } = useCollection<any>(attemptsQuery);
 
-  const { data: users } = useCollection<any>(db ? collection(db, "users") : null);
-  const { data: mocks } = useCollection<any>(db ? collection(db, "mockTests") : null);
+  const usersQuery = useMemoFirebase(() => db ? collection(db, "users") : null, [db]);
+  const { data: users } = useCollection<any>(usersQuery);
+
+  const mocksQuery = useMemoFirebase(() => db ? collection(db, "mockTests") : null, [db]);
+  const { data: mocks } = useCollection<any>(mocksQuery);
 
   const stats = useMemo(() => {
     if (!attempts) return { total: 0, avgAccuracy: 0, avgScore: 0, totalTime: 0, completion: 0 };
@@ -119,7 +123,7 @@ export default function AnalyticsOverviewPage() {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={activityData}>
                 <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorValue" x1="0" x2="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
                     <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
                   </linearGradient>

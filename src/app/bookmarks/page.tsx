@@ -17,9 +17,11 @@ import {
   Languages,
   Filter,
   Loader2,
-  ArrowUpRight
+  ArrowUpRight,
+  Zap,
+  CheckCircle2
 } from "lucide-react";
-import { useUser, useFirestore, useCollection } from "@/firebase";
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, deleteDoc, doc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,9 +42,11 @@ export default function BookmarksPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLang, setSelectedLang] = useState<'en' | 'hn'>('en');
 
-  const { data: bookmarks, loading } = useCollection<any>(
-    user && db ? query(collection(db, 'users', user.uid, 'bookmarks'), orderBy('bookmarkedAt', 'desc')) : null
-  );
+  const bookmarksQuery = useMemoFirebase(() => 
+    user && db ? query(collection(db, 'users', user.uid, 'bookmarks'), orderBy('bookmarkedAt', 'desc')) : null,
+  [user?.uid, db]);
+
+  const { data: bookmarks, loading } = useCollection<any>(bookmarksQuery);
 
   const filteredBookmarks = useMemo(() => {
     if (!bookmarks) return [];
@@ -188,7 +192,7 @@ function QuestionBookmarkCard({ bookmark, lang, onDelete }: any) {
                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-[10px]">{bookmark.sectionId}</Badge>
                  <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
                    <Clock className="w-3 h-3" /> 
-                   Saved {new Date(bookmark.bookmarkedAt?.toDate?.()).toLocaleDateString()}
+                   Saved {bookmark.bookmarkedAt?.toDate ? new Date(bookmark.bookmarkedAt.toDate()).toLocaleDateString() : 'Recently'}
                  </span>
               </div>
               

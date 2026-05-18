@@ -16,7 +16,7 @@ import {
   LayoutGrid,
   List
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,13 +31,13 @@ export default function TestAnalyticsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
-  const { data: attempts, loading: attemptsLoading } = useCollection<any>(
-    db ? collection(db, "attempts") : null
-  );
+  const attemptsQuery = useMemoFirebase(() => db ? collection(db, "attempts") : null, [db]);
+  const { data: attempts, loading: attemptsLoading } = useCollection<any>(attemptsQuery);
 
-  const { data: mocks } = useCollection<any>(
-    db ? query(collection(db, "mockTests"), orderBy("title", "asc")) : null
-  );
+  const mocksQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "mockTests"), orderBy("title", "asc")) : null, 
+  [db]);
+  const { data: mocks } = useCollection<any>(mocksQuery);
 
   const testStats = useMemo(() => {
     if (!attempts || !mocks) return [];

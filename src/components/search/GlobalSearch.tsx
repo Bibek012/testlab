@@ -23,9 +23,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, limit, orderBy } from "firebase/firestore";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   isOpen: boolean;
@@ -38,20 +39,20 @@ export const GlobalSearch = ({ isOpen, onClose }: Props) => {
   const [queryText, setQueryText] = useState("");
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
-  // Real-time fetching of exams and mocks matching query
-  // Note: For advanced typo tolerance, an external engine like Algolia is usually used,
-  // but for MVP, we use Firestore starting-at filters.
-  const { data: exams } = useCollection<any>(
+  // Real-time fetching of exams and mocks matching query stabilized with useMemoFirebase
+  const examsQuery = useMemoFirebase(() => 
     db && queryText.length > 2 
       ? query(collection(db, "exams"), where("name", ">=", queryText), where("name", "<=", queryText + '\uf8ff'), limit(5))
-      : null
-  );
+      : null,
+  [db, queryText]);
+  const { data: exams } = useCollection<any>(examsQuery);
 
-  const { data: mocks } = useCollection<any>(
+  const mocksQuery = useMemoFirebase(() => 
     db && queryText.length > 2 
       ? query(collection(db, "mockTests"), where("title", ">=", queryText), where("title", "<=", queryText + '\uf8ff'), limit(5))
-      : null
-  );
+      : null,
+  [db, queryText]);
+  const { data: mocks } = useCollection<any>(mocksQuery);
 
   useEffect(() => {
     const saved = localStorage.getItem("testlab_recent_searches");

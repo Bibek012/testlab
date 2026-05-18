@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useMemo } from "react";
@@ -17,7 +18,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy, limit } from "firebase/firestore";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -25,11 +26,20 @@ import { format } from "date-fns";
 export default function AdminDashboard() {
   const db = useFirestore();
 
-  // Fetch real counts from dynamic collections
-  const { data: exams, loading: examsLoading } = useCollection(db ? collection(db, "exams") : null);
-  const { data: mocks, loading: mocksLoading } = useCollection(db ? collection(db, "mockTests") : null);
-  const { data: users, loading: usersLoading } = useCollection(db ? collection(db, "users") : null);
-  const { data: auditLogs, loading: logsLoading } = useCollection(db ? query(collection(db, "auditLogs"), orderBy("timestamp", "desc"), limit(6)) : null);
+  // Fetch real counts from dynamic collections stabilized with useMemoFirebase
+  const examsQuery = useMemoFirebase(() => db ? collection(db, "exams") : null, [db]);
+  const { data: exams, loading: examsLoading } = useCollection(examsQuery);
+
+  const mocksQuery = useMemoFirebase(() => db ? collection(db, "mockTests") : null, [db]);
+  const { data: mocks, loading: mocksLoading } = useCollection(mocksQuery);
+
+  const usersQuery = useMemoFirebase(() => db ? collection(db, "users") : null, [db]);
+  const { data: users, loading: usersLoading } = useCollection(usersQuery);
+
+  const auditLogsQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "auditLogs"), orderBy("timestamp", "desc"), limit(6)) : null,
+  [db]);
+  const { data: auditLogs, loading: logsLoading } = useCollection(auditLogsQuery);
 
   const stats = useMemo(() => [
     { label: "Total Exams", value: exams?.length || 0, icon: Briefcase, color: "text-blue-400" },

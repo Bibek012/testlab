@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useFirestore, useDoc, useCollection } from "@/firebase";
+import { useFirestore, useDoc, useCollection, useMemoFirebase } from "@/firebase";
 import { doc, updateDoc, serverTimestamp, collection, query } from "firebase/firestore";
 import { 
   ArrowLeft, 
@@ -42,10 +42,12 @@ export default function PublishControlPanel() {
   const db = useFirestore();
   const { toast } = useToast();
 
-  const mockRef = useMemo(() => db ? doc(db, "mockTests", mockId as string) : null, [db, mockId]);
+  const mockRef = useMemoFirebase(() => db ? doc(db, "mockTests", mockId as string) : null, [db, mockId]);
   const { data: mock, loading: mockLoading } = useDoc<any>(mockRef);
   
-  const questionsQuery = useMemo(() => db ? query(collection(db, "mockTests", mockId as string, "questions")) : null, [db, mockId]);
+  const questionsQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "mockTests", mockId as string, "questions")) : null, 
+  [db, mockId]);
   const { data: questions, loading: qsLoading } = useCollection<any>(questionsQuery);
 
   const [isSaving, setIsSaving] = useState(false);

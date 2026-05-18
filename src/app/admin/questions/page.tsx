@@ -20,7 +20,7 @@ import {
   FileSearch,
   Database
 } from "lucide-react";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { 
   collection, 
   query, 
@@ -62,11 +62,14 @@ export default function QuestionManagementPage() {
   const [hasImages, setHasImages] = useState<string>("all");
   const [selectedSection, setSelectedSection] = useState<string>("all");
 
-  // Fetch all categories and mocks for filters
-  const { data: mockTests } = useCollection(db ? query(collection(db, "mockTests"), orderBy("title", "asc")) : null);
+  // Fetch all categories and mocks for filters stabilized with useMemoFirebase
+  const mocksQuery = useMemoFirebase(() => 
+    db ? query(collection(db, "mockTests"), orderBy("title", "asc")) : null, 
+  [db]);
+  const { data: mockTests } = useCollection(mocksQuery);
 
   // Question collectionGroup
-  const questionsQuery = useMemo(() => {
+  const questionsQuery = useMemoFirebase(() => {
     if (!db) return null;
     let q = query(collectionGroup(db, "questions"), limit(200));
     if (selectedMockId !== "all") {
@@ -195,7 +198,7 @@ export default function QuestionManagementPage() {
                   </SelectContent>
                </Select>
 
-               <Button variant="outline" className="rounded-xl h-11 border-white/10 hover:bg-white/5 px-6 gap-2">
+               <Button variant="outline" className="rounded-xl h-11 border-white/10 hover:bg-white/5 px-6 gap-2" onClick={() => { setSearchQuery(""); setSelectedStatus("all"); setSelectedMockId("all"); setHasImages("all"); setSelectedSection("all"); }}>
                  <Filter className="w-4 h-4" /> Reset
                </Button>
              </div>
@@ -284,7 +287,7 @@ export default function QuestionManagementPage() {
                       <Badge className={cn(
                         "h-6 gap-1.5",
                         q.status === 'Verified' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                        q.status === 'Needs Review' ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                        q.status === 'Needs Review' ? "bg-amber-500/10 text-amber-400 border-emerald-500/20" :
                         "bg-slate-500/10 text-slate-400 border-slate-500/20"
                       )}>
                         <div className={cn("w-1.5 h-1.5 rounded-full", 
