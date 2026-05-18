@@ -10,18 +10,25 @@ export function initializeFirebase(): {
   auth: Auth | null;
 } {
   if (!isFirebaseConfigValid) {
+    console.warn("Firebase: Skipping initialization - Missing configuration keys in .env");
     return { firebaseApp: null, firestore: null, auth: null };
   }
 
   try {
+    console.log("Firebase: Initializing app...");
     const firebaseApp =
       getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    
+    console.log("Firebase: Connecting to Firestore...");
     const firestore = getFirestore(firebaseApp);
+    
+    console.log("Firebase: Connecting to Auth...");
     const auth = getAuth(firebaseApp);
 
+    console.log("Firebase: Successfully initialized services.");
     return { firebaseApp, firestore, auth };
   } catch (error) {
-    console.error("Firebase initialization failed:", error);
+    console.error("Firebase: Initialization failed critical check:", error);
     return { firebaseApp: null, firestore: null, auth: null };
   }
 }

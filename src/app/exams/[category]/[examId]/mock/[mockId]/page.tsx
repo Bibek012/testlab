@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { 
   getSampleMockTest, 
@@ -13,7 +13,7 @@ import { ConfigStep } from "@/components/mock-test/ConfigStep";
 import { TestInterface } from "@/components/mock-test/TestInterface";
 import { ResultPage } from "@/components/mock-test/ResultPage";
 import { SolutionInterface } from "@/components/mock-test/SolutionInterface";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { useUser, useFirestore } from "@/firebase";
 import { doc, setDoc, getDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -38,36 +38,52 @@ export default function MockTestEnginePage() {
   const [endTime, setEndTime] = useState<number | null>(null);
   const [isLoadingProgress, setIsLoadingProgress] = useState(true);
   const [hasResumeData, setHasResumeData] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const dashboardUrl = `/exams/${category}/${examId}`;
 
   // Initialize test data and check for cloud progress
   useEffect(() => {
     const initialize = async () => {
-      const data = getSampleMockTest(mockId);
-      setTestData(data);
-
-      if (user && db) {
-        const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-        const progressSnap = await getDoc(progressRef);
+      try {
+        console.log(`MockEngine: Loading test ${mockId}...`);
+        const data = getSampleMockTest(mockId);
+        if (!data) throw new Error("Test not found");
         
-        if (progressSnap.exists()) {
-          setHasResumeData(true);
+        setTestData(data);
+
+        // Initialize default empty responses
+        const initialResponses: Record<string, UserResponse> = {};
+        data.questions.forEach(q => {
+          initialResponses[q.id] = {
+            questionId: q.id,
+            selectedOptionId: null,
+            status: 'not-visited',
+            timeSpentSeconds: 0
+          };
+        });
+        setResponses(initialResponses);
+
+        // Try to fetch cloud progress if available
+        if (user && db) {
+          try {
+            const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+            const progressSnap = await getDoc(progressRef);
+            
+            if (progressSnap.exists()) {
+              console.log("MockEngine: Found cloud progress to resume.");
+              setHasResumeData(true);
+            }
+          } catch (e) {
+            console.warn("MockEngine: Failed to fetch cloud progress (likely offline), proceeding with local state.");
+          }
         }
+      } catch (err: any) {
+        console.error("MockEngine: Initialization error:", err);
+        setError(err.message || "Failed to load mock test.");
+      } finally {
+        setIsLoadingProgress(false);
       }
-      
-      // Initialize default empty responses
-      const initialResponses: Record<string, UserResponse> = {};
-      data.questions.forEach(q => {
-        initialResponses[q.id] = {
-          questionId: q.id,
-          selectedOptionId: null,
-          status: 'not-visited',
-          timeSpentSeconds: 0
-        };
-      });
-      setResponses(initialResponses);
-      setIsLoadingProgress(false);
     };
 
     if (!userLoading) {
@@ -79,16 +95,20 @@ export default function MockTestEnginePage() {
   useEffect(() => {
     if (step === 'test' && user && db && testData) {
       const interval = setInterval(async () => {
-        const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-        await setDoc(progressRef, {
-          uid: user.uid,
-          testId: mockId,
-          responses,
-          userLanguage,
-          startTime,
-          lastUpdated: serverTimestamp()
-        }, { merge: true });
-      }, 30000); // Save every 30 seconds
+        try {
+          const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+          await setDoc(progressRef, {
+            uid: user.uid,
+            testId: mockId,
+            responses,
+            userLanguage,
+            startTime,
+            lastUpdated: serverTimestamp()
+          }, { merge: true });
+        } catch (e) {
+          console.warn("MockEngine: Auto-save failed (offline). Progress remains in local state.");
+        }
+      }, 30000); 
       
       return () => clearInterval(interval);
     }
@@ -96,14 +116,23 @@ export default function MockTestEnginePage() {
 
   const handleResume = async () => {
     if (!user || !db) return;
-    const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-    const snap = await getDoc(progressRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      setResponses(data.responses);
-      setUserLanguage(data.userLanguage);
-      setStartTime(data.startTime);
-      setStep('test');
+    try {
+      const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+      const snap = await getDoc(progressRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setResponses(data.responses);
+        setUserLanguage(data.userLanguage);
+        setStartTime(data.startTime);
+        
+        // Restore timer
+        const testEndTime = (data.startTime || Date.now()) + (testData!.durationMinutes * 60 * 1000);
+        localStorage.setItem(`test_end_${mockId}`, testEndTime.toString());
+        
+        setStep('test');
+      }
+    } catch (e) {
+      console.error("MockEngine: Resume failed:", e);
     }
   };
 
@@ -111,21 +140,23 @@ export default function MockTestEnginePage() {
     setUserLanguage(lang);
     setStartTime(Date.now());
     
-    // Set local persistence as backup
     const testEndTime = Date.now() + (testData!.durationMinutes * 60 * 1000);
-    localStorage.setItem(`test_end_${testData!.id}`, testEndTime.toString());
+    localStorage.setItem(`test_end_${mockId}`, testEndTime.toString());
     
     setStep('test');
   };
 
   const handleSubmitTest = async () => {
     setEndTime(Date.now());
-    localStorage.removeItem(`test_end_${testData!.id}`);
+    localStorage.removeItem(`test_end_${mockId}`);
     
-    // Final save attempt
     if (user && db) {
-      const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-      await deleteDoc(progressRef);
+      try {
+        const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+        await deleteDoc(progressRef);
+      } catch (e) {
+        console.warn("MockEngine: Failed to clear cloud progress after submit.");
+      }
     }
     
     setStep('result');
@@ -133,9 +164,15 @@ export default function MockTestEnginePage() {
 
   const handleReattempt = async () => {
     if (user && db) {
-      const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-      await deleteDoc(progressRef);
+      try {
+        const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+        await deleteDoc(progressRef);
+      } catch (e) {
+        console.warn("MockEngine: Failed to clear previous session.");
+      }
     }
+    
+    localStorage.removeItem(`test_end_${mockId}`);
     
     const initialResponses: Record<string, UserResponse> = {};
     testData!.questions.forEach(q => {
@@ -152,6 +189,17 @@ export default function MockTestEnginePage() {
     setHasResumeData(false);
     setStep('instructions');
   };
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center p-6 text-center space-y-4">
+        <AlertCircle className="w-12 h-12 text-destructive" />
+        <h2 className="text-xl font-bold">Something went wrong</h2>
+        <p className="text-muted-foreground max-w-sm">{error}</p>
+        <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
+      </div>
+    );
+  }
 
   if (userLoading || isLoadingProgress || !testData) {
     return (

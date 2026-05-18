@@ -11,7 +11,8 @@ import {
   Users,
   CheckCircle2,
   BarChart3,
-  RotateCcw
+  RotateCcw,
+  Loader2
 } from "lucide-react";
 import { MOCK_TESTS, TestType, SUBJECTS_BY_EXAM } from "@/lib/mock-test-data";
 import { motion, AnimatePresence } from "framer-motion";
@@ -30,6 +31,7 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
   const [activeSubject, setActiveSubject] = useState<string | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState("");
   const [attemptedIds, setAttemptedIds] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
 
   const { user } = useUser();
   const db = useFirestore();
@@ -38,12 +40,17 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
   useEffect(() => {
     const fetchAttempts = async () => {
       if (user && db) {
-        const q = query(collection(db, 'attempts'), where('uid', '==', user.uid));
-        const snap = await getDocs(q);
-        const ids = new Set<string>();
-        snap.forEach(doc => ids.add(doc.data().testId));
-        setAttemptedIds(ids);
+        try {
+          const q = query(collection(db, 'attempts'), where('uid', '==', user.uid));
+          const snap = await getDocs(q);
+          const ids = new Set<string>();
+          snap.forEach(doc => ids.add(doc.data().testId));
+          setAttemptedIds(ids);
+        } catch (e) {
+          console.warn("MockTestList: Failed to fetch attempts (likely offline).");
+        }
       }
+      setIsLoading(false);
     };
     fetchAttempts();
   }, [user, db]);
@@ -119,73 +126,79 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-        <AnimatePresence mode="popLayout">
-          {filteredTests.map((test) => {
-            const isAttempted = attemptedIds.has(test.id);
-            const mockUrl = stateSlug 
-              ? `/exams/state/${stateSlug}/${examId}/mock/${test.id}`
-              : `/exams/${categorySlug}/${examId}/mock/${test.id}`;
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-primary opacity-50" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+          <AnimatePresence mode="popLayout">
+            {filteredTests.map((test) => {
+              const isAttempted = attemptedIds.has(test.id);
+              const mockUrl = stateSlug 
+                ? `/exams/state/${stateSlug}/${examId}/mock/${test.id}`
+                : `/exams/${categorySlug}/${examId}/mock/${test.id}`;
 
-            return (
-              <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} key={test.id}
-                className="group relative glass border-white/10 rounded-[1.5rem] md:rounded-[2rem] p-6 md:p-8 hover:border-primary/40 transition-all duration-300 flex flex-col h-full"
-              >
-                <div className="flex justify-between items-start gap-4 mb-4">
-                  <div className="flex flex-col gap-1.5">
-                    <div className="text-[8px] md:text-[10px] font-bold text-accent uppercase tracking-widest">{test.type}</div>
-                    <h3 className="text-base md:text-lg font-headline font-bold leading-tight group-hover:text-primary transition-colors">
-                      {test.title}
-                    </h3>
+              return (
+                <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} key={test.id}
+                  className="group relative glass border-white/10 rounded-[1.5rem] md:rounded-[2rem] p-6 md:p-8 hover:border-primary/40 transition-all duration-300 flex flex-col h-full"
+                >
+                  <div className="flex justify-between items-start gap-4 mb-4">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="text-[8px] md:text-[10px] font-bold text-accent uppercase tracking-widest">{test.type}</div>
+                      <h3 className="text-base md:text-lg font-headline font-bold leading-tight group-hover:text-primary transition-colors">
+                        {test.title}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-1 shrink-0">
+                      {isAttempted && <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] px-1.5 h-4 flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5" /> Done</Badge>}
+                      {test.isFree && <Badge className="bg-white/5 text-muted-foreground border-white/10 text-[8px] px-1.5 h-4">Free</Badge>}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap justify-end gap-1 shrink-0">
-                    {isAttempted && <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] px-1.5 h-4 flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5" /> Done</Badge>}
-                    {test.isFree && <Badge className="bg-white/5 text-muted-foreground border-white/10 text-[8px] px-1.5 h-4">Free</Badge>}
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-2 py-6 border-y border-white/5 mb-6">
-                  <div className="text-center">
-                    <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Qs</div>
-                    <div className="text-xs md:text-sm font-bold">{test.questions}</div>
+                  <div className="grid grid-cols-3 gap-2 py-6 border-y border-white/5 mb-6">
+                    <div className="text-center">
+                      <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Qs</div>
+                      <div className="text-xs md:text-sm font-bold">{test.questions}</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Mins</div>
+                      <div className="text-xs md:text-sm font-bold">{test.duration}m</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Rating</div>
+                      <div className="text-xs md:text-sm font-bold text-amber-400">{test.rating}</div>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Mins</div>
-                    <div className="text-xs md:text-sm font-bold">{test.duration}m</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Rating</div>
-                    <div className="text-xs md:text-sm font-bold text-amber-400">{test.rating}</div>
-                  </div>
-                </div>
 
-                <div className="mt-auto flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    <Users className="w-3.5 h-3.5" />
-                    <span>{test.attempts.toLocaleString()}</span>
-                  </div>
-                  <Link href={mockUrl} className="shrink-0 flex gap-2">
-                    {isAttempted ? (
-                      <>
-                        <Button variant="outline" className="rounded-full border-white/10 text-muted-foreground h-9 px-4 text-xs font-bold gap-2">
-                          <BarChart3 className="w-3.5 h-3.5" /> Analysis
+                  <div className="mt-auto flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <Users className="w-3.5 h-3.5" />
+                      <span>{test.attempts.toLocaleString()}</span>
+                    </div>
+                    <Link href={mockUrl} className="shrink-0 flex gap-2">
+                      {isAttempted ? (
+                        <>
+                          <Button variant="outline" className="rounded-full border-white/10 text-muted-foreground h-9 px-4 text-xs font-bold gap-2">
+                            <BarChart3 className="w-3.5 h-3.5" /> Analysis
+                          </Button>
+                          <Button className="rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent h-9 px-4 text-xs font-bold gap-2">
+                            <RotateCcw className="w-3.5 h-3.5" /> Reattempt
+                          </Button>
+                        </>
+                      ) : (
+                        <Button className="rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent transition-all gap-2 h-9 px-6 text-xs font-bold">
+                          <Play className="w-3.5 h-3.5 fill-current" /> Start
                         </Button>
-                        <Button className="rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent h-9 px-4 text-xs font-bold gap-2">
-                          <RotateCcw className="w-3.5 h-3.5" /> Reattempt
-                        </Button>
-                      </>
-                    ) : (
-                      <Button className="rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent transition-all gap-2 h-9 px-6 text-xs font-bold">
-                        <Play className="w-3.5 h-3.5 fill-current" /> Start
-                      </Button>
-                    )}
-                  </Link>
-                </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </div>
+                      )}
+                    </Link>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 };
