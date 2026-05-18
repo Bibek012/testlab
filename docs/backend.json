@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "User": {
@@ -109,6 +108,65 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "slug", "examId", "type"]
+    },
+    "MockSection": {
+      "title": "Mock Section",
+      "description": "A section within a mock test (e.g., Mathematics).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mockId": { "type": "string" },
+        "title": {
+          "type": "object",
+          "properties": {
+            "en": { "type": "string" },
+            "hn": { "type": "string" }
+          }
+        },
+        "order": { "type": "number" }
+      }
+    },
+    "MockQuestion": {
+      "title": "Mock Question",
+      "description": "A specific question within a mock test.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mockId": { "type": "string" },
+        "sectionId": { "type": "string" },
+        "en": { "type": "string" },
+        "hn": { "type": "string" },
+        "en_html": { "type": "string" },
+        "hn_html": { "type": "string" },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "en": { "type": "string" },
+              "hn": { "type": "string" },
+              "en_html": { "type": "string" },
+              "hn_html": { "type": "string" },
+              "image": { "type": "string" }
+            }
+          }
+        },
+        "answer": { "type": "string" },
+        "marks": { "type": "number" },
+        "negativeMarks": { "type": "number" },
+        "dom_images": { "type": "array", "items": { "type": "string" } },
+        "memory_images": { "type": "array", "items": { "type": "string" } },
+        "explanation": {
+          "type": "object",
+          "properties": {
+            "en": { "type": "string" },
+            "hn": { "type": "string" },
+            "en_html": { "type": "string" },
+            "hn_html": { "type": "string" }
+          }
+        }
+      }
     }
   },
   "auth": {
@@ -138,6 +196,14 @@
     "/mockTests/{mockId}": {
       "schema": "MockTest",
       "description": "Detailed configuration of each mock test."
+    },
+    "/mockTests/{mockId}/sections/{sectionId}": {
+      "schema": "MockSection",
+      "description": "Sections within a specific mock test."
+    },
+    "/mockTests/{mockId}/questions/{questionId}": {
+      "schema": "MockQuestion",
+      "description": "Questions within a specific mock test."
     }
   }
 }

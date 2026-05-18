@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from "react";
@@ -36,8 +37,8 @@ const menuItems = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/admin" },
   { title: "Exams", icon: Briefcase, href: "/admin/exams" },
   { title: "Mock Tests", icon: Files, href: "/admin/mock-tests" },
+  { title: "Upload JSON", icon: UploadCloud, href: "/admin/upload-json" },
   { title: "Questions", icon: HelpCircle, href: "/admin/questions" },
-  { title: "Upload JSON", icon: UploadCloud, href: "/admin/upload" },
   { title: "Analytics", icon: BarChart3, href: "/admin/analytics" },
   { title: "Users", icon: Users, href: "/admin/users" },
   { title: "Reports", icon: FileWarning, href: "/admin/reports" },
