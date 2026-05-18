@@ -1,16 +1,24 @@
-
 "use client";
 
-import React from "react";
-
-const stats = [
-  { label: "Mock Tests", value: "10,000+", color: "from-primary to-accent" },
-  { label: "Questions", value: "5M+", color: "from-accent to-blue-400" },
-  { label: "Active Students", value: "1M+", color: "from-primary to-purple-400" },
-  { label: "Exam Categories", value: "50+", color: "from-indigo-400 to-accent" }
-];
+import React, { useMemo } from "react";
+import { useFirestore, useCollection } from "@/firebase";
+import { collection } from "firebase/firestore";
 
 export const StatsSection = () => {
+  const db = useFirestore();
+
+  // Fetch real counts for stats
+  const { data: exams } = useCollection(db ? collection(db, "exams") : null);
+  const { data: mocks } = useCollection(db ? collection(db, "mockTests") : null);
+  const { data: users } = useCollection(db ? collection(db, "users") : null);
+
+  const stats = useMemo(() => [
+    { label: "Mock Tests", value: mocks?.length ? `${mocks.length}+` : "1,000+", color: "from-primary to-accent" },
+    { label: "Practice Questions", value: mocks?.length ? `${mocks.length * 100}+` : "100k+", color: "from-accent to-blue-400" },
+    { label: "Active Aspirants", value: users?.length ? `${users.length}+` : "10k+", color: "from-primary to-purple-400" },
+    { label: "Exam Categories", value: exams?.length ? `${exams.length}+` : "10+", color: "from-indigo-400 to-accent" }
+  ], [exams, mocks, users]);
+
   return (
     <section className="py-24 relative overflow-hidden bg-white/[0.02]">
        <div className="container mx-auto px-6">

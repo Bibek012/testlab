@@ -1,20 +1,34 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Files, HelpCircle, ArrowRight } from "lucide-react";
-
-const exams = [
-  { id: "cgl", category: "ssc", name: "SSC CGL", tests: "250+", questions: "15,000+", difficulty: "Intermediate" },
-  { id: "ntpc", category: "railway", name: "RRB NTPC", tests: "180+", questions: "10,000+", difficulty: "Intermediate" },
-  { id: "sbi-po", category: "banking", name: "SBI PO", tests: "150+", questions: "12,000+", difficulty: "Hard" },
-  { id: "chsl", category: "ssc", name: "SSC CHSL", tests: "200+", questions: "14,000+", difficulty: "Easy" },
-  { id: "bpsc", category: "state", state: "bihar", name: "BPSC", tests: "100+", questions: "7,000+", difficulty: "Hard" },
-];
+import { Files, HelpCircle, ArrowRight, Loader2, Star } from "lucide-react";
+import { useFirestore, useCollection } from "@/firebase";
+import { collection, query, where, limit } from "firebase/firestore";
+import { cn } from "@/lib/utils";
 
 export const PopularExams = () => {
+  const db = useFirestore();
+  const popularExamsQuery = useMemo(() => 
+    db ? query(collection(db, "exams"), where("isActive", "==", true), limit(8)) : null, 
+  [db]);
+
+  const { data: exams, loading } = useCollection<any>(popularExamsQuery);
+
+  if (loading) {
+    return (
+      <div className="py-24 bg-white/[0.02]">
+        <div className="container mx-auto px-6 text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary opacity-20" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!exams || exams.length === 0) return null;
+
   return (
     <section className="py-16 md:py-24 bg-white/[0.02] overflow-hidden">
       <div className="container mx-auto px-4 md:px-6">
@@ -27,14 +41,14 @@ export const PopularExams = () => {
 
         <div className="relative overflow-x-auto hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           <div className="flex gap-4 md:gap-8 w-max pb-4">
-            {exams.map((exam, i) => {
-              const href = exam.category === "state" 
-                ? `/exams/state/${exam.state}/${exam.id}`
-                : `/exams/${exam.category}/${exam.id}`;
+            {exams.map((exam) => {
+              const href = exam.stateSlug 
+                ? `/exams/state/${exam.stateSlug}/${exam.id}`
+                : `/exams/${exam.categoryId}/${exam.id}`;
 
               return (
                 <div
-                  key={i}
+                  key={exam.id}
                   className="w-[280px] md:w-[320px] bg-card border border-white/10 rounded-2xl p-6 md:p-8 hover:border-accent/40 transition-all duration-300 group shadow-lg flex flex-col"
                 >
                   <div className="flex justify-between items-start mb-6">
@@ -48,18 +62,18 @@ export const PopularExams = () => {
                         'text-green-400 border-green-400/30'
                       )}
                     >
-                      {exam.difficulty}
+                      {exam.difficulty || 'Intermediate'}
                     </Badge>
                   </div>
 
                   <div className="space-y-3 mb-8 flex-1">
                     <div className="flex items-center gap-3 text-xs md:text-sm text-muted-foreground">
                       <Files className="w-4 h-4 text-primary" />
-                      <span>{exam.tests} Mock Tests</span>
+                      <span>{exam.testsCount || 0} Mock Tests</span>
                     </div>
                     <div className="flex items-center gap-3 text-xs md:text-sm text-muted-foreground">
                       <HelpCircle className="w-4 h-4 text-accent" />
-                      <span>{exam.questions} Questions</span>
+                      <span>{exam.questionsCount || 0} Questions</span>
                     </div>
                   </div>
 
@@ -78,5 +92,3 @@ export const PopularExams = () => {
     </section>
   );
 };
-
-import { cn } from "@/lib/utils";

@@ -1,10 +1,8 @@
-
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { 
-  getSampleMockTest, 
   MockTestData, 
   UserResponse 
 } from "@/lib/mock-test-engine-data";
@@ -14,8 +12,8 @@ import { TestInterface } from "@/components/mock-test/TestInterface";
 import { ResultPage } from "@/components/mock-test/ResultPage";
 import { SolutionInterface } from "@/components/mock-test/SolutionInterface";
 import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
-import { useUser, useFirestore } from "@/firebase";
-import { doc, setDoc, getDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
+import { doc, setDoc, getDoc, deleteDoc, serverTimestamp, collection, query, orderBy } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 
 export type TestStep = 'instructions' | 'config' | 'test' | 'result' | 'solution';
@@ -31,30 +29,46 @@ export default function MockTestEnginePage() {
   const db = useFirestore();
 
   const [step, setStep] = useState<TestStep>('instructions');
-  const [testData, setTestData] = useState<MockTestData | null>(null);
   const [userLanguage, setUserLanguage] = useState<'en' | 'hn'>('en');
   const [responses, setResponses] = useState<Record<string, UserResponse>>({});
   const [startTime, setStartTime] = useState<number | null>(null);
   const [endTime, setEndTime] = useState<number | null>(null);
-  const [isLoadingProgress, setIsLoadingProgress] = useState(true);
   const [hasResumeData, setHasResumeData] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // REAL DATA FETCHING
+  const mockRef = useMemoFirebase(() => db ? doc(db, "mockTests", mockId) : null, [db, mockId]);
+  const { data: mockMetadata, loading: mockLoading } = useDoc<any>(mockRef);
+
+  const sectionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "sections"), orderBy("id", "asc")) : null, [db, mockId]);
+  const { data: sections, loading: sectionsLoading } = useCollection<any>(sectionsQuery);
+
+  const questionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "questions"), orderBy("id", "asc")) : null, [db, mockId]);
+  const { data: questions, loading: questionsLoading } = useCollection<any>(questionsQuery);
+
+  const testData = useMemo<MockTestData | null>(() => {
+    if (!mockMetadata || !sections || !questions) return null;
+    return {
+      id: mockMetadata.id,
+      title: mockMetadata.title,
+      examName: mockMetadata.examId,
+      durationMinutes: mockMetadata.durationMinutes || 90,
+      sections: sections,
+      questions: questions
+    };
+  }, [mockMetadata, sections, questions]);
+
   const dashboardUrl = `/exams/${category}/${examId}`;
 
-  // Initialize test data and check for cloud progress
+  // Check for resume data and initialize responses
   useEffect(() => {
     const initialize = async () => {
-      try {
-        console.log(`MockEngine: Loading test ${mockId}...`);
-        const data = getSampleMockTest(mockId);
-        if (!data) throw new Error("Test not found");
-        
-        setTestData(data);
-
-        // Initialize default empty responses
+      if (!testData || !user || !db) return;
+      
+      // Initialize default empty responses if not already set
+      if (Object.keys(responses).length === 0) {
         const initialResponses: Record<string, UserResponse> = {};
-        data.questions.forEach(q => {
+        testData.questions.forEach(q => {
           initialResponses[q.id] = {
             questionId: q.id,
             selectedOptionId: null,
@@ -63,33 +77,22 @@ export default function MockTestEnginePage() {
           };
         });
         setResponses(initialResponses);
+      }
 
-        // Try to fetch cloud progress if available
-        if (user && db) {
-          try {
-            const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-            const progressSnap = await getDoc(progressRef);
-            
-            if (progressSnap.exists()) {
-              console.log("MockEngine: Found cloud progress to resume.");
-              setHasResumeData(true);
-            }
-          } catch (e) {
-            console.warn("MockEngine: Failed to fetch cloud progress (likely offline), proceeding with local state.");
-          }
+      // Check cloud progress
+      try {
+        const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+        const progressSnap = await getDoc(progressRef);
+        if (progressSnap.exists() && step === 'instructions') {
+          setHasResumeData(true);
         }
-      } catch (err: any) {
-        console.error("MockEngine: Initialization error:", err);
-        setError(err.message || "Failed to load mock test.");
-      } finally {
-        setIsLoadingProgress(false);
+      } catch (e) {
+        console.warn("MockEngine: Failed to fetch cloud progress.");
       }
     };
 
-    if (!userLoading) {
-      initialize();
-    }
-  }, [mockId, user, db, userLoading]);
+    initialize();
+  }, [testData, user, db, mockId]);
 
   // Periodic Auto-Save
   useEffect(() => {
@@ -105,18 +108,16 @@ export default function MockTestEnginePage() {
             startTime,
             lastUpdated: serverTimestamp()
           }, { merge: true });
-          console.log("MockEngine: Progress auto-saved to cloud.");
         } catch (e) {
-          console.warn("MockEngine: Auto-save failed (offline). Progress remains in local state.");
+          console.warn("MockEngine: Auto-save failed.");
         }
       }, 30000); 
-      
       return () => clearInterval(interval);
     }
   }, [step, user, db, mockId, responses, userLanguage, startTime, testData]);
 
   const handleResume = async () => {
-    if (!user || !db) return;
+    if (!user || !db || !testData) return;
     try {
       const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
       const snap = await getDoc(progressRef);
@@ -126,87 +127,68 @@ export default function MockTestEnginePage() {
         setUserLanguage(data.userLanguage);
         setStartTime(data.startTime);
         
-        // Restore timer absolute end time
-        const duration = testData!.durationMinutes * 60 * 1000;
+        const duration = testData.durationMinutes * 60 * 1000;
         const testEndTime = (data.startTime || Date.now()) + duration;
         localStorage.setItem(`test_end_${mockId}`, testEndTime.toString());
-        
         setStep('test');
       }
     } catch (e) {
-      console.error("MockEngine: Resume failed:", e);
+      console.error(e);
     }
   };
 
   const handleStartTest = (lang: 'en' | 'hn') => {
+    if (!testData) return;
     setUserLanguage(lang);
     setStartTime(Date.now());
-    
-    const testEndTime = Date.now() + (testData!.durationMinutes * 60 * 1000);
+    const testEndTime = Date.now() + (testData.durationMinutes * 60 * 1000);
     localStorage.setItem(`test_end_${mockId}`, testEndTime.toString());
-    
     setStep('test');
   };
 
   const handleSubmitTest = async () => {
     setEndTime(Date.now());
     localStorage.removeItem(`test_end_${mockId}`);
-    
     if (user && db) {
       try {
-        const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-        await deleteDoc(progressRef);
-      } catch (e) {
-        console.warn("MockEngine: Failed to clear cloud progress after submit.");
-      }
+        await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
+      } catch (e) {}
     }
-    
     setStep('result');
   };
 
   const handleReattempt = async () => {
     if (user && db) {
       try {
-        const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-        await deleteDoc(progressRef);
-      } catch (e) {
-        console.warn("MockEngine: Failed to clear previous session.");
-      }
+        await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
+      } catch (e) {}
     }
-    
     localStorage.removeItem(`test_end_${mockId}`);
-    
-    const initialResponses: Record<string, UserResponse> = {};
-    testData!.questions.forEach(q => {
-      initialResponses[q.id] = {
-        questionId: q.id,
-        selectedOptionId: null,
-        status: 'not-visited',
-        timeSpentSeconds: 0
-      };
-    });
-    setResponses(initialResponses);
+    setResponses({});
     setStartTime(null);
     setEndTime(null);
     setHasResumeData(false);
     setStep('instructions');
   };
 
-  if (error) {
+  const isLoading = userLoading || mockLoading || sectionsLoading || questionsLoading;
+
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center p-6 text-center space-y-4">
-        <AlertCircle className="w-12 h-12 text-destructive" />
-        <h2 className="text-xl font-bold">Something went wrong</h2>
-        <p className="text-muted-foreground max-w-sm">{error}</p>
-        <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
+      <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">Loading Test Content...</p>
       </div>
     );
   }
 
-  if (userLoading || isLoadingProgress || !testData) {
+  if (!testData) {
     return (
-      <div className="min-h-screen bg-[#0b1120] flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center p-6 text-center space-y-4">
+        <AlertCircle className="w-12 h-12 text-destructive" />
+        <h2 className="text-xl font-bold">Mock Test Not Found</h2>
+        <p className="text-muted-foreground">The test might have been unpublished or removed by admins.</p>
+        <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
       </div>
     );
   }

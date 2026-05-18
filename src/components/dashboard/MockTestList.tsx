@@ -1,7 +1,6 @@
-
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,13 +11,13 @@ import {
   CheckCircle2,
   BarChart3,
   RotateCcw,
-  Loader2
+  Loader2,
+  FileText
 } from "lucide-react";
-import { MOCK_TESTS, TestType, SUBJECTS_BY_EXAM } from "@/lib/mock-test-data";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useUser, useFirestore } from "@/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { useUser, useFirestore, useCollection } from "@/firebase";
+import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 
 interface MockTestListProps {
   examId: string;
@@ -27,14 +26,18 @@ interface MockTestListProps {
 }
 
 export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListProps) => {
-  const [activeType, setActiveType] = useState<TestType | 'All'>('All');
-  const [activeSubject, setActiveSubject] = useState<string | 'All'>('All');
+  const [activeType, setActiveType] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState("");
   const [attemptedIds, setAttemptedIds] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState(true);
-
+  
   const { user } = useUser();
   const db = useFirestore();
+
+  // Fetch Mock Tests for this Exam
+  const testsQuery = useMemo(() => 
+    db ? query(collection(db, "mockTests"), where("examId", "==", examId), where("status", "==", "Published"), orderBy("title", "asc")) : null,
+  [db, examId]);
+  const { data: tests, loading: testsLoading } = useCollection<any>(testsQuery);
 
   // Load attempted status from cloud
   useEffect(() => {
@@ -47,25 +50,23 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
           snap.forEach(doc => ids.add(doc.data().testId));
           setAttemptedIds(ids);
         } catch (e) {
-          console.warn("MockTestList: Failed to fetch attempts (likely offline).");
+          console.warn("MockTestList: Failed to fetch attempts.");
         }
       }
-      setIsLoading(false);
     };
     fetchAttempts();
   }, [user, db]);
 
-  const types: (TestType | 'All')[] = ['All', 'Full Test', 'Chapter Test', 'Subject Test', 'Previous Year', 'Daily Quiz'];
-  const subjects = ['All', ...(SUBJECTS_BY_EXAM[examId] || [])];
+  const filteredTests = useMemo(() => {
+    if (!tests) return [];
+    return tests.filter(test => {
+      const matchesType = activeType === 'All' || test.type === activeType;
+      const matchesSearch = test.title.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesType && matchesSearch;
+    });
+  }, [tests, activeType, searchQuery]);
 
-  const filteredTests = MOCK_TESTS.filter(test => {
-    const matchesType = activeType === 'All' || test.type === activeType;
-    const matchesSubject = activeSubject === 'All' || test.subject === activeSubject;
-    const matchesSearch = test.title.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesSubject && matchesSearch;
-  });
-
-  const showSubjectFilters = activeType === 'Subject Test' || activeType === 'Chapter Test';
+  const types = ['All', 'Full Test', 'Subject Test', 'Chapter Test', 'Previous Year', 'Daily Quiz'];
 
   return (
     <div className="space-y-8 md:space-y-12 py-6 md:py-12 w-full overflow-hidden">
@@ -76,10 +77,7 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
             {types.map((type) => (
               <button
                 key={type}
-                onClick={() => {
-                  setActiveType(type);
-                  setActiveSubject('All');
-                }}
+                onClick={() => setActiveType(type)}
                 className={cn(
                   "whitespace-nowrap px-4 py-2 rounded-full text-[10px] md:text-xs font-semibold transition-all border shrink-0",
                   activeType === type 
@@ -105,30 +103,14 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
         </div>
       </div>
 
-      <AnimatePresence>
-        {showSubjectFilters && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-6 px-6 sm:mx-0 sm:px-0 pb-4">
-              {subjects.map((sub) => (
-                <button
-                  key={sub}
-                  onClick={() => setActiveSubject(sub)}
-                  className={cn(
-                    "flex-shrink-0 px-5 py-2 rounded-xl text-[10px] md:text-xs font-medium transition-all border",
-                    activeSubject === sub ? 'bg-accent/20 text-accent border-accent/40' : 'bg-white/5 border-white/5 text-muted-foreground hover:bg-white/10'
-                  )}
-                >
-                  {sub}
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-primary opacity-50" />
+      {testsLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {[1, 2, 3].map(i => <div key={i} className="h-64 rounded-3xl bg-white/5 animate-pulse" />)}
+        </div>
+      ) : filteredTests.length === 0 ? (
+        <div className="py-20 text-center glass border-white/5 rounded-[2rem] space-y-4">
+           <FileText className="w-12 h-12 mx-auto text-muted-foreground opacity-20" />
+           <p className="text-muted-foreground font-medium">No mock tests available for the selected criteria.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
@@ -151,44 +133,36 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
                       </h3>
                     </div>
                     <div className="flex flex-wrap justify-end gap-1 shrink-0">
-                      {isAttempted && <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] px-1.5 h-4 flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5" /> Done</Badge>}
+                      {isAttempted && <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] px-1.5 h-4 flex items-center gap-1"><CheckCircle2 className="w-2.5 h-2.5" /> Attempted</Badge>}
                       {test.isFree && <Badge className="bg-white/5 text-muted-foreground border-white/10 text-[8px] px-1.5 h-4">Free</Badge>}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 py-6 border-y border-white/5 mb-6">
+                  <div className="grid grid-cols-2 gap-4 py-6 border-y border-white/5 mb-6">
                     <div className="text-center">
-                      <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Qs</div>
-                      <div className="text-xs md:text-sm font-bold">{test.questions}</div>
+                      <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Questions</div>
+                      <div className="text-xs md:text-sm font-bold">{test.totalQuestions || 0}</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Mins</div>
-                      <div className="text-xs md:text-sm font-bold">{test.duration}m</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Rating</div>
-                      <div className="text-xs md:text-sm font-bold text-amber-400">{test.rating}</div>
+                      <div className="text-[8px] text-muted-foreground uppercase font-bold mb-1">Duration</div>
+                      <div className="text-xs md:text-sm font-bold">{test.durationMinutes || 0}m</div>
                     </div>
                   </div>
 
                   <div className="mt-auto flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                      <Users className="w-3.5 h-3.5" />
-                      <span>{test.attempts.toLocaleString()}</span>
-                    </div>
-                    <Link href={mockUrl} className="shrink-0 flex gap-2">
+                    <Link href={mockUrl} className="w-full">
                       {isAttempted ? (
-                        <>
-                          <Button variant="outline" className="rounded-full border-white/10 text-muted-foreground h-9 px-4 text-xs font-bold gap-2">
-                            <BarChart3 className="w-3.5 h-3.5" /> Analysis
-                          </Button>
-                          <Button className="rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent h-9 px-4 text-xs font-bold gap-2">
-                            <RotateCcw className="w-3.5 h-3.5" /> Reattempt
-                          </Button>
-                        </>
+                        <div className="grid grid-cols-2 gap-2 w-full">
+                           <Button variant="outline" className="rounded-xl border-white/10 text-muted-foreground h-10 px-0 text-[10px] font-bold gap-1">
+                              <BarChart3 className="w-3 h-3" /> Result
+                           </Button>
+                           <Button className="rounded-xl bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent h-10 px-0 text-[10px] font-bold gap-1">
+                              <RotateCcw className="w-3 h-3" /> Reattempt
+                           </Button>
+                        </div>
                       ) : (
-                        <Button className="rounded-full bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent transition-all gap-2 h-9 px-6 text-xs font-bold">
-                          <Play className="w-3.5 h-3.5 fill-current" /> Start
+                        <Button className="w-full rounded-xl bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent transition-all gap-2 h-11 text-sm font-bold">
+                          <Play className="w-4 h-4 fill-current" /> Start Practice
                         </Button>
                       )}
                     </Link>

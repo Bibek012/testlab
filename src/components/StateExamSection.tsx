@@ -1,20 +1,31 @@
-
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight } from "lucide-react";
-
-const states = [
-  { name: "Bihar", code: "BH", exams: "BPSC, BSSC, Police" },
-  { name: "Uttar Pradesh", code: "UP", exams: "UPPSC, UPSSSC, Police" },
-  { name: "West Bengal", code: "WB", exams: "WBPSC, WB Police" },
-  { name: "Rajasthan", code: "RJ", exams: "RPSC, RSMSSB" },
-  { name: "Maharashtra", code: "MH", exams: "MPSC, MahaPolice" },
-  { name: "Madhya Pradesh", code: "MP", exams: "MPPSC, Vyapam" }
-];
+import { ArrowRight, MapPin, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { useFirestore, useCollection } from "@/firebase";
+import { collection, query, orderBy, limit } from "firebase/firestore";
 
 export const StateExamSection = () => {
+  const db = useFirestore();
+  
+  // Fetch real state exams from the global database
+  const statesQuery = useMemo(() => 
+    db ? query(collection(db, "exams"), orderBy("name", "asc"), limit(6)) : null, 
+  [db]);
+
+  const { data: exams, loading } = useCollection<any>(statesQuery);
+
+  // Filter only those with stateSlug
+  const stateExams = useMemo(() => 
+    exams?.filter(e => !!e.stateSlug) || [], 
+  [exams]);
+
+  if (loading) return null; // Keep it clean during load
+
+  if (stateExams.length === 0) return null;
+
   return (
     <section id="state-exams" className="py-24 relative overflow-hidden">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full -z-10 opacity-30">
@@ -29,34 +40,37 @@ export const StateExamSection = () => {
               Specialized preparation content curated for state-specific administrative, police, and educational exams.
             </p>
           </div>
-          <Badge variant="outline" className="px-6 py-2 rounded-full border-primary/30 text-primary cursor-pointer hover:bg-primary/10">
-            View All States
-          </Badge>
+          <Link href="/exams/state">
+            <Badge variant="outline" className="px-6 py-2 rounded-full border-primary/30 text-primary cursor-pointer hover:bg-primary/10">
+              View All States
+            </Badge>
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {states.map((state, i) => (
-            <div
-              key={i}
-              className="group relative p-1 rounded-2xl bg-gradient-to-br from-white/10 to-transparent hover:from-primary/50 hover:to-accent/50 transition-all duration-500"
+          {stateExams.map((exam) => (
+            <Link 
+              key={exam.id}
+              href={`/exams/state/${exam.stateSlug}/${exam.id}`}
+              className="group relative p-1 rounded-2xl bg-gradient-to-br from-white/10 to-transparent hover:from-primary/50 hover:to-accent/50 transition-all duration-500 block"
             >
               <div className="bg-card rounded-[calc(1rem-4px)] p-8 h-full flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-6">
-                    <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center font-headline font-bold text-2xl text-accent border border-white/10">
-                      {state.code}
+                    <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center font-headline font-bold text-2xl text-accent border border-white/10 uppercase">
+                      {exam.stateSlug.slice(0, 2)}
                     </div>
-                    <Badge className="bg-white/5 border-white/10 text-muted-foreground">Local Exams</Badge>
+                    <Badge className="bg-white/5 border-white/10 text-muted-foreground uppercase text-[10px] tracking-widest">{exam.stateSlug}</Badge>
                   </div>
-                  <h3 className="text-2xl font-headline font-bold mb-2">{state.name}</h3>
-                  <p className="text-sm text-muted-foreground mb-8">{state.exams}</p>
+                  <h3 className="text-2xl font-headline font-bold mb-2">{exam.name}</h3>
+                  <p className="text-sm text-muted-foreground mb-8 line-clamp-2">{exam.description}</p>
                 </div>
                 
-                <button className="flex items-center gap-2 text-sm font-semibold text-primary group-hover:gap-4 transition-all">
-                  Browse State Exams <ArrowRight className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary group-hover:gap-4 transition-all">
+                  Browse Series <ArrowRight className="w-4 h-4" />
+                </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
