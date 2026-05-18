@@ -172,7 +172,7 @@ export default function UploadJsonPage() {
       });
     }
 
-    // Handle flat questions if present (and link them to first section if no sectionId)
+    // Handle flat questions if present
     if (json.questions && Array.isArray(json.questions)) {
       const defaultSecId = extractedSections[0]?.id || 'sec-default';
       if (extractedSections.length === 0) {
@@ -195,29 +195,69 @@ export default function UploadJsonPage() {
 
     let totalImages = 0;
     let hasHtml = false;
-    let bilingualCount = 0;
+    let fullyBilingualCount = 0;
     const questionIds = new Set();
     const sectionIds = new Set(extractedSections.map(s => s.id));
 
     extractedQuestions.forEach((q, i) => {
-      const qLabel = q.id || `Index ${i}`;
-      if (!q.id) errors.push(`CRITICAL: Question ${i} is missing a unique ID.`);
-      if (questionIds.has(q.id)) errors.push(`CRITICAL: Duplicate Question ID found: ${q.id}`);
-      questionIds.add(q.id);
+      const qLabel = q.id || `at index ${i}`;
+      
+      // ID Check
+      if (!q.id) errors.push(`CRITICAL: Question ${qLabel} is missing a unique ID.`);
+      else if (questionIds.has(q.id)) errors.push(`CRITICAL: Duplicate Question ID: ${q.id}`);
+      if (q.id) questionIds.add(q.id);
 
-      if (!sectionIds.has(q.sectionId)) errors.push(`CRITICAL: Question ${qLabel} links to missing section: ${q.sectionId}`);
+      // Section Check
+      if (!sectionIds.has(q.sectionId)) errors.push(`CRITICAL: Question ${qLabel} links to invalid section: ${q.sectionId}`);
 
-      if (!q.en && !q.en_html) errors.push(`CRITICAL: Question ${qLabel} has no content.`);
-      if (!q.hn && !q.hn_html) warnings.push(`WARNING: Question ${qLabel} is missing Hindi translation.`);
-      else bilingualCount++;
+      // Content Integrity Check
+      const hasEn = !!(q.en || q.en_html);
+      const hasHn = !!(q.hn || q.hn_html);
 
+      if (!hasEn && !hasHn) {
+        errors.push(`CRITICAL: Question ${qLabel} is completely empty (no English or Hindi content).`);
+      } else if (!hasEn) {
+        warnings.push(`WARNING: Question ${qLabel} is missing English content.`);
+      } else if (!hasHn) {
+        warnings.push(`WARNING: Question ${qLabel} is missing Hindi translation.`);
+      }
+
+      if (hasEn && hasHn) fullyBilingualCount++;
       if (q.en_html || q.hn_html) hasHtml = true;
 
-      if (!q.options || q.options.length < 2) errors.push(`CRITICAL: Question ${qLabel} needs at least 2 options.`);
-      else {
+      // Options Check
+      if (!q.options || q.options.length < 2) {
+        errors.push(`CRITICAL: Question ${qLabel} must have at least 2 options.`);
+      } else {
         const optionIds = new Set(q.options.map((o: any) => o.id));
-        if (!q.answer) errors.push(`CRITICAL: Question ${qLabel} missing answer ID.`);
-        else if (!optionIds.has(q.answer)) errors.push(`CRITICAL: Answer ${q.answer} for ${qLabel} not in options.`);
+        const answerVal = q.answer || q.raw_answer_id;
+        
+        let answerFound = false;
+        if (answerVal !== undefined && answerVal !== null) {
+          if (optionIds.has(answerVal)) {
+            answerFound = true;
+          } else if (typeof answerVal === 'number' && q.options[answerVal]) {
+            answerFound = true;
+            // Normalize to ID if numeric index was provided
+            q.answer = q.options[answerVal].id;
+          }
+        }
+
+        if (!answerFound) {
+          errors.push(`CRITICAL: Question ${qLabel} has an invalid answer reference: "${answerVal}"`);
+        }
+
+        // Deep Option Content Check
+        q.options.forEach((opt: any, optIdx: number) => {
+          if (!opt.en && !opt.en_html && !opt.hn && !opt.hn_html && !opt.image) {
+            errors.push(`CRITICAL: Option ${optIdx + 1} for Question ${qLabel} is empty.`);
+          }
+        });
+      }
+
+      // Metadata Warnings
+      if (!q.explanation || (!q.explanation.en && !q.explanation.en_html && !q.explanation.hn && !q.explanation.hn_html)) {
+        warnings.push(`WARNING: Question ${qLabel} is missing a solution/explanation.`);
       }
 
       if (q.dom_images) totalImages += q.dom_images.length;
@@ -230,7 +270,7 @@ export default function UploadJsonPage() {
       summary: {
         sections: extractedSections.length,
         questions: extractedQuestions.length,
-        bilingual: bilingualCount === extractedQuestions.length,
+        bilingual: fullyBilingualCount === extractedQuestions.length,
         images: totalImages,
         hasHtml
       }
@@ -469,7 +509,7 @@ export default function UploadJsonPage() {
 
                  <Card className="glass border-white/10 h-[300px] flex flex-col">
                     <CardHeader className="bg-amber-500/[0.02] border-b border-white/5 py-3">
-                       <CardTitle className="text-xs font-bold uppercase tracking-widest">Warnings</CardTitle>
+                       <CardTitle className="text-xs font-bold uppercase tracking-widest">Warnings & Suggestions</CardTitle>
                     </CardHeader>
                     <ScrollArea className="flex-1 p-4">
                        {validation.warnings.length === 0 ? (
@@ -514,11 +554,11 @@ export default function UploadJsonPage() {
                             <Badge variant="outline" className="text-[10px]">Q{i+1} • {q.id}</Badge>
                             <Badge className="bg-accent/10 text-accent text-[10px]">{q.sectionId}</Badge>
                           </div>
-                          <RichTextRenderer content={q.en_html || q.en} className="text-base font-medium" />
+                          <RichTextRenderer content={q.en_html || q.en || q.hn_html || q.hn} className="text-base font-medium" />
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {q.options?.map((opt: any) => (
                               <div key={opt.id} className={cn("p-2 text-[11px] rounded-lg border", q.answer === opt.id ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/5")}>
-                                {opt.en_html || opt.en}
+                                <RichTextRenderer content={opt.en_html || opt.en || opt.hn_html || opt.hn} />
                               </div>
                             ))}
                           </div>
