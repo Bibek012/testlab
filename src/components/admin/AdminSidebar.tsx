@@ -51,6 +51,12 @@ export const AdminSidebar = () => {
   const pathname = usePathname();
   const { toggleSidebar } = useSidebar();
 
+  // Helper to check if a link is active, considering sub-routes for analytics
+  const isLinkActive = (href: string) => {
+    if (href === "/admin") return pathname === "/admin";
+    return pathname.startsWith(href);
+  };
+
   return (
     <Sidebar collapsible="icon" className="border-r border-white/5 bg-[#0b1120]">
       <SidebarHeader className="h-16 flex items-center px-4 border-b border-white/5">
@@ -75,11 +81,11 @@ export const AdminSidebar = () => {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
-                    isActive={pathname === item.href}
+                    isActive={isLinkActive(item.href)}
                     tooltip={item.title}
                     className={cn(
                       "h-11 px-4 transition-all duration-200",
-                      pathname === item.href 
+                      isLinkActive(item.href) 
                         ? "bg-primary/10 text-primary hover:bg-primary/20" 
                         : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
                     )}
