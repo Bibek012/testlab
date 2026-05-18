@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { 
   MockTestData, 
   UserResponse, 
@@ -20,7 +20,8 @@ import {
   AlertCircle,
   Send,
   Bookmark,
-  BookmarkCheck
+  BookmarkCheck,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
@@ -34,7 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useUser, useFirestore, useCollection } from "@/firebase";
-import { doc, setDoc, deleteDoc, serverTimestamp, collection, query } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, collection } from "firebase/firestore";
 
 interface Props {
   testData: MockTestData;
@@ -43,6 +44,48 @@ interface Props {
   setResponses: React.Dispatch<React.SetStateAction<Record<string, UserResponse>>>;
   onSubmit: () => void;
 }
+
+// Sub-component to isolate timer re-renders from the main engine
+const TimerDisplay = React.memo(({ targetEndTime, onTimeout }: { targetEndTime: number, onTimeout: () => void }) => {
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.floor((targetEndTime - now) / 1000));
+      setTimeLeft(remaining);
+      
+      if (remaining <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        onTimeout();
+      }
+    };
+
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [targetEndTime, onTimeout]);
+
+  const formatTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-3 py-1 md:px-4 md:py-1.5 shrink-0 border border-white/5">
+      <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-accent" />
+      <span className={cn("text-xs md:text-sm font-mono font-bold", timeLeft < 300 ? "text-rose-500 animate-pulse" : "text-accent")}>
+        {formatTime(timeLeft)}
+      </span>
+    </div>
+  );
+});
+TimerDisplay.displayName = "TimerDisplay";
 
 export const TestInterface = ({ 
   testData, 
@@ -55,78 +98,41 @@ export const TestInterface = ({
   const db = useFirestore();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentLang, setCurrentLang] = useState<'en' | 'hn'>(initialLang);
-  const [timeLeft, setTimeLeft] = useState(testData.durationMinutes * 60);
   const [isPaused, setIsPaused] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-
-  // Fetch bookmarks
-  const { data: bookmarks } = useCollection<any>(
-    user && db ? collection(db, 'users', user.uid, 'bookmarks') : null
-  );
+  const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
 
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
 
-  const isBookmarked = useMemo(() => {
-    return bookmarks?.some(b => b.questionId === currentQuestion.id);
-  }, [bookmarks, currentQuestion.id]);
-
-  const toggleBookmark = async () => {
-    if (!user || !db) return;
-    const bookmarkId = currentQuestion.id;
-    const ref = doc(db, 'users', user.uid, 'bookmarks', bookmarkId);
-
-    if (isBookmarked) {
-      deleteDoc(ref);
-    } else {
-      setDoc(ref, {
-        uid: user.uid,
-        questionId: currentQuestion.id,
-        mockId: testData.id,
-        examId: testData.examName,
-        sectionId: currentQuestion.sectionId,
-        bookmarkedAt: serverTimestamp(),
-        questionData: currentQuestion
-      });
+  // Initialize/Sync Timer once
+  useEffect(() => {
+    let savedEndTime = localStorage.getItem(`test_end_${testData.id}`);
+    if (!savedEndTime) {
+      const newEndTime = Date.now() + (testData.durationMinutes * 60 * 1000);
+      localStorage.setItem(`test_end_${testData.id}`, newEndTime.toString());
+      savedEndTime = newEndTime.toString();
     }
-  };
+    setTargetEndTime(parseInt(savedEndTime));
+  }, [testData.id, testData.durationMinutes]);
 
-  // Sync Timer with persistent End Time in localStorage
+  // Per-Question Time Tracking (Isolate current question timer)
   useEffect(() => {
-    const syncTimer = () => {
-      const savedEndTime = localStorage.getItem(`test_end_${testData.id}`);
-      if (savedEndTime) {
-        const remaining = Math.max(0, Math.floor((parseInt(savedEndTime) - Date.now()) / 1000));
-        setTimeLeft(remaining);
-        if (remaining <= 0) {
-          onSubmit();
-        }
-      } else {
-        // Fallback for fresh starts
-        const newEndTime = Date.now() + (timeLeft * 1000);
-        localStorage.setItem(`test_end_${testData.id}`, newEndTime.toString());
-      }
-    };
-
-    syncTimer(); // Initial sync
-    const interval = setInterval(syncTimer, 1000);
-    return () => clearInterval(interval);
-  }, [testData.id, onSubmit]);
-
-  // Per-Question Time Tracking
-  useEffect(() => {
-    if (isPaused) return;
+    if (isPaused || showSubmitConfirm) return;
     const qTimer = setInterval(() => {
-      setResponses(prev => ({
-        ...prev,
-        [currentQuestion.id]: {
-          ...prev[currentQuestion.id],
-          timeSpentSeconds: (prev[currentQuestion.id]?.timeSpentSeconds || 0) + 1
-        }
-      }));
+      setResponses(prev => {
+        const qId = currentQuestion.id;
+        return {
+          ...prev,
+          [qId]: {
+            ...prev[qId],
+            timeSpentSeconds: (prev[qId]?.timeSpentSeconds || 0) + 1
+          }
+        };
+      });
     }, 1000);
     return () => clearInterval(qTimer);
-  }, [currentQuestion.id, isPaused, setResponses]);
+  }, [currentQuestion.id, isPaused, showSubmitConfirm, setResponses]);
 
   // Mark current question as visited
   useEffect(() => {
@@ -141,19 +147,16 @@ export const TestInterface = ({
     });
   }, [currentQuestion.id, setResponses]);
 
-  const formatTime = (seconds: number) => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleOptionSelect = (optionId: string) => {
+  const handleOptionSelect = useCallback((optionId: string) => {
     setResponses(prev => ({
       ...prev,
-      [currentQuestion.id]: { ...prev[currentQuestion.id], selectedOptionId: optionId }
+      [currentQuestion.id]: { 
+        ...prev[currentQuestion.id], 
+        selectedOptionId: optionId,
+        status: prev[currentQuestion.id].status === 'marked-review' ? 'answered-marked-review' : prev[currentQuestion.id].status
+      }
     }));
-  };
+  }, [currentQuestion.id, setResponses]);
 
   const handleSaveAndNext = () => {
     setResponses(prev => {
@@ -166,6 +169,8 @@ export const TestInterface = ({
     });
     if (currentQuestionIndex < testData.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
+    } else {
+      setShowSubmitConfirm(true);
     }
   };
 
@@ -192,7 +197,7 @@ export const TestInterface = ({
 
   const sectionProgress = useMemo(() => {
     const sectionQuestions = testData.questions.filter(q => q.sectionId === currentSection?.id);
-    const answeredCount = sectionQuestions.filter(q => responses[q.id]?.status === 'answered' || responses[q.id]?.status === 'answered-marked-review').length;
+    const answeredCount = sectionQuestions.filter(q => responses[q.id]?.selectedOptionId !== null).length;
     return (answeredCount / (sectionQuestions.length || 1)) * 100;
   }, [currentSection, testData.questions, responses]);
 
@@ -209,7 +214,7 @@ export const TestInterface = ({
       const attempted = secQs.filter(q => responses[q.id]?.selectedOptionId !== null).length;
       return { title: sec.title[currentLang], total: secQs.length, attempted };
     });
-  }, [testData, responses, currentLang]);
+  }, [testData.sections, testData.questions, responses, currentLang]);
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
@@ -222,12 +227,7 @@ export const TestInterface = ({
               {testData.examName}
             </h1>
           </div>
-          <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-3 py-1 md:px-4 md:py-1.5 shrink-0 border border-white/5">
-            <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-accent" />
-            <span className={cn("text-xs md:text-sm font-mono font-bold", timeLeft < 300 ? "text-rose-500 animate-pulse" : "text-accent")}>
-              {formatTime(timeLeft)}
-            </span>
-          </div>
+          {targetEndTime && <TimerDisplay targetEndTime={targetEndTime} onTimeout={onSubmit} />}
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
@@ -281,7 +281,7 @@ export const TestInterface = ({
               className={cn(
                 "px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap border shrink-0",
                 currentSection?.id === section.id
-                  ? "bg-primary border-primary text-white"
+                  ? "bg-primary border-primary text-white shadow-[0_0_10px_rgba(99,102,241,0.2)]"
                   : "bg-white/5 border-white/5 text-muted-foreground hover:bg-white/10"
               )}
             >
@@ -315,9 +315,6 @@ export const TestInterface = ({
                  >
                     {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
                  </Button>
-                 <span className="text-[10px] md:text-xs text-muted-foreground font-mono">
-                   Time Spent: {formatTime(responses[currentQuestion.id]?.timeSpentSeconds || 0)}
-                 </span>
                </div>
                <div className="flex items-center justify-between sm:justify-end gap-4">
                   <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/10">
@@ -338,7 +335,7 @@ export const TestInterface = ({
                </div>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in fade-in duration-300">
               <div 
                 className="text-base md:text-xl font-medium leading-relaxed text-slate-100"
                 dangerouslySetInnerHTML={{ __html: (currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string }}
@@ -346,7 +343,7 @@ export const TestInterface = ({
 
               {currentQuestion.dom_images?.map((img, i) => (
                 <div key={i} className="flex justify-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <img src={img} alt="Ref" className="max-h-[300px] object-contain" />
+                  <img src={img} alt="Ref" className="max-h-[300px] object-contain" loading="lazy" />
                 </div>
               ))}
             </div>
@@ -430,7 +427,7 @@ export const TestInterface = ({
             onClick={handleSaveAndNext}
             className="bg-primary hover:bg-primary/90 text-white rounded-xl h-10 px-6 md:px-10 font-bold gap-2 flex-1 md:flex-none"
            >
-             {currentQuestionIndex === testData.questions.length - 1 ? "Save & Preview" : "Save & Next"}
+             {currentQuestionIndex === testData.questions.length - 1 ? "Submit Exam" : "Save & Next"}
              <ChevronRight className="w-4 h-4" />
            </Button>
         </div>
@@ -495,7 +492,7 @@ export const TestInterface = ({
   );
 };
 
-const SummaryItem = ({ label, value, color }: { label: string, value: number, color: string }) => {
+const SummaryItem = React.memo(({ label, value, color }: { label: string, value: number, color: string }) => {
   const colorMap: Record<string, string> = {
     slate: "bg-slate-500/10 text-slate-400 border-slate-500/20",
     emerald: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -509,4 +506,5 @@ const SummaryItem = ({ label, value, color }: { label: string, value: number, co
       <div className="text-[10px] uppercase font-bold opacity-70 tracking-tighter">{label}</div>
     </div>
   );
-};
+});
+SummaryItem.displayName = "SummaryItem";

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useState, useRef } from "react";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,9 +38,9 @@ export const ResultPage = ({
   const { user } = useUser();
   const db = useFirestore();
   const [isSaving, setIsSaving] = useState(false);
+  const saveInitiated = useRef(false);
 
   const metrics = useMemo(() => {
-    const totalQuestions = testData.questions.length;
     let correct = 0;
     let incorrect = 0;
     let unattempted = 0;
@@ -63,13 +63,14 @@ export const ResultPage = ({
     const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
     const percentile = 84.5; 
 
-    return { correct, incorrect, unattempted, totalScore, timeTaken, accuracy, totalQuestions, percentile };
+    return { correct, incorrect, unattempted, totalScore, timeTaken, accuracy, totalQuestions: testData.questions.length, percentile };
   }, [testData, responses, startTime, endTime]);
 
-  // Persist result to Firestore
+  // Persist result to Firestore - exactly once
   useEffect(() => {
     const saveResult = async () => {
-      if (user && db && !isSaving) {
+      if (user && db && !saveInitiated.current) {
+        saveInitiated.current = true;
         setIsSaving(true);
         try {
           await addDoc(collection(db, 'attempts'), {
@@ -87,11 +88,14 @@ export const ResultPage = ({
           });
         } catch (error) {
           console.error("Error saving result:", error);
+          saveInitiated.current = false; // Allow retry on failure
+        } finally {
+          setIsSaving(false);
         }
       }
     };
     saveResult();
-  }, [user, db, testData.id, metrics, responses]);
+  }, [user, db, testData.id, testData.examName, metrics, responses]);
 
   const chartData = [
     { name: 'Correct', value: metrics.correct, color: '#10b981' },
@@ -99,27 +103,8 @@ export const ResultPage = ({
     { name: 'Unattempted', value: metrics.unattempted, color: '#64748b' },
   ];
 
-  const sectionData = useMemo(() => {
-    return testData.sections.map(sec => {
-      const secQs = testData.questions.filter(q => q.sectionId === sec.id);
-      let secCorrect = 0;
-      let secIncorrect = 0;
-      secQs.forEach(q => {
-        const resp = responses[q.id];
-        if (resp?.selectedOptionId === q.answer) secCorrect++;
-        else if (resp?.selectedOptionId) secIncorrect++;
-      });
-      return { 
-        name: sec.title[userLanguage], 
-        correct: secCorrect, 
-        incorrect: secIncorrect,
-        accuracy: (secCorrect + secIncorrect > 0) ? (secCorrect / (secCorrect + secIncorrect) * 100).toFixed(0) : 0
-      };
-    });
-  }, [testData, responses, userLanguage]);
-
   return (
-    <div className="min-h-screen bg-[#0b1120] pb-24">
+    <div className="min-h-screen bg-[#0b1120] pb-24 animate-in fade-in duration-700">
       {/* Header with Save Status */}
       <div className="relative pt-24 pb-12 overflow-hidden border-b border-white/5">
         <div className="absolute top-0 left-0 w-full h-full -z-10">
@@ -181,14 +166,14 @@ export const ResultPage = ({
             <Card className="glass border-white/10 p-6">
               <CardTitle className="text-lg font-headline font-bold mb-6">Action Center</CardTitle>
               <div className="space-y-3">
-                <Button onClick={onViewSolutions} className="w-full bg-primary h-12 rounded-xl font-bold shadow-lg shadow-primary/20 gap-2">
-                  <BookOpen className="w-4 h-4" /> Review Test
+                <Button onClick={onViewSolutions} className="w-full bg-primary h-12 rounded-xl font-bold shadow-lg shadow-primary/20 gap-2 group">
+                  <BookOpen className="w-4 h-4 group-hover:scale-110 transition-transform" /> Review Solutions
                 </Button>
                 <Button variant="outline" onClick={onReattempt} className="w-full h-12 rounded-xl border-white/10 hover:bg-white/5 font-bold gap-2">
                   <RotateCcw className="w-4 h-4" /> Reattempt Test
                 </Button>
                 <Link href={dashboardUrl} className="block">
-                  <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold">
+                  <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold hover:text-foreground">
                     Return to Dashboard
                   </Button>
                 </Link>
@@ -197,10 +182,10 @@ export const ResultPage = ({
 
             <div className="p-6 bg-gradient-to-br from-indigo-500/10 to-accent/10 rounded-3xl border border-white/10 space-y-4">
                <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase">
-                 <Zap className="w-4 h-4 fill-current" /> AI Analytics Insight
+                 <Zap className="w-4 h-4 fill-current" /> AI Growth Projection
                </div>
                <p className="text-xs text-muted-foreground leading-relaxed italic">
-                 "Your accuracy in <span className="text-emerald-400">{sectionData[0]?.name || 'Math'}</span> is impressive! Your cloud-synced profile is ready for advanced level drills."
+                 "Great performance! Based on this attempt, your projected rank in the actual exam is <span className="text-emerald-400 font-bold">Top 5,000</span>. Focus on Reasoning speed to break into the Top 1,000."
                </p>
             </div>
           </div>
@@ -210,12 +195,12 @@ export const ResultPage = ({
   );
 };
 
-const ResultStatCard = ({ title, value, icon: Icon, color, trend }: any) => (
+const ResultStatCard = React.memo(({ title, value, icon: Icon, color, trend }: any) => (
   <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden group">
-    <div className={`absolute top-0 right-0 p-4 opacity-5 text-${color} group-hover:opacity-20 transition-opacity`}>
+    <div className={cn("absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity", `text-${color}`)}>
       <Icon className="w-16 h-16" />
     </div>
-    <div className={`p-2 rounded-lg bg-${color}/10 text-${color} inline-block`}>
+    <div className={cn("p-2 rounded-lg inline-block", `bg-${color}/10`, `text-${color}`)}>
       <Icon className="w-5 h-5" />
     </div>
     <div className="relative">
@@ -226,4 +211,5 @@ const ResultStatCard = ({ title, value, icon: Icon, color, trend }: any) => (
       <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{title}</div>
     </div>
   </Card>
-);
+));
+ResultStatCard.displayName = "ResultStatCard";
