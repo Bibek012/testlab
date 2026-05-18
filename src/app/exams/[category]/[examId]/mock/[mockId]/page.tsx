@@ -105,6 +105,7 @@ export default function MockTestEnginePage() {
             startTime,
             lastUpdated: serverTimestamp()
           }, { merge: true });
+          console.log("MockEngine: Progress auto-saved to cloud.");
         } catch (e) {
           console.warn("MockEngine: Auto-save failed (offline). Progress remains in local state.");
         }
@@ -125,8 +126,9 @@ export default function MockTestEnginePage() {
         setUserLanguage(data.userLanguage);
         setStartTime(data.startTime);
         
-        // Restore timer
-        const testEndTime = (data.startTime || Date.now()) + (testData!.durationMinutes * 60 * 1000);
+        // Restore timer absolute end time
+        const duration = testData!.durationMinutes * 60 * 1000;
+        const testEndTime = (data.startTime || Date.now()) + duration;
         localStorage.setItem(`test_end_${mockId}`, testEndTime.toString());
         
         setStep('test');

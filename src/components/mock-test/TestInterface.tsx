@@ -59,7 +59,7 @@ export const TestInterface = ({
   const [isPaused, setIsPaused] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
-  // Fetch bookmarks once
+  // Fetch bookmarks
   const { data: bookmarks } = useCollection<any>(
     user && db ? collection(db, 'users', user.uid, 'bookmarks') : null
   );
@@ -77,16 +77,16 @@ export const TestInterface = ({
     const ref = doc(db, 'users', user.uid, 'bookmarks', bookmarkId);
 
     if (isBookmarked) {
-      await deleteDoc(ref);
+      deleteDoc(ref);
     } else {
-      await setDoc(ref, {
+      setDoc(ref, {
         uid: user.uid,
         questionId: currentQuestion.id,
         mockId: testData.id,
         examId: testData.examName,
         sectionId: currentQuestion.sectionId,
         bookmarkedAt: serverTimestamp(),
-        questionData: currentQuestion // Store a snapshot for easy rendering in bookmarks page
+        questionData: currentQuestion
       });
     }
   };
@@ -101,6 +101,10 @@ export const TestInterface = ({
         if (remaining <= 0) {
           onSubmit();
         }
+      } else {
+        // Fallback for fresh starts
+        const newEndTime = Date.now() + (timeLeft * 1000);
+        localStorage.setItem(`test_end_${testData.id}`, newEndTime.toString());
       }
     };
 
