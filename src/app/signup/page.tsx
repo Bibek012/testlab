@@ -42,17 +42,20 @@ export default function SignUpPage() {
 
     setIsLoading(true);
     try {
+      // 1. Create Auth Account
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       
+      // 2. Update Auth Profile
       await updateProfile(user, { displayName: fullName });
       
-      // CREATE FIRESTORE PROFILE
-      // Defaulting to super-admin for development convenience
-      await setDoc(doc(db, "users", user.uid), {
+      // 3. Create Firestore User Profile
+      // Default to 'super-admin' for development mode as requested
+      const userProfile = {
         uid: user.uid,
         email: user.email,
         displayName: fullName,
+        photoURL: user.photoURL || "",
         role: "super-admin", 
         status: "active",
         subscriptionType: "free",
@@ -60,18 +63,24 @@ export default function SignUpPage() {
         lastActive: serverTimestamp(),
         streak: 0,
         testsAttempted: 0,
-        totalScore: 0
-      });
+        totalScore: 0,
+        preferredLanguage: "en"
+      };
+
+      console.log("Signup: Creating Firestore profile for", user.uid);
+      await setDoc(doc(db, "users", user.uid), userProfile);
       
       toast({
-        title: "Account created",
-        description: "Welcome to Testlab! You have been granted Admin access for development.",
+        title: "Welcome to Testlab",
+        description: "Your administrative account has been created successfully.",
       });
-      router.push("/admin"); // Redirect directly to admin to verify
+      
+      router.push("/admin");
     } catch (error: any) {
+      console.error("Signup error:", error);
       toast({
         variant: "destructive",
-        title: "Error",
+        title: "Registration Failed",
         description: error.message,
       });
     } finally {
@@ -81,7 +90,6 @@ export default function SignUpPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden bg-background">
-      {/* Background Glows */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] -z-10" />
       <div className="absolute bottom-[10%] right-[-10%] w-[30%] h-[30%] bg-accent/20 rounded-full blur-[120px] -z-10" />
 
