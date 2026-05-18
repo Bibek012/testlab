@@ -8,7 +8,16 @@ export const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Debugging helper to identify missing configuration
-if (typeof window !== 'undefined' && !firebaseConfig.apiKey) {
-  console.warn("Firebase API Key is missing. Please ensure NEXT_PUBLIC_FIREBASE_API_KEY is set in your .env file.");
+// Validation to prevent crash on missing configuration
+export const isFirebaseConfigValid = !!(
+  firebaseConfig.apiKey && 
+  firebaseConfig.apiKey !== "undefined" &&
+  firebaseConfig.projectId
+);
+
+if (typeof window !== 'undefined' && !isFirebaseConfigValid) {
+  console.warn(
+    "Testlab: Firebase configuration is missing or incomplete. " +
+    "Please check your .env file and ensure all NEXT_PUBLIC_FIREBASE_* variables are set."
+  );
 }
