@@ -12,7 +12,7 @@
         "photoURL": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "lastActive": { "type": "string", "format": "date-time" },
-        "role": { "type": "string", "enum": ["student", "moderator", "admin", "super-admin"], "default": "student" },
+        "role": { "type": "string", "enum": ["student", "moderator", "admin", "super-admin", "content-manager", "support-staff"], "default": "student" },
         "status": { "type": "string", "enum": ["active", "suspended", "banned"], "default": "active" },
         "subscriptionType": { "type": "string", "enum": ["free", "premium"], "default": "free" },
         "streak": { "type": "number", "default": 0 },
@@ -22,39 +22,18 @@
       },
       "required": ["uid", "email"]
     },
-    "TestAttempt": {
-      "title": "Test Attempt",
-      "description": "Record of a completed mock test.",
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "System-wide tracking of administrative actions.",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "testId": { "type": "string" },
-        "examId": { "type": "string" },
-        "examCategory": { "type": "string" },
-        "score": { "type": "number" },
-        "correctCount": { "type": "number" },
-        "incorrectCount": { "type": "number" },
-        "unattemptedCount": { "type": "number" },
-        "accuracy": { "type": "number" },
-        "timeTakenSeconds": { "type": "number" },
-        "completedAt": { "type": "string", "format": "date-time" },
-        "responses": { "type": "object" },
-        "sectionPerformance": { "type": "array" }
-      },
-      "required": ["uid", "testId", "score"]
-    },
-    "PlatformSettings": {
-      "title": "Platform Settings",
-      "description": "Global configuration for platform behavior and branding.",
-      "type": "object",
-      "properties": {
-        "platformName": { "type": "string" },
-        "supportEmail": { "type": "string" },
-        "supportPhone": { "type": "string" },
-        "maintenanceMode": { "type": "boolean" },
-        "featureFlags": { "type": "object" },
-        "mockDefaults": { "type": "object" },
-        "branding": { "type": "object" }
+        "adminId": { "type": "string" },
+        "adminName": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
       }
     }
   },
@@ -66,9 +45,9 @@
       "schema": "User",
       "description": "Stores user profile and aggregate stats."
     },
-    "/settings/{settingId}": {
-      "schema": "PlatformSettings",
-      "description": "Global system configurations."
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Administrative action history."
     }
   }
 }

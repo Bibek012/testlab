@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
@@ -17,7 +17,9 @@ import {
   Rocket,
   ChevronLeft,
   Send,
-  BellRing
+  BellRing,
+  ShieldCheck,
+  UserPlus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -34,26 +36,41 @@ import {
   useSidebar
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { AdminRole, hasPermission } from "@/lib/rbac";
 
-const menuItems = [
+interface NavItem {
+  title: string;
+  icon: any;
+  href: string;
+  permission?: keyof Parameters<typeof hasPermission>[1];
+}
+
+const menuItems: NavItem[] = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/admin" },
-  { title: "Exams", icon: Briefcase, href: "/admin/exams" },
-  { title: "Mock Tests", icon: Files, href: "/admin/mock-tests" },
-  { title: "Upload JSON", icon: UploadCloud, href: "/admin/upload-json" },
-  { title: "Questions", icon: HelpCircle, href: "/admin/questions" },
-  { title: "Publishing", icon: Send, href: "/admin/publishing" },
-  { title: "Announcements", icon: BellRing, href: "/admin/announcements" },
-  { title: "Analytics", icon: BarChart3, href: "/admin/analytics" },
-  { title: "Users", icon: Users, href: "/admin/users" },
-  { title: "Reports", icon: FileWarning, href: "/admin/reports" },
-  { title: "Settings", icon: Settings, href: "/admin/settings" },
+  { title: "Exams", icon: Briefcase, href: "/admin/exams", permission: "canManageExams" },
+  { title: "Mock Tests", icon: Files, href: "/admin/mock-tests", permission: "canManageMocks" },
+  { title: "Upload JSON", icon: UploadCloud, href: "/admin/upload-json", permission: "canUploadContent" },
+  { title: "Questions", icon: HelpCircle, href: "/admin/questions", permission: "canUploadContent" },
+  { title: "Publishing", icon: Send, href: "/admin/publishing", permission: "canPublishTests" },
+  { title: "Announcements", icon: BellRing, href: "/admin/announcements", permission: "canManageExams" },
+  { title: "Analytics", icon: BarChart3, href: "/admin/analytics", permission: "canViewAnalytics" },
+  { title: "Users", icon: Users, href: "/admin/users", permission: "canManageUsers" },
+  { title: "Staff Roles", icon: ShieldCheck, href: "/admin/roles", permission: "canManageAdmins" },
+  { title: "Audit Logs", icon: FileWarning, href: "/admin/audit-logs", permission: "canManageSettings" },
+  { title: "Settings", icon: Settings, href: "/admin/settings", permission: "canManageSettings" },
 ];
 
-export const AdminSidebar = () => {
+export const AdminSidebar = ({ role = "student" }: { role?: AdminRole }) => {
   const pathname = usePathname();
   const { toggleSidebar } = useSidebar();
 
-  // Helper to check if a link is active, considering sub-routes for analytics
+  const filteredMenu = useMemo(() => {
+    return menuItems.filter(item => {
+      if (!item.permission) return true;
+      return hasPermission(role, item.permission);
+    });
+  }, [role]);
+
   const isLinkActive = (href: string) => {
     if (href === "/admin") return pathname === "/admin";
     return pathname.startsWith(href);
@@ -75,11 +92,11 @@ export const AdminSidebar = () => {
       <SidebarContent className="py-4">
         <SidebarGroup>
           <SidebarGroupLabel className="px-4 text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground mb-2 group-data-[collapsible=icon]:hidden">
-            Management
+            Management ({role.replace('-', ' ')})
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
+              {filteredMenu.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
