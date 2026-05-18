@@ -3,19 +3,71 @@
   "entities": {
     "User": {
       "title": "User Profile",
-      "description": "Information about the registered user.",
+      "description": "Information about the registered user and their overall progress.",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "streak": { "type": "number", "default": 0 },
+        "testsAttempted": { "type": "number", "default": 0 },
+        "totalScore": { "type": "number", "default": 0 },
+        "preferredLanguage": { "type": "string", "enum": ["en", "hn"], "default": "en" }
       },
       "required": ["uid", "email"]
+    },
+    "TestAttempt": {
+      "title": "Test Attempt",
+      "description": "Record of a completed mock test.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "testId": { "type": "string" },
+        "examId": { "type": "string" },
+        "examCategory": { "type": "string" },
+        "score": { "type": "number" },
+        "correctCount": { "type": "number" },
+        "incorrectCount": { "type": "number" },
+        "unattemptedCount": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "timeTakenSeconds": { "type": "number" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "responses": { "type": "object" },
+        "sectionPerformance": { "type": "array" }
+      },
+      "required": ["uid", "testId", "score"]
+    },
+    "TestProgress": {
+      "title": "Active Test Progress",
+      "description": "Transient state of an ongoing test for resume functionality.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "testId": { "type": "string" },
+        "currentQuestionIndex": { "type": "number" },
+        "timeLeftSeconds": { "type": "number" },
+        "responses": { "type": "object" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
     "providers": ["email/password", "google.com"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Stores user profile and aggregate stats."
+    },
+    "/attempts/{attemptId}": {
+      "schema": "TestAttempt",
+      "description": "Historical records of every test submitted."
+    },
+    "/progress/{userId}/activeTests/{testId}": {
+      "schema": "TestProgress",
+      "description": "Real-time sync of current test state."
+    }
   }
 }

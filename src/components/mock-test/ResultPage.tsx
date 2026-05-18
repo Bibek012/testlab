@@ -1,16 +1,18 @@
 
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, CheckCircle, Clock, Target, RotateCcw, BookOpen, Zap, TrendingUp } from "lucide-react";
+import { Trophy, CheckCircle, Clock, Target, RotateCcw, BookOpen, Zap, TrendingUp, Loader2 } from "lucide-react";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
 import Link from "next/link";
+import { useUser, useFirestore } from "@/firebase";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 
 interface Props {
   testData: MockTestData;
@@ -33,6 +35,10 @@ export const ResultPage = ({
   onViewSolutions,
   dashboardUrl = "/"
 }: Props) => {
+  const { user } = useUser();
+  const db = useFirestore();
+  const [isSaving, setIsSaving] = useState(false);
+
   const metrics = useMemo(() => {
     const totalQuestions = testData.questions.length;
     let correct = 0;
@@ -55,10 +61,37 @@ export const ResultPage = ({
 
     const timeTaken = Math.floor((endTime - startTime) / 1000);
     const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
-    const percentile = 84.5; // Mock data for percentile
+    const percentile = 84.5; 
 
     return { correct, incorrect, unattempted, totalScore, timeTaken, accuracy, totalQuestions, percentile };
   }, [testData, responses, startTime, endTime]);
+
+  // Persist result to Firestore
+  useEffect(() => {
+    const saveResult = async () => {
+      if (user && db && !isSaving) {
+        setIsSaving(true);
+        try {
+          await addDoc(collection(db, 'attempts'), {
+            uid: user.uid,
+            testId: testData.id,
+            examId: testData.examName,
+            score: metrics.totalScore,
+            correctCount: metrics.correct,
+            incorrectCount: metrics.incorrect,
+            unattemptedCount: metrics.unattempted,
+            accuracy: metrics.accuracy,
+            timeTakenSeconds: metrics.timeTaken,
+            completedAt: serverTimestamp(),
+            responses: responses
+          });
+        } catch (error) {
+          console.error("Error saving result:", error);
+        }
+      }
+    };
+    saveResult();
+  }, [user, db, testData.id, metrics, responses]);
 
   const chartData = [
     { name: 'Correct', value: metrics.correct, color: '#10b981' },
@@ -87,6 +120,7 @@ export const ResultPage = ({
 
   return (
     <div className="min-h-screen bg-[#0b1120] pb-24">
+      {/* Header with Save Status */}
       <div className="relative pt-24 pb-12 overflow-hidden border-b border-white/5">
         <div className="absolute top-0 left-0 w-full h-full -z-10">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px]" />
@@ -98,7 +132,10 @@ export const ResultPage = ({
             <Trophy className="w-10 h-10" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-3xl md:text-5xl font-headline font-bold">Analysis <span className="gradient-text">Report</span></h1>
+            <div className="flex items-center justify-center gap-2">
+              <h1 className="text-3xl md:text-5xl font-headline font-bold">Analysis <span className="gradient-text">Report</span></h1>
+              {isSaving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+            </div>
             <p className="text-muted-foreground text-sm max-w-xl mx-auto">
               Test Completed: <span className="text-foreground font-bold">{testData.title}</span>
             </p>
@@ -163,37 +200,9 @@ export const ResultPage = ({
                  <Zap className="w-4 h-4 fill-current" /> AI Analytics Insight
                </div>
                <p className="text-xs text-muted-foreground leading-relaxed italic">
-                 "Your accuracy in <span className="text-emerald-400">{sectionData[0]?.name || 'Math'}</span> is impressive! However, your speed in <span className="text-rose-400">{sectionData[1]?.name || 'Reasoning'}</span> is lagging. Focus on time-drills to boost score by 15%."
+                 "Your accuracy in <span className="text-emerald-400">{sectionData[0]?.name || 'Math'}</span> is impressive! Your cloud-synced profile is ready for advanced level drills."
                </p>
             </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <h3 className="text-xl font-headline font-bold">Sectional Performance</h3>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sectionData.map((sec, i) => (
-              <Card key={i} className="glass border-white/10 p-6 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-bold text-sm">{sec.name}</h4>
-                  <Badge className="bg-emerald-500/10 text-emerald-400">{sec.accuracy}% Accuracy</Badge>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1 space-y-1">
-                    <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase">
-                      <span>Progress</span>
-                      <span>{sec.correct} Correct</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-emerald-500 rounded-full" 
-                        style={{ width: `${(sec.correct / (sec.correct + sec.incorrect || 1)) * 100}%` }} 
-                      />
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
           </div>
         </div>
       </div>
