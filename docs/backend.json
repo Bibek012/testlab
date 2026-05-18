@@ -75,7 +75,7 @@
         "name": { "type": "string" },
         "slug": { "type": "string" },
         "categoryId": { "type": "string" },
-        "stateSlug": { "type": "string", "description": "Optional state slug for state-level exams" },
+        "stateSlug": { "type": "string" },
         "description": { "type": "string" },
         "difficulty": { "type": "string", "enum": ["Easy", "Intermediate", "Hard"] },
         "testsCount": { "type": "number", "default": 0 },
@@ -83,6 +83,32 @@
         "isActive": { "type": "boolean", "default": true }
       },
       "required": ["name", "slug", "categoryId"]
+    },
+    "MockTest": {
+      "title": "Mock Test",
+      "description": "Definition of a mock test series or practice set.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "examId": { "type": "string" },
+        "type": { "type": "string", "enum": ["Full Test", "Subject Test", "Chapter Test", "Previous Year", "Daily Quiz", "Mini Mock"] },
+        "subject": { "type": "string" },
+        "chapter": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "negativeMarks": { "type": "number" },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "instructions": { "type": "string" },
+        "isFree": { "type": "boolean", "default": true },
+        "status": { "type": "string", "enum": ["Draft", "Published", "Hidden", "Scheduled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "examId", "type"]
     }
   },
   "auth": {
@@ -108,6 +134,10 @@
     "/exams/{examId}": {
       "schema": "Exam",
       "description": "Specific competitive exams."
+    },
+    "/mockTests/{mockId}": {
+      "schema": "MockTest",
+      "description": "Detailed configuration of each mock test."
     }
   }
 }
