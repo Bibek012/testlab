@@ -50,8 +50,10 @@ interface ValidationResult {
   errors: string[];
   warnings: string[];
   summary: {
+    totalParsed: number;
+    validCount: number;
+    brokenCount: number;
     sections: number;
-    questions: number;
     bilingual: boolean;
     images: number;
     hasHtml: boolean;
@@ -125,14 +127,14 @@ export default function UploadJsonPage() {
     let rawQuestions: any[] = [];
     let schemaType = "Unknown";
 
-    // 1. NORMALIZE TOP LEVEL STRUCTURE
+    // 1. NORMALIZE TOP LEVEL STRUCTURE (Flexible)
     if (Array.isArray(json)) {
       rawQuestions = json;
       schemaType = "Flat Array";
     } else if (json.sections && Array.isArray(json.sections)) {
       schemaType = "Sectioned Object";
       json.sections.forEach((sec: any) => {
-        const sId = sec.id || `sec-${extractedSections.length + 1}`;
+        const sId = (sec.id || `sec-${extractedSections.length + 1}`).toString();
         extractedSections.push({
           id: sId,
           title: typeof sec.title === 'string' ? { en: sec.title, hn: sec.title } : (sec.title || { en: 'General', hn: 'सामान्य' }),
@@ -145,25 +147,40 @@ export default function UploadJsonPage() {
     } else if (json.questions && Array.isArray(json.questions)) {
       rawQuestions = json.questions;
       schemaType = "Questions-Key Object";
+    } else {
+      // Fallback: search for any key that looks like a question array
+      const key = Object.keys(json).find(k => Array.isArray(json[k]) && json[k].length > 0 && (json[k][0].en || json[k][0].text || json[k][0].question));
+      if (key) {
+        rawQuestions = json[key];
+        schemaType = `Dynamic Key (${key})`;
+      }
     }
 
     if (extractedSections.length === 0) {
       extractedSections.push({ id: 'sec-default', title: { en: 'General', hn: 'सामान्य' }, order: 0 });
     }
 
-    // 2. NORMALIZE QUESTIONS
+    // 2. NORMALIZE QUESTIONS (Robust Path Detection)
+    let validCount = 0;
+    let brokenCount = 0;
+    let fullyBilingual = true;
+    let hasHtml = false;
+    let totalImages = 0;
+
     const normalizedQuestions = rawQuestions.map((q, idx) => {
-      const id = (q.id || q.questionId || `q-${idx + 1}`).toString();
+      const qId = (q.id || q.questionId || q.uid || `q-${idx + 1}`).toString();
       const sectionId = q.sectionId || extractedSections[0].id;
       
-      const en = q.en || q.text || q.questionText || q.content || "";
-      const hn = q.hn || "";
-      const en_html = q.en_html || "";
-      const hn_html = q.hn_html || "";
+      // Content Path Detection
+      const en = q.en || q.question?.en || q.text || q.questionText || q.content || q.title || "";
+      const hn = q.hn || q.question?.hn || "";
+      const en_html = q.en_html || q.question?.en_html || "";
+      const hn_html = q.hn_html || q.question?.hn_html || "";
 
+      // Options detection
       const rawOptions = q.options || q.choices || q.choices_list || [];
       const options = rawOptions.map((opt: any, oIdx: number) => {
-        const oId = (opt.id || `opt-${idx}-${oIdx}`).toString();
+        const oId = (opt.id || opt.uid || `opt-${idx}-${oIdx}`).toString();
         return {
           id: oId,
           en: typeof opt === 'string' ? opt : (opt.en || opt.text || ""),
@@ -174,12 +191,21 @@ export default function UploadJsonPage() {
         };
       });
 
+      // Answer detection (Supports index or ID)
       const rawAnswer = q.answer ?? q.raw_answer_id ?? q.correctAnswer ?? q.answerId ?? q.correct_option;
       let resolvedAnswer = "";
       if (rawAnswer !== undefined && rawAnswer !== null) {
+        // Try ID match
         const optMatch = options.find((o: any) => o.id === rawAnswer.toString());
-        if (optMatch) resolvedAnswer = optMatch.id;
-        else if (options[parseInt(rawAnswer)]) resolvedAnswer = options[parseInt(rawAnswer)].id;
+        if (optMatch) {
+          resolvedAnswer = optMatch.id;
+        } else {
+          // Try index match (if rawAnswer is numeric)
+          const idx = parseInt(rawAnswer);
+          if (!isNaN(idx) && options[idx]) {
+            resolvedAnswer = options[idx].id;
+          }
+        }
       }
 
       const rawExpl = q.explanation || q.solution || {};
@@ -190,44 +216,55 @@ export default function UploadJsonPage() {
         hn_html: rawExpl.hn_html || ""
       };
 
-      return {
-        id, sectionId, en, hn, en_html, hn_html, options, 
+      const qObj = {
+        id: qId, sectionId, en, hn, en_html, hn_html, options, 
         answer: resolvedAnswer, 
         marks: parseFloat(q.marks) || 1, 
         negativeMarks: parseFloat(q.negativeMarks) || 0.33,
         dom_images: q.dom_images || [],
         explanation
       };
-    });
 
-    // 3. VALIDATION
-    if (normalizedQuestions.length === 0) errors.push("CRITICAL: No questions detected in file.");
-
-    let fullyBilingual = true;
-    let hasHtml = false;
-    let totalImages = 0;
-
-    normalizedQuestions.forEach((q, i) => {
-      const label = `Item ${i+1}`;
-      if (!q.en && !q.en_html && !q.hn && !q.hn_html && q.dom_images.length === 0) errors.push(`CRITICAL: ${label} has no content.`);
-      if (q.options.length < 2) errors.push(`CRITICAL: ${label} needs at least 2 options.`);
-      if (!q.answer) errors.push(`CRITICAL: ${label} has missing or unresolvable correct answer.`);
+      // VALIDATION
+      const label = `Item ${idx + 1} (${qId})`;
+      const hasContent = en || en_html || hn || hn_html || qObj.dom_images.length > 0;
       
-      if ((!q.en && !q.en_html) || (!q.hn && !q.hn_html)) {
-        fullyBilingual = false;
-        warnings.push(`WARNING: ${label} is missing one language translation.`);
+      if (!hasContent) {
+        brokenCount++;
+        errors.push(`CRITICAL: ${label} has no detectable content (Checked en, en_html, text, etc.).`);
+      } else if (options.length < 2) {
+        brokenCount++;
+        errors.push(`CRITICAL: ${label} has only ${options.length} options. Need at least 2.`);
+      } else if (!resolvedAnswer) {
+        brokenCount++;
+        errors.push(`CRITICAL: ${label} answer reference (${rawAnswer}) doesn't match any option.`);
+      } else {
+        validCount++;
+        // Warnings (Non-blocking)
+        if ((!en && !en_html) || (!hn && !hn_html)) {
+          fullyBilingual = false;
+          warnings.push(`WARNING: ${label} is missing one language translation.`);
+        }
+        if (en_html || hn_html) hasHtml = true;
+        totalImages += qObj.dom_images.length;
       }
-      if (q.en_html || q.hn_html) hasHtml = true;
-      totalImages += q.dom_images.length;
+
+      return qObj;
     });
+
+    if (rawQuestions.length === 0) {
+      errors.push("CRITICAL: JSON parsed but no questions were found in the expected structures.");
+    }
 
     setNormalizedContent({ sections: extractedSections, questions: normalizedQuestions });
     setValidation({
-      isValid: errors.length === 0,
+      isValid: validCount > 0, // Enable ingest if at least one question is good
       errors, warnings,
       summary: {
+        totalParsed: rawQuestions.length,
+        validCount,
+        brokenCount,
         sections: extractedSections.length,
-        questions: normalizedQuestions.length,
         bilingual: fullyBilingual,
         images: totalImages,
         hasHtml, schemaType
@@ -242,8 +279,12 @@ export default function UploadJsonPage() {
     
     try {
       const { sections, questions } = normalizedContent;
+      const validQuestions = questions.filter(q => {
+        const hasContent = q.en || q.en_html || q.hn || q.hn_html || q.dom_images.length > 0;
+        return hasContent && q.options.length >= 2 && q.answer;
+      });
+
       const batch = writeBatch(db);
-      
       sections.forEach(s => {
         batch.set(doc(db, "mockTests", selectedMockId, "sections", s.id), { ...s, mockId: selectedMockId, updatedAt: serverTimestamp() });
       });
@@ -251,20 +292,20 @@ export default function UploadJsonPage() {
       setUploadProgress(40);
 
       const chunkSize = 400;
-      for (let i = 0; i < questions.length; i += chunkSize) {
+      for (let i = 0; i < validQuestions.length; i += chunkSize) {
         const qBatch = writeBatch(db);
-        questions.slice(i, i + chunkSize).forEach(q => {
+        validQuestions.slice(i, i + chunkSize).forEach(q => {
           qBatch.set(doc(db, "mockTests", selectedMockId, "questions", q.id), { ...q, mockId: selectedMockId, status: 'Published', updatedAt: serverTimestamp() });
         });
         await qBatch.commit();
-        setUploadProgress(40 + Math.floor((i / questions.length) * 50));
+        setUploadProgress(40 + Math.floor((i / validQuestions.length) * 50));
       }
 
-      await updateDoc(doc(db, "mockTests", selectedMockId), { status: "Published", totalQuestions: questions.length, updatedAt: serverTimestamp() });
-      await logAction(db, user, "import_json", selectedMockId, "mockTest", `Imported ${questions.length} questions.`);
+      await updateDoc(doc(db, "mockTests", selectedMockId), { status: "Published", totalQuestions: validQuestions.length, updatedAt: serverTimestamp() });
+      await logAction(db, user, "import_json", selectedMockId, "mockTest", `Imported ${validQuestions.length} valid questions (Skipped ${questions.length - validQuestions.length} broken).`);
       
       setUploadProgress(100);
-      toast({ title: "Success", description: "Mock test ingested successfully." });
+      toast({ title: "Success", description: `Ingested ${validQuestions.length} questions successfully.` });
       setFile(null); setNormalizedContent(null); setValidation(null);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Import Failed", description: err.message });
@@ -278,7 +319,7 @@ export default function UploadJsonPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold">Content <span className="text-accent">Ingestion</span></h1>
-          <p className="text-muted-foreground text-sm mt-1">Industrial JSON ingestion engine for high-fidelity bilingual content.</p>
+          <p className="text-muted-foreground text-sm mt-1">Robust JSON parser supporting multi-path content detection.</p>
         </div>
         <Button variant="outline" className="gap-2 rounded-xl border-white/10" onClick={() => window.history.back()}>
           <ArrowLeft className="w-4 h-4" /> Exit
@@ -326,7 +367,7 @@ export default function UploadJsonPage() {
             <UploadCloud className={cn("w-10 h-10", file ? "text-primary" : "text-muted-foreground")} />
             <div className="space-y-1">
               <p className="font-bold text-sm">{file ? file.name : "Drop JSON Source"}</p>
-              <p className="text-[10px] text-muted-foreground uppercase">Supports all major exam formats</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Supports multiple schemas</p>
             </div>
           </div>
 
@@ -344,6 +385,30 @@ export default function UploadJsonPage() {
           >
             {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Zap className="w-5 h-5 fill-current" /> Ingest Mock Test</>}
           </Button>
+
+          {validation && (
+             <div className="p-6 rounded-3xl bg-white/5 border border-white/10 space-y-4">
+                <div className="flex items-center justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                   <span>Integrity Report</span>
+                   <Badge variant="outline" className="h-5 text-[9px]">{validation.summary.schemaType}</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-1">
+                      <p className="text-[10px] text-muted-foreground">Total Parsed</p>
+                      <p className="text-xl font-bold">{validation.summary.totalParsed}</p>
+                   </div>
+                   <div className="space-y-1">
+                      <p className="text-[10px] text-emerald-400">Ready to Import</p>
+                      <p className="text-xl font-bold text-emerald-400">{validation.summary.validCount}</p>
+                   </div>
+                </div>
+                {validation.summary.brokenCount > 0 && (
+                   <p className="text-[10px] text-rose-400 font-medium">
+                      Note: {validation.summary.brokenCount} items are completely broken and will be skipped.
+                   </p>
+                )}
+             </div>
+          )}
         </div>
 
         <div className="lg:col-span-8 space-y-6">
@@ -352,21 +417,32 @@ export default function UploadJsonPage() {
               <div className={cn("p-4 rounded-2xl flex items-center justify-between border", validation.isValid ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-rose-500/10 border-rose-500/20 text-rose-400")}>
                 <div className="flex items-center gap-3">
                   {validation.isValid ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
-                  <span className="font-headline font-bold text-lg">{validation.isValid ? "Integrity Passed" : "Critical Issues Found"}</span>
+                  <span className="font-headline font-bold text-lg">{validation.isValid ? "Valid Test Detected" : "Schema Unresolvable"}</span>
                 </div>
-                <Badge variant="outline" className="bg-white/5 h-7 uppercase text-[10px]">{validation.summary.schemaType}</Badge>
+                <div className="flex gap-2">
+                   {validation.warnings.length > 0 && (
+                     <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/20 h-7 uppercase text-[10px]">
+                        {validation.warnings.length} Warnings
+                     </Badge>
+                   )}
+                   {validation.errors.length > 0 && (
+                     <Badge className="bg-rose-500/20 text-rose-500 border-rose-500/20 h-7 uppercase text-[10px]">
+                        {validation.summary.brokenCount} Critical Issues
+                     </Badge>
+                   )}
+                </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
                  <Card className="glass border-white/10 h-[300px] flex flex-col">
-                    <CardHeader className="bg-rose-500/[0.02] border-b border-white/5 py-3"><CardTitle className="text-[10px] font-bold uppercase">Critical Errors</CardTitle></CardHeader>
+                    <CardHeader className="bg-rose-500/[0.02] border-b border-white/5 py-3"><CardTitle className="text-[10px] font-bold uppercase">Critical Errors (Will be Skipped)</CardTitle></CardHeader>
                     <ScrollArea className="flex-1 p-4">
-                       {validation.errors.length === 0 ? <div className="h-full flex items-center justify-center opacity-30 text-xs italic">No errors found.</div> : 
+                       {validation.errors.length === 0 ? <div className="h-full flex items-center justify-center opacity-30 text-xs italic">No critical errors.</div> : 
                          <ul className="space-y-2">{validation.errors.map((err, i) => <li key={i} className="text-xs text-rose-400 flex items-start gap-2"><X className="w-3 h-3 mt-0.5" /> {err}</li>)}</ul>}
                     </ScrollArea>
                  </Card>
                  <Card className="glass border-white/10 h-[300px] flex flex-col">
-                    <CardHeader className="bg-amber-500/[0.02] border-b border-white/5 py-3"><CardTitle className="text-[10px] font-bold uppercase">Warnings</CardTitle></CardHeader>
+                    <CardHeader className="bg-amber-500/[0.02] border-b border-white/5 py-3"><CardTitle className="text-[10px] font-bold uppercase">Import Warnings (Informational)</CardTitle></CardHeader>
                     <ScrollArea className="flex-1 p-4">
                        {validation.warnings.length === 0 ? <div className="h-full flex items-center justify-center opacity-30 text-xs italic">Clean dataset.</div> : 
                          <ul className="space-y-2">{validation.warnings.map((warn, i) => <li key={i} className="text-xs text-amber-400 flex items-start gap-2"><Info className="w-3 h-3 mt-0.5" /> {warn}</li>)}</ul>}
@@ -376,8 +452,8 @@ export default function UploadJsonPage() {
 
               <Tabs defaultValue="preview" className="w-full">
                 <TabsList className="bg-white/5 p-1 rounded-xl mb-6">
-                  <TabsTrigger value="preview" className="rounded-lg gap-2"><Eye className="w-3.5 h-3.5" /> Simulation</TabsTrigger>
-                  <TabsTrigger value="stats" className="rounded-lg gap-2"><Database className="w-3.5 h-3.5" /> Metadata</TabsTrigger>
+                  <TabsTrigger value="preview" className="rounded-lg gap-2"><Eye className="w-3.5 h-3.5" /> Parsed Preview</TabsTrigger>
+                  <TabsTrigger value="stats" className="rounded-lg gap-2"><Database className="w-3.5 h-3.5" /> Data Metadata</TabsTrigger>
                 </TabsList>
                 <TabsContent value="stats">
                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -390,23 +466,30 @@ export default function UploadJsonPage() {
                 <TabsContent value="preview">
                   <ScrollArea className="h-[600px] border border-white/5 rounded-[2rem] bg-slate-900/50 p-6">
                     <div className="space-y-8">
-                      {normalizedContent?.questions.slice(0, 10).map((q, i) => (
-                        <div key={i} className="space-y-4 p-6 border border-white/5 rounded-2xl bg-white/[0.02]">
-                          <div className="flex items-center justify-between">
-                            <Badge variant="outline" className="text-[10px]">Q{i+1} • {q.id}</Badge>
-                            <Badge className="bg-accent/10 text-accent text-[10px]">{q.sectionId}</Badge>
-                          </div>
-                          <RichTextRenderer content={q.en_html || q.en || q.hn_html || q.hn} className="text-base font-medium" />
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {q.options?.map((opt: any) => (
-                              <div key={opt.id} className={cn("p-2 text-[11px] rounded-lg border", q.answer === opt.id ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/5")}>
-                                <RichTextRenderer content={opt.en_html || opt.en || opt.hn_html || opt.hn} />
+                      {normalizedContent?.questions.slice(0, 20).map((q, i) => {
+                        const isBroken = !q.en && !q.en_html && !q.hn && !q.hn_html;
+                        return (
+                          <div key={i} className={cn("space-y-4 p-6 border rounded-2xl", isBroken ? "border-rose-500/20 bg-rose-500/5" : "border-white/5 bg-white/[0.02]")}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                 <Badge variant="outline" className="text-[10px]">Item {i+1}</Badge>
+                                 <span className="text-[9px] font-mono text-muted-foreground">{q.id}</span>
                               </div>
-                            ))}
+                              {isBroken && <Badge variant="destructive" className="h-5 text-[8px]">BROKEN</Badge>}
+                              <Badge className="bg-accent/10 text-accent text-[10px]">{q.sectionId}</Badge>
+                            </div>
+                            <RichTextRenderer content={q.en_html || q.en || q.hn_html || q.hn} className="text-base font-medium" />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {q.options?.map((opt: any) => (
+                                <div key={opt.id} className={cn("p-2 text-[11px] rounded-lg border", q.answer === opt.id ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/5")}>
+                                  <RichTextRenderer content={opt.en_html || opt.en || opt.hn_html || opt.hn} />
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                      {normalizedContent && normalizedContent.questions.length > 10 && <div className="text-center py-4 text-xs text-muted-foreground italic">Showing first 10 items...</div>}
+                        );
+                      })}
+                      {normalizedContent && normalizedContent.questions.length > 20 && <div className="text-center py-4 text-xs text-muted-foreground italic">Showing first 20 items...</div>}
                     </div>
                   </ScrollArea>
                 </TabsContent>
@@ -417,7 +500,7 @@ export default function UploadJsonPage() {
               <FileJson className="w-12 h-12" />
               <div className="text-center">
                  <p className="font-headline font-bold text-xl uppercase tracking-widest">Awaiting JSON</p>
-                 <p className="text-sm mt-1">Upload a real-world test file to start verification.</p>
+                 <p className="text-sm mt-1">Upload a real-world test file to start multi-path verification.</p>
               </div>
             </div>
           )}
