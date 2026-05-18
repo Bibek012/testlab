@@ -140,8 +140,8 @@ function UploadJsonContent() {
         }
       });
     } else if (json.questions && Array.isArray(json.questions)) {
-      rawQuestions = json.questions;
       schemaType = "Questions Key";
+      rawQuestions = json.questions;
     } else {
       schemaType = "Dynamic Search";
       const key = Object.keys(json).find(k => Array.isArray(json[k]));
@@ -331,12 +331,12 @@ function UploadJsonContent() {
                 </TabsContent>
                 <TabsContent value="logs">
                   <Card className="glass border-white/10 p-6 font-mono text-[10px] space-y-2">
-                    <p className="text-primary">> Initializing Deep Scanner...</p>
-                    <p className="text-accent">> Detected Root Schema: {validation.summary.schemaType}</p>
-                    <p className="text-foreground">> Parsed Questions: {validation.summary.totalParsed}</p>
-                    <p className="text-emerald-400">> Valid Mappings: {validation.summary.validCount}</p>
-                    <p className="text-rose-400">> Content Failures: {validation.summary.brokenCount}</p>
-                    <p className="text-indigo-400">> Bilingual Mode: {validation.summary.bilingual ? 'Full' : 'Partial'}</p>
+                    <p className="text-primary">&gt; Initializing Deep Scanner...</p>
+                    <p className="text-accent">&gt; Detected Root Schema: {validation.summary.schemaType}</p>
+                    <p className="text-foreground">&gt; Parsed Questions: {validation.summary.totalParsed}</p>
+                    <p className="text-emerald-400">&gt; Valid Mappings: {validation.summary.validCount}</p>
+                    <p className="text-rose-400">&gt; Content Failures: {validation.summary.brokenCount}</p>
+                    <p className="text-indigo-400">&gt; Bilingual Mode: {validation.summary.bilingual ? 'Full' : 'Partial'}</p>
                   </Card>
                 </TabsContent>
               </Tabs>
