@@ -7,16 +7,14 @@ import { Button } from "@/components/ui/button";
 import { 
   Search, 
   Play, 
-  Users,
   CheckCircle2,
   BarChart3,
   RotateCcw,
-  Loader2,
   FileText
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useUser, useFirestore, useCollection } from "@/firebase";
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 
 interface MockTestListProps {
@@ -34,9 +32,15 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
   const db = useFirestore();
 
   // Fetch Mock Tests for this Exam
-  const testsQuery = useMemo(() => 
-    db ? query(collection(db, "mockTests"), where("examId", "==", examId), where("status", "==", "Published"), orderBy("title", "asc")) : null,
+  const testsQuery = useMemoFirebase(() => 
+    db ? query(
+      collection(db, "mockTests"), 
+      where("examId", "==", examId), 
+      where("status", "==", "Published"), 
+      orderBy("title", "asc")
+    ) : null,
   [db, examId]);
+
   const { data: tests, loading: testsLoading } = useCollection<any>(testsQuery);
 
   // Load attempted status from cloud
@@ -55,7 +59,7 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
       }
     };
     fetchAttempts();
-  }, [user, db]);
+  }, [user?.uid, !!db]);
 
   const filteredTests = useMemo(() => {
     if (!tests) return [];

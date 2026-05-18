@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -9,14 +8,12 @@ import {
   MoreVertical, 
   Edit2, 
   Trash2, 
-  Eye, 
-  CheckCircle2, 
-  XCircle,
   ChevronRight,
   FolderOpen,
-  MapPin,
   Globe,
-  Loader2
+  Loader2,
+  CheckCircle2,
+  XCircle
 } from "lucide-react";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { 
@@ -41,7 +38,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -54,22 +50,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { STATES } from "@/lib/exam-data";
 
 export default function ExamManagementPage() {
   const db = useFirestore();
   
   const categoriesQuery = useMemoFirebase(() => 
-    db ? query(collection(db, "examCategories"), orderBy("order", "asc")) : null, 
+    db ? query(collection(db, "examCategories"), orderBy("title", "asc")) : null, 
   [db]);
 
   const examsQuery = useMemoFirebase(() => 
     db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, 
   [db]);
 
-  const { data: categories, loading: catsLoading } = useCollection(categoriesQuery);
-  const { data: exams, loading: examsLoading } = useCollection(examsQuery);
+  const { data: categories, loading: catsLoading } = useCollection<any>(categoriesQuery);
+  const { data: exams, loading: examsLoading } = useCollection<any>(examsQuery);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | "all">("all");
@@ -110,12 +104,12 @@ export default function ExamManagementPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold">Exam <span className="text-accent">Hierarchy</span></h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage categories, exams, and state-wise listings.</p>
+          <p className="text-muted-foreground text-sm mt-1">Manage categories and exam listings.</p>
         </div>
         <div className="flex items-center gap-3">
           <Button 
             variant="outline" 
-            className="border-white/10 hover:bg-white/5 rounded-xl gap-2 h-11"
+            className="border-white/10 rounded-xl gap-2 h-11"
             onClick={() => { setEditingItem(null); setIsCategoryModalOpen(true); }}
           >
             <FolderOpen className="w-4 h-4" />
@@ -133,32 +127,30 @@ export default function ExamManagementPage() {
 
       <div className="grid lg:grid-cols-12 gap-8">
         <aside className="lg:col-span-3 space-y-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Categories</h3>
-            <Badge variant="outline" className="text-[10px] border-white/10">{categories?.length || 0}</Badge>
-          </div>
           <div className="space-y-1">
             <button
               onClick={() => setActiveCategory("all")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+              className={cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all",
                 activeCategory === "all" ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:bg-white/5 border border-transparent"
-              }`}
+              )}
             >
               <Globe className="w-4 h-4" />
               <span className="text-sm font-medium">All Exams</span>
-              <ChevronRight className={`ml-auto w-4 h-4 transition-transform ${activeCategory === "all" ? "rotate-90" : ""}`} />
+              <ChevronRight className={cn("ml-auto w-4 h-4 transition-transform", activeCategory === "all" ? "rotate-90" : "")} />
             </button>
             {categories?.map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                className={cn(
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all",
                   activeCategory === cat.id ? "bg-primary/10 text-primary border border-primary/20" : "text-muted-foreground hover:bg-white/5 border border-transparent"
-                }`}
+                )}
               >
                 <FolderOpen className="w-4 h-4" />
-                <span className="text-sm font-medium">{cat.title}</span>
-                <ChevronRight className={`ml-auto w-4 h-4 transition-transform ${activeCategory === cat.id ? "rotate-90" : ""}`} />
+                <span className="text-sm font-medium truncate">{cat.title}</span>
+                <ChevronRight className={cn("ml-auto w-4 h-4 transition-transform", activeCategory === cat.id ? "rotate-90" : "")} />
               </button>
             ))}
           </div>
@@ -167,21 +159,9 @@ export default function ExamManagementPage() {
         <main className="lg:col-span-9 space-y-6">
           <Card className="glass border-white/10 overflow-hidden">
             <CardHeader className="p-6 border-b border-white/5 bg-white/[0.02]">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Search exams by name..." 
-                    className="pl-10 bg-white/5 border-white/5 h-10 rounded-xl"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:bg-white/5 h-10 w-10">
-                    <Filter className="w-4 h-4" />
-                  </Button>
-                </div>
+              <div className="relative max-w-md w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input placeholder="Search exams..." className="pl-10 bg-white/5 border-white/5 h-10 rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -190,71 +170,30 @@ export default function ExamManagementPage() {
                   <thead>
                     <tr className="border-b border-white/5 bg-white/[0.01]">
                       <th className="px-6 py-4 font-semibold text-muted-foreground">Exam Name</th>
-                      <th className="px-6 py-4 font-semibold text-muted-foreground">Category</th>
-                      <th className="px-6 py-4 font-semibold text-muted-foreground">URL Slug</th>
-                      <th className="px-6 py-4 font-semibold text-muted-foreground">Status</th>
+                      <th className="px-6 py-4 font-semibold text-muted-foreground">Slug</th>
                       <th className="px-6 py-4 font-semibold text-muted-foreground text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {examsLoading ? (
-                      <tr><td colSpan={5} className="p-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto opacity-20" /></td></tr>
+                      <tr><td colSpan={3} className="p-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto opacity-20" /></td></tr>
                     ) : filteredExams.map((exam) => (
                       <tr key={exam.id} className="hover:bg-white/[0.02] transition-colors group">
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
                             <span className="font-bold text-foreground">{exam.name}</span>
-                            <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest">{exam.id.slice(0, 8)}</span>
+                            <span className="text-[10px] text-muted-foreground uppercase">{categories?.find(c => c.id === exam.categoryId)?.title}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <Badge variant="outline" className="bg-white/5 border-white/10 font-medium">
-                            {categories?.find(c => c.id === exam.categoryId)?.title || "Unknown"}
-                          </Badge>
-                        </td>
-                        <td className="px-6 py-4">
-                           <span className="text-xs font-mono text-accent">{exam.slug}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            {exam.isActive ? (
-                              <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 gap-1.5 h-6">
-                                <CheckCircle2 className="w-3 h-3" /> Active
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 gap-1.5 h-6">
-                                <XCircle className="w-3 h-3" /> Inactive
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
+                        <td className="px-6 py-4 font-mono text-[10px] text-accent">{exam.slug}</td>
                         <td className="px-6 py-4 text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10"><MoreVertical className="w-4 h-4" /></Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="glass border-white/10">
-                              <DropdownMenuItem 
-                                className="cursor-pointer gap-2"
-                                onClick={() => { setEditingItem(exam); setIsExamModalOpen(true); }}
-                              >
-                                <Edit2 className="w-3.5 h-3.5" /> Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                className="cursor-pointer gap-2"
-                                onClick={() => handleToggleStatus(exam.id, exam.isActive)}
-                              >
-                                {exam.isActive ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                                {exam.isActive ? "Deactivate" : "Activate"}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                className="cursor-pointer gap-2 text-destructive focus:text-destructive focus:bg-destructive/10"
-                                onClick={() => handleDeleteExam(exam.id)}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" /> Delete
-                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setEditingItem(exam); setIsExamModalOpen(true); }}>Edit</DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteExam(exam.id)}>Delete</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>
@@ -268,87 +207,44 @@ export default function ExamManagementPage() {
         </main>
       </div>
 
-      <CategoryModal 
-        isOpen={isCategoryModalOpen} 
-        onClose={() => setIsCategoryModalOpen(false)}
-        editingItem={editingItem}
-      />
-
-      <ExamModal 
-        isOpen={isExamModalOpen} 
-        onClose={() => setIsExamModalOpen(false)}
-        editingItem={editingItem}
-        categories={categories || []}
-      />
+      <CategoryModal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} editingItem={editingItem} />
+      <ExamModal isOpen={isExamModalOpen} onClose={() => setIsExamModalOpen(false)} editingItem={editingItem} categories={categories || []} />
     </div>
   );
 }
 
 function CategoryModal({ isOpen, onClose, editingItem }: any) {
   const db = useFirestore();
-  const [formData, setFormData] = useState({ title: "", slug: "", description: "" });
+  const [formData, setFormData] = useState({ title: "", slug: "" });
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
     if (editingItem) setFormData(editingItem);
-    else setFormData({ title: "", slug: "", description: "" });
+    else setFormData({ title: "", slug: "" });
   }, [editingItem, isOpen]);
 
   const handleSave = async () => {
-    if (!db || !formData.title || !formData.slug) return;
+    if (!db || !formData.title) return;
     setIsSaving(true);
     try {
-      if (editingItem) {
-        await updateDoc(doc(db, "examCategories", editingItem.id), formData);
-      } else {
-        await addDoc(collection(db, "examCategories"), { ...formData, order: Date.now() });
-      }
+      const slug = formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-');
+      if (editingItem) { await updateDoc(doc(db, "examCategories", editingItem.id), { ...formData, slug }); }
+      else { await addDoc(collection(db, "examCategories"), { ...formData, slug, order: Date.now() }); }
       onClose();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="glass border-white/10 sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{editingItem ? "Edit Category" : "New Category"}</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>{editingItem ? "Edit Category" : "New Category"}</DialogTitle></DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Category Title</Label>
-            <Input 
-              id="title" 
-              placeholder="e.g. SSC, Banking" 
-              className="bg-white/5 border-white/10"
-              value={formData.title}
-              onChange={(e) => {
-                const title = e.target.value;
-                setFormData({ 
-                  ...formData, 
-                  title, 
-                  slug: editingItem ? formData.slug : title.toLowerCase().replace(/\s+/g, '-') 
-                });
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="slug">URL Slug</Label>
-            <Input 
-              id="slug" 
-              className="bg-white/5 border-white/10 font-mono"
-              value={formData.slug}
-              onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
-            />
+            <Label>Category Title</Label>
+            <Input className="bg-white/5 border-white/10" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} className="border-white/10">Cancel</Button>
-          <Button onClick={handleSave} className="bg-primary text-white" disabled={isSaving}>Save</Button>
-        </DialogFooter>
+        <DialogFooter><Button onClick={handleSave} className="bg-primary text-white" disabled={isSaving}>Save</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -356,117 +252,50 @@ function CategoryModal({ isOpen, onClose, editingItem }: any) {
 
 function ExamModal({ isOpen, onClose, editingItem, categories }: any) {
   const db = useFirestore();
-  const [formData, setFormData] = useState({ 
-    name: "", 
-    slug: "", 
-    categoryId: "", 
-    stateSlug: "none", 
-    difficulty: "Intermediate",
-    description: "",
-    isActive: true 
-  });
+  const [formData, setFormData] = useState({ name: "", slug: "", categoryId: "", difficulty: "Intermediate", isActive: true });
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
-    if (editingItem) setFormData({ ...editingItem, stateSlug: editingItem.stateSlug || "none" });
-    else setFormData({ name: "", slug: "", categoryId: "", stateSlug: "none", difficulty: "Intermediate", description: "", isActive: true });
+    if (editingItem) setFormData(editingItem);
+    else setFormData({ name: "", slug: "", categoryId: "", difficulty: "Intermediate", isActive: true });
   }, [editingItem, isOpen]);
 
   const handleSave = async () => {
-    if (!db || !formData.name || !formData.slug || !formData.categoryId) return;
+    if (!db || !formData.name || !formData.categoryId) return;
     setIsSaving(true);
     try {
-      const data = { ...formData, stateSlug: formData.stateSlug === "none" ? null : formData.stateSlug };
-      if (editingItem) {
-        await updateDoc(doc(db, "exams", editingItem.id), data);
-      } else {
-        await addDoc(collection(db, "exams"), { ...data, testsCount: 0, questionsCount: 0 });
-      }
+      const slug = formData.slug || formData.name.toLowerCase().replace(/\s+/g, '-');
+      if (editingItem) { await updateDoc(doc(db, "exams", editingItem.id), { ...formData, slug }); }
+      else { await addDoc(collection(db, "exams"), { ...formData, slug, testsCount: 0 }); }
       onClose();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="glass border-white/10 sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{editingItem ? "Edit Exam" : "New Exam"}</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>{editingItem ? "Edit Exam" : "New Exam"}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-4 py-4">
           <div className="col-span-2 space-y-2">
-            <Label htmlFor="examName">Exam Name</Label>
-            <Input 
-              id="examName" 
-              className="bg-white/5 border-white/10"
-              value={formData.name}
-              onChange={(e) => {
-                const name = e.target.value;
-                setFormData({ 
-                  ...formData, 
-                  name, 
-                  slug: editingItem ? formData.slug : name.toLowerCase().replace(/\s+/g, '-') 
-                });
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="examSlug">URL Slug</Label>
-            <Input 
-              id="examSlug" 
-              className="bg-white/5 border-white/10 font-mono"
-              value={formData.slug}
-              onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
-            />
+            <Label>Exam Name</Label>
+            <Input className="bg-white/5 border-white/10" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
           </div>
           <div className="space-y-2">
             <Label>Category</Label>
-            <Select 
-              value={formData.categoryId} 
-              onValueChange={(val) => setFormData({ ...formData, categoryId: val })}
-            >
-              <SelectTrigger className="bg-white/5 border-white/10">
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat: any) => (
-                  <SelectItem key={cat.id} value={cat.id}>{cat.title}</SelectItem>
-                ))}
-              </SelectContent>
+            <Select value={formData.categoryId} onValueChange={(val) => setFormData({ ...formData, categoryId: val })}>
+              <SelectTrigger className="bg-white/5 border-white/10"><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>{categories.map((cat: any) => <SelectItem key={cat.id} value={cat.id}>{cat.title}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
             <Label>Difficulty</Label>
-            <Select 
-              value={formData.difficulty} 
-              onValueChange={(val) => setFormData({ ...formData, difficulty: val })}
-            >
-              <SelectTrigger className="bg-white/5 border-white/10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Easy">Easy</SelectItem>
-                <SelectItem value="Intermediate">Intermediate</SelectItem>
-                <SelectItem value="Hard">Hard</SelectItem>
-              </SelectContent>
+            <Select value={formData.difficulty} onValueChange={(val) => setFormData({ ...formData, difficulty: val })}>
+              <SelectTrigger className="bg-white/5 border-white/10"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="Easy">Easy</SelectItem><SelectItem value="Intermediate">Intermediate</SelectItem><SelectItem value="Hard">Hard</SelectItem></SelectContent>
             </Select>
           </div>
-          <div className="col-span-2 space-y-2">
-            <Label>Description</Label>
-            <Input 
-              className="bg-white/5 border-white/10"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            />
-          </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} className="border-white/10">Cancel</Button>
-          <Button onClick={handleSave} className="bg-primary text-white" disabled={isSaving}>Save Exam</Button>
-        </DialogFooter>
+        <DialogFooter><Button onClick={handleSave} className="bg-primary text-white" disabled={isSaving}>Save Exam</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
