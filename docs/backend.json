@@ -22,6 +22,33 @@
       },
       "required": ["uid", "email"]
     },
+    "MockType": {
+      "title": "Mock Test Category",
+      "description": "Top-level category for mock tests (e.g., Full Test, Subject Test).",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "description": { "type": "string" },
+        "order": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "deleted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "MockSubType": {
+      "title": "Mock Test Sub-Category",
+      "description": "Nested category under a MockType (e.g., Mathematics under Subject Test).",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "order": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "deleted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "AuditLog": {
       "title": "Audit Log",
       "description": "System-wide tracking of administrative actions.",
@@ -44,6 +71,14 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "Stores user profile and aggregate stats."
+    },
+    "/mockTypes/{typeId}": {
+      "schema": "MockType",
+      "description": "Defines global mock test categories."
+    },
+    "/mockTypes/{typeId}/subTypes/{subTypeId}": {
+      "schema": "MockSubType",
+      "description": "Defines nested sub-categories (subjects/chapters)."
     },
     "/auditLogs/{logId}": {
       "schema": "AuditLog",

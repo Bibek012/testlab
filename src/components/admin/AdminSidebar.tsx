@@ -19,7 +19,7 @@ import {
   Send,
   BellRing,
   ShieldCheck,
-  UserPlus
+  Layers
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -48,6 +48,7 @@ interface NavItem {
 const menuItems: NavItem[] = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/admin" },
   { title: "Exams", icon: Briefcase, href: "/admin/exams", permission: "canManageExams" },
+  { title: "Mock Types", icon: Layers, href: "/admin/mock-types", permission: "canManageMocks" },
   { title: "Mock Tests", icon: Files, href: "/admin/mock-tests", permission: "canManageMocks" },
   { title: "Upload JSON", icon: UploadCloud, href: "/admin/upload-json", permission: "canUploadContent" },
   { title: "Questions", icon: HelpCircle, href: "/admin/questions", permission: "canUploadContent" },

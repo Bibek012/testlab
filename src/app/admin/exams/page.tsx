@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { 
-  Plus, 
-  Search, 
-  MoreVertical, 
-  Edit2, 
-  Trash2, 
+import {
+  Plus,
+  Search,
+  MoreVertical,
+  Edit2,
+  Trash2,
   ChevronRight,
   FolderOpen,
   Globe,
@@ -15,11 +15,11 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { 
-  collection, 
-  addDoc, 
-  deleteDoc, 
-  doc, 
+import {
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
   updateDoc,
   query,
   orderBy,
@@ -60,14 +60,14 @@ export default function ExamManagementPage() {
   const db = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
-  
-  const categoriesQuery = useMemoFirebase(() => 
-    db ? query(collection(db, "examCategories"), orderBy("title", "asc")) : null, 
-  [db]);
 
-  const examsQuery = useMemoFirebase(() => 
-    db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, 
-  [db]);
+  const categoriesQuery = useMemoFirebase(() =>
+    db ? query(collection(db, "examCategories"), orderBy("title", "asc")) : null,
+    [db]);
+
+  const examsQuery = useMemoFirebase(() =>
+    db ? query(collection(db, "exams"), orderBy("name", "asc")) : null,
+    [db]);
 
   const { data: categories, loading: catsLoading } = useCollection<any>(categoriesQuery);
   const { data: exams, loading: examsLoading } = useCollection<any>(examsQuery);
@@ -75,7 +75,7 @@ export default function ExamManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | "all">("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  
+
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -89,43 +89,115 @@ export default function ExamManagementPage() {
     });
   }, [exams, searchQuery, activeCategory]);
 
-  const handleDeleteExam = async (examId: string, examName: string) => {
-    if (!db || !user) return;
-    
-    setDeletingId(examId);
-    try {
-      // 1. Check for child mock tests
-      const mocksRef = collection(db, "mockTests");
-      const q = query(mocksRef, where("examId", "==", examId));
-      const mocksSnap = await getDocs(q);
-      
-      const confirmMsg = mocksSnap.empty 
-        ? `Are you sure you want to delete "${examName}"?`
-        : `"${examName}" contains ${mocksSnap.size} associated mock tests. Deleting this exam will leave those tests unlinked. Proceed?`;
+  const handleDeleteExam = async (
+    examId: string,
+    examName: string
+  ) => {
 
-      if (!confirm(confirmMsg)) {
-        setDeletingId(null);
+    console.log("DELETE EXAM START");
+
+    try {
+
+      if (!db) {
+        console.error("Firestore DB missing");
+
+        toast({
+          variant: "destructive",
+          title: "Database Error",
+          description: "Firestore not initialized",
+        });
+
         return;
       }
 
-      // 2. Perform deletion
-      await deleteDoc(doc(db, "exams", examId));
-      
-      // 3. Audit log
-      await logAction(db, user, "delete_exam", examId, "exam", `Permanently removed exam: ${examName}`);
+      if (!user) {
+        console.error("User missing");
+
+        toast({
+          variant: "destructive",
+          title: "Authentication Error",
+          description: "User not authenticated",
+        });
+
+        return;
+      }
+
+      if (!examId) {
+        console.error("Exam ID missing");
+
+        toast({
+          variant: "destructive",
+          title: "Delete Failed",
+          description: "Invalid exam ID",
+        });
+
+        return;
+      }
+
+      setDeletingId(examId);
+
+      console.log("Checking linked mock tests...");
+
+      const mocksRef = collection(db, "mockTests");
+
+      const q = query(
+        mocksRef,
+        where("examId", "==", examId)
+      );
+
+      const mocksSnap = await getDocs(q);
+
+      console.log(
+        "Linked mocks:",
+        mocksSnap.size
+      );
+
+      const examRef = doc(
+        db,
+        "exams",
+        examId
+      );
+
+      console.log(
+        "Deleting exam:",
+        examRef.path
+      );
+
+      await deleteDoc(examRef);
+
+      console.log("DELETE SUCCESS");
+
+      await logAction(
+        db,
+        user,
+        "delete_exam",
+        examId,
+        "exam",
+        `Deleted exam: ${examName}`
+      );
 
       toast({
         title: "Exam Deleted",
-        description: `"${examName}" has been removed from the platform.`,
+        description:
+          `"${examName}" deleted successfully`,
       });
+
     } catch (e: any) {
-      console.error("Delete Error:", e);
+
+      console.error(
+        "DELETE ERROR:",
+        e
+      );
+
       toast({
         variant: "destructive",
         title: "Delete Failed",
-        description: e.message || "Failed to remove the exam document.",
+        description:
+          e?.message || "Unknown error",
       });
+
     } finally {
+
       setDeletingId(null);
     }
   };
@@ -138,8 +210,8 @@ export default function ExamManagementPage() {
           <p className="text-muted-foreground text-xs md:text-sm mt-1">Manage categories and exam listings across the platform.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full xl:w-auto">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="flex-1 xl:flex-none border-white/10 rounded-xl gap-2 h-10 md:h-11 text-xs md:text-sm"
             onClick={() => { setEditingItem(null); setIsCategoryModalOpen(true); }}
           >
@@ -147,7 +219,7 @@ export default function ExamManagementPage() {
             <span className="hidden xs:inline">New Category</span>
             <span className="xs:hidden">Category</span>
           </Button>
-          <Button 
+          <Button
             className="flex-[1.5] xl:flex-none bg-primary hover:bg-primary/90 text-white rounded-xl gap-2 h-10 md:h-11 shadow-lg shadow-primary/20 text-xs md:text-sm"
             onClick={() => { setEditingItem(null); setIsExamModalOpen(true); }}
           >
@@ -244,7 +316,15 @@ export default function ExamManagementPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="glass border-white/10 w-40">
                                 <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => { setEditingItem(exam); setIsExamModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /> Edit Details</DropdownMenuItem>
-                                <DropdownMenuItem className="text-destructive gap-2 cursor-pointer" onClick={() => handleDeleteExam(exam.id, exam.name)}><Trash2 className="w-3.5 h-3.5" /> Delete Exam</DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive gap-2 cursor-pointer"
+                                  onClick={() =>
+                                    handleDeleteExam(
+                                      exam.id,
+                                      exam.name
+                                    )
+                                  }
+                                ></DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
@@ -282,16 +362,16 @@ function CategoryModal({ isOpen, onClose, editingItem }: any) {
     setIsSaving(true);
     try {
       const slug = formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      if (editingItem) { 
-        await updateDoc(doc(db, "examCategories", editingItem.id), { ...formData, slug }); 
+      if (editingItem) {
+        await updateDoc(doc(db, "examCategories", editingItem.id), { ...formData, slug });
         await logAction(db, user, "update_category", editingItem.id, "category", `Updated category: ${formData.title}`);
-      } else { 
-        const docRef = await addDoc(collection(db, "examCategories"), { ...formData, slug, order: Date.now() }); 
+      } else {
+        const docRef = await addDoc(collection(db, "examCategories"), { ...formData, slug, order: Date.now() });
         await logAction(db, user, "create_category", docRef.id, "category", `Created category: ${formData.title}`);
       }
       toast({ title: "Category Synchronized" });
       onClose();
-    } catch (e: any) { 
+    } catch (e: any) {
       toast({ variant: "destructive", title: "Error", description: e.message });
     } finally { setIsSaving(false); }
   };
@@ -339,24 +419,24 @@ function ExamModal({ isOpen, onClose, editingItem, categories }: any) {
     try {
       const slug = formData.slug || formData.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const selectedCategory = categories.find((c: any) => c.id === formData.categoryId);
-      const data = { 
-        ...formData, 
-        slug, 
+      const data = {
+        ...formData,
+        slug,
         categorySlug: selectedCategory?.slug || "",
-        isActive: true, 
-        updatedAt: serverTimestamp() 
+        isActive: true,
+        updatedAt: serverTimestamp()
       };
-      
-      if (editingItem) { 
-        await updateDoc(doc(db, "exams", editingItem.id), data); 
+
+      if (editingItem) {
+        await updateDoc(doc(db, "exams", editingItem.id), data);
         await logAction(db, user, "update_exam", editingItem.id, "exam", `Updated exam listing: ${formData.name}`);
-      } else { 
-        const docRef = await addDoc(collection(db, "exams"), { ...data, testsCount: 0, questionsCount: 0, createdAt: serverTimestamp() }); 
+      } else {
+        const docRef = await addDoc(collection(db, "exams"), { ...data, testsCount: 0, questionsCount: 0, createdAt: serverTimestamp() });
         await logAction(db, user, "create_exam", docRef.id, "exam", `Created exam listing: ${formData.name}`);
       }
       toast({ title: "Exam Listing Synchronized" });
       onClose();
-    } catch (e: any) { 
+    } catch (e: any) {
       toast({ variant: "destructive", title: "Error", description: e.message });
     } finally { setIsSaving(false); }
   };
