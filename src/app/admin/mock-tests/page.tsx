@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { 
-  Plus, 
-  Search, 
-  MoreVertical, 
-  Edit2, 
-  Trash2, 
-  UploadCloud, 
+import {
+  Plus,
+  Search,
+  MoreVertical,
+  Edit2,
+  Trash2,
+  UploadCloud,
   Clock,
   LayoutGrid,
   List,
@@ -15,11 +15,11 @@ import {
   Filter
 } from "lucide-react";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { 
-  collection, 
-  addDoc, 
-  deleteDoc, 
-  doc, 
+import {
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
   updateDoc,
   query,
   orderBy,
@@ -56,28 +56,30 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 
 const MOCK_TYPES = ["Full Test", "Subject Test", "Chapter Test", "Previous Year", "Daily Quiz", "Mini Mock"];
 
 export default function MockTestManagementPage() {
   const db = useFirestore();
   const router = useRouter();
-  
-  const examsQuery = useMemoFirebase(() => 
-    db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, 
-  [db]);
+  const { toast } = useToast();
+
+  const examsQuery = useMemoFirebase(() =>
+    db ? query(collection(db, "exams"), orderBy("name", "asc")) : null,
+    [db]);
   const { data: exams } = useCollection<any>(examsQuery);
 
-  const mockTestsQuery = useMemoFirebase(() => 
-    db ? query(collection(db, "mockTests"), orderBy("createdAt", "desc")) : null, 
-  [db]);
+  const mockTestsQuery = useMemoFirebase(() =>
+    db ? query(collection(db, "mockTests"), orderBy("createdAt", "desc")) : null,
+    [db]);
   const { data: mockTests, loading: mocksLoading } = useCollection<any>(mockTestsQuery);
 
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [activeTab, setActiveTab] = useState<"all" | "Draft" | "Published">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState({ examId: "all" });
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
 
@@ -91,12 +93,27 @@ export default function MockTestManagementPage() {
     });
   }, [mockTests, searchQuery, activeTab, filters]);
 
-  const handleDeleteMock = async (id: string) => {
-    if (!db || !confirm("Are you sure you want to delete this mock test?")) return;
+  const handleDeleteMock = async (id: string, title: string) => {
+    if (!db) return;
+    
+    // Explicit confirmation for administrative safety
+    if (!confirm(`Are you sure you want to permanently delete "${title}"?`)) return;
+    
+    console.log("Admin: Deleting mock test document:", id);
     try {
       await deleteDoc(doc(db, "mockTests", id));
-    } catch (e) {
-      console.error("Error deleting mock:", e);
+      console.log("Admin: Delete successful for:", id);
+      toast({
+        title: "Mock Test Deleted",
+        description: `"${title}" has been removed from the platform.`,
+      });
+    } catch (e: any) {
+      console.error("Admin Error: Failed to delete mock:", e);
+      toast({
+        variant: "destructive",
+        title: "Delete Failed",
+        description: e.message || "You may not have permissions to perform this action.",
+      });
     }
   };
 
@@ -112,7 +129,18 @@ export default function MockTestManagementPage() {
         updatedAt: serverTimestamp(),
         status: "Draft"
       });
-    } catch (e) { console.error(e); }
+      toast({
+        title: "Success",
+        description: "Mock test duplicated as draft.",
+      });
+    } catch (e: any) { 
+      console.error(e);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to duplicate test.",
+      });
+    }
   };
 
   return (
@@ -130,7 +158,7 @@ export default function MockTestManagementPage() {
               <span className="xs:hidden">Upload</span>
             </Button>
           </Link>
-          <Button 
+          <Button
             className="flex-[1.5] xl:flex-none bg-primary hover:bg-primary/90 text-white rounded-xl gap-2 h-10 md:h-11 shadow-lg shadow-primary/20 text-xs md:text-sm"
             onClick={() => { setEditingItem(null); setIsModalOpen(true); }}
           >
@@ -152,8 +180,8 @@ export default function MockTestManagementPage() {
 
           <div className="relative flex-1 lg:max-w-xs min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search by title..." 
+            <Input
+              placeholder="Search by title..."
               className="pl-10 bg-white/5 border-white/5 h-10 rounded-xl text-sm w-full"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -174,15 +202,15 @@ export default function MockTestManagementPage() {
         </div>
 
         <div className="hidden lg:flex bg-white/5 p-1 rounded-xl border border-white/5 shrink-0">
-          <Button 
-            variant="ghost" size="icon" 
+          <Button
+            variant="ghost" size="icon"
             className={cn("h-8 w-8 rounded-lg", viewMode === 'table' ? "bg-white/10 text-primary" : "text-muted-foreground")}
             onClick={() => setViewMode('table')}
           >
             <List className="w-4 h-4" />
           </Button>
-          <Button 
-            variant="ghost" size="icon" 
+          <Button
+            variant="ghost" size="icon"
             className={cn("h-8 w-8 rounded-lg", viewMode === 'grid' ? "bg-white/10 text-primary" : "text-muted-foreground")}
             onClick={() => setViewMode('grid')}
           >
@@ -243,7 +271,15 @@ export default function MockTestManagementPage() {
                           <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
                           <DropdownMenuSeparator className="bg-white/5" />
                           <DropdownMenuItem className="cursor-pointer gap-2 text-primary font-bold" onClick={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}><UploadCloud className="w-3.5 h-3.5" /> Upload Questions</DropdownMenuItem>
-                          <DropdownMenuItem className="cursor-pointer gap-2 text-destructive focus:text-destructive" onClick={() => handleDeleteMock(mock.id)}><Trash2 className="w-3.5 h-3.5" /> Delete Mock</DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="cursor-pointer gap-2 text-destructive focus:text-destructive" 
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              handleDeleteMock(mock.id, mock.title);
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete Mock
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -267,9 +303,18 @@ export default function MockTestManagementPage() {
                     <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2"><MoreVertical className="w-4 h-4" /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="glass border-white/10">
-                     <DropdownMenuItem className="cursor-pointer" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}>Edit</DropdownMenuItem>
-                     <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}>Upload Questions</DropdownMenuItem>
-                     <DropdownMenuItem className="text-destructive cursor-pointer" onClick={() => handleDeleteMock(mock.id)}>Delete</DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}>Edit Settings</DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}>Upload Questions</DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2 text-destructive focus:text-destructive"
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        handleDeleteMock(mock.id, mock.title);
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Mock
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -278,32 +323,32 @@ export default function MockTestManagementPage() {
                 {exams?.find((e: any) => e.id === mock.examId)?.name}
               </p>
               <div className="grid grid-cols-2 gap-4 mb-6">
-                 <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-center">
-                    <div className="text-[9px] text-muted-foreground uppercase font-bold mb-0.5">Questions</div>
-                    <div className="text-lg font-bold">{mock.totalQuestions}</div>
-                 </div>
-                 <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-center">
-                    <div className="text-[9px] text-muted-foreground uppercase font-bold mb-0.5">Duration</div>
-                    <div className="text-lg font-bold">{mock.durationMinutes}m</div>
-                 </div>
+                <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-center">
+                  <div className="text-[9px] text-muted-foreground uppercase font-bold mb-0.5">Questions</div>
+                  <div className="text-lg font-bold">{mock.totalQuestions}</div>
+                </div>
+                <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-center">
+                  <div className="text-[9px] text-muted-foreground uppercase font-bold mb-0.5">Duration</div>
+                  <div className="text-lg font-bold">{mock.durationMinutes}m</div>
+                </div>
               </div>
               <div className="mt-auto flex items-center justify-between">
-                 <Badge className={cn(
-                   "text-[10px]",
-                   mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400" : "bg-white/5 text-muted-foreground"
-                 )}>
-                    {mock.status}
-                 </Badge>
-                 <Button size="sm" variant="ghost" className="text-primary gap-2 text-xs font-bold" onClick={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}>
-                    Add Qs <UploadCloud className="w-3.5 h-3.5" />
-                 </Button>
+                <Badge className={cn(
+                  "text-[10px]",
+                  mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400" : "bg-white/5 text-muted-foreground"
+                )}>
+                  {mock.status}
+                </Badge>
+                <Button size="sm" variant="ghost" className="text-primary gap-2 text-xs font-bold" onClick={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}>
+                  Add Qs <UploadCloud className="w-3.5 h-3.5" />
+                </Button>
               </div>
             </Card>
           ))}
         </div>
       )}
 
-      <MockTestModal 
+      <MockTestModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         editingItem={editingItem}
@@ -315,6 +360,7 @@ export default function MockTestManagementPage() {
 
 function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
   const db = useFirestore();
+  const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<any>({
     title: "", slug: "", examId: "", type: "Full Test", durationMinutes: 90, totalQuestions: 100, totalMarks: 100, negativeMarks: 0.33, isFree: true, status: "Draft"
@@ -338,14 +384,23 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         examSlug: selectedExam?.slug || "",
         slug: formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
       };
-      if (editingItem) { await updateDoc(doc(db, "mockTests", editingItem.id), data); }
-      else { await addDoc(collection(db, "mockTests"), { ...data, createdAt: serverTimestamp() }); }
+      if (editingItem) { 
+        await updateDoc(doc(db, "mockTests", editingItem.id), data);
+        toast({ title: "Updated", description: "Mock test settings synchronized." });
+      }
+      else { 
+        await addDoc(collection(db, "mockTests"), { ...data, createdAt: serverTimestamp() });
+        toast({ title: "Created", description: "New mock test added to library." });
+      }
       onClose();
-    } catch (e) { console.error(e); } finally { setIsSaving(false); }
+    } catch (e: any) { 
+      console.error(e);
+      toast({ variant: "destructive", title: "Save Failed", description: e.message });
+    } finally { setIsSaving(false); }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={onOpenChange => !open && onClose()}>
       <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="text-xl font-headline">{editingItem ? "Edit Mock Test" : "Create New Mock Test"}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 py-6">
@@ -376,11 +431,11 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
             <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.totalQuestions} onChange={(e) => setFormData({ ...formData, totalQuestions: parseInt(e.target.value) })} />
           </div>
           <div className="sm:col-span-2 flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 mt-2">
-             <div className="space-y-0.5">
-                <Label className="font-bold">Free Accessibility</Label>
-                <p className="text-[10px] text-muted-foreground">Non-premium users can attempt this test.</p>
-             </div>
-             <Switch checked={formData.isFree} onCheckedChange={(v) => setFormData({ ...formData, isFree: v })} />
+            <div className="space-y-0.5">
+              <Label className="font-bold">Free Accessibility</Label>
+              <p className="text-[10px] text-muted-foreground">Non-premium users can attempt this test.</p>
+            </div>
+            <Switch checked={formData.isFree} onCheckedChange={(v) => setFormData({ ...formData, isFree: v })} />
           </div>
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">
