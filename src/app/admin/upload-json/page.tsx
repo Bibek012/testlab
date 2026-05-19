@@ -216,13 +216,26 @@ export default function BulkIngestionPipeline() {
 
     for (const item of pending) {
       try {
+        console.group(`Ingesting: ${item.name}`);
         updateItem(item.id, { status: 'parsing', progress: 10 });
+        
         const content = await item.file.text();
-        const json = JSON.parse(content);
+        let json;
+        try {
+          json = JSON.parse(content);
+        } catch (e) {
+          throw new Error("Invalid JSON format. Check file for syntax errors.");
+        }
+
+        console.log("RAW JSON", json);
 
         updateItem(item.id, { status: 'validating', progress: 30 });
         const questions = normalizeQuestions(json);
-        if (questions.length === 0) throw new Error("No valid questions found.");
+        console.log("NORMALIZED QUESTIONS", questions);
+
+        if (questions.length === 0) {
+          throw new Error("No valid questions detected. Ensure JSON follows supported schema (sections[].questions or flat array).");
+        }
 
         updateItem(item.id, { status: 'syncing', progress: 50 });
         
@@ -261,42 +274,118 @@ export default function BulkIngestionPipeline() {
 
         await setDoc(mockRef, mockData, { merge: true });
 
-        const batch = writeBatch(db);
-        questions.forEach((q, idx) => {
-          const qRef = doc(db, "mockTests", mockId, "questions", q.id || `q-${idx}`);
-          batch.set(qRef, { ...q, mockId, status: "Verified", updatedAt: serverTimestamp() });
-        });
-        await batch.commit();
+        // Chunk questions for batch writes (max 500 per batch)
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
+          const chunk = questions.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach((q, idx) => {
+            const qRef = doc(db, "mockTests", mockId, "questions", q.id || `q-${i + idx}`);
+            batch.set(qRef, { ...q, mockId, status: "Verified", updatedAt: serverTimestamp() });
+          });
+          await batch.commit();
+          const chunkProgress = 50 + Math.floor((i / questions.length) * 40);
+          updateItem(item.id, { progress: chunkProgress });
+        }
 
         updateItem(item.id, { status: 'success', progress: 100 });
         setStats(prev => ({ ...prev, completed: prev.completed + 1 }));
+        console.log("Ingestion Success");
       } catch (err: any) {
+        console.error("Ingestion Failed", err);
         updateItem(item.id, { status: 'failed', error: err.message });
         setStats(prev => ({ ...prev, failed: prev.failed + 1 }));
+      } finally {
+        console.groupEnd();
       }
     }
     setIsProcessing(false);
     toast({ title: "Bulk Ingestion Finalized" });
   };
 
+  /**
+   * Powerful question normalizer supporting industry-standard nested formats (Testbook, etc)
+   */
   const normalizeQuestions = (json: any) => {
-    let raw: any[] = Array.isArray(json) ? json : json.questions || (json.sections ? json.sections.flatMap((s: any) => s.questions || []) : []);
-    return raw.map((q, i) => ({
-      id: q.id || `q-${i}`,
-      en: q.en || q.text || "",
-      hn: q.hn || "",
-      en_html: q.en_html || "",
-      hn_html: q.hn_html || "",
-      options: (q.options || []).map((o: any, oi: number) => ({
-        id: o.id || `opt-${oi}`,
-        en: o.en || (typeof o === 'string' ? o : ""),
-        hn: o.hn || ""
-      })),
-      answer: q.answer || q.correctAnswer || "",
-      marks: q.marks || 1,
-      negativeMarks: q.negativeMarks || 0.33,
-      explanation: q.explanation || {}
-    })).filter(q => q.en || q.en_html);
+    // 1. Identify raw array from common patterns
+    let raw: any[] = [];
+    if (Array.isArray(json)) {
+      raw = json;
+    } else if (json.sections && Array.isArray(json.sections)) {
+      raw = json.sections.flatMap((s: any) => s.questions || []);
+    } else if (json.questions && Array.isArray(json.questions)) {
+      raw = json.questions;
+    } else if (json.data && Array.isArray(json.data.questions)) {
+      raw = json.data.questions;
+    }
+
+    console.log(`Questions found in raw data: ${raw.length}`);
+
+    // 2. Map items using a deep-path checking strategy
+    return raw.map((q, i) => {
+      // Determine base question data (handle nested "question" objects)
+      const base = q.question || q;
+      
+      // Determine explanation data
+      const solBase = q.explanation || q.solution || (Array.isArray(q.solutions) ? q.solutions[0] : {});
+
+      // Determine marks
+      let posMark = 1;
+      let negMark = 0.33;
+      if (typeof q.marks === 'object') {
+        posMark = parseFloat(q.marks.positive) || 1;
+        negMark = parseFloat(q.marks.negative) || 0;
+      } else {
+        posMark = parseFloat(q.marks) || 1;
+        negMark = parseFloat(q.negativeMarks) || 0.33;
+      }
+
+      const normalized = {
+        id: q.id || q.questionId || q._id || `q-${i}`,
+        type: q.type || 'mcq',
+        sectionId: q.sectionId || 'general',
+        
+        // Bilingual Text Support
+        en: base.en || base.text || (typeof base === 'string' ? base : ""),
+        hn: base.hn || "",
+        en_html: base.en_html || base.html || "",
+        hn_html: base.hn_html || "",
+
+        // Option Normalization
+        options: (q.options || []).map((o: any, oi: number) => ({
+          id: o.id || o.optionId || `opt-${oi}`,
+          en: o.en || o.text || (typeof o === 'string' ? o : ""),
+          hn: o.hn || "",
+          en_html: o.en_html || o.html || "",
+          hn_html: o.hn_html || ""
+        })),
+
+        // Answer resolution
+        answer: q.answer || q.correctAnswer || q.correctOption || "",
+        raw_answer_id: q.raw_answer_id || q.correct_option_id || "",
+
+        // Scoring
+        marks: posMark,
+        negativeMarks: negMark,
+
+        // Explanation / Solution
+        explanation: {
+          en: solBase.en || solBase.text || "",
+          hn: solBase.hn || "",
+          en_html: solBase.en_html || solBase.html || "",
+          hn_html: solBase.hn_html || ""
+        },
+
+        // Media Extraction
+        dom_images: q.dom_images || base.images || base.dom_images || [],
+        memory_images: q.memory_images || base.memory_images || []
+      };
+
+      return normalized;
+    }).filter(q => {
+      // Robust validation: Question must have some content (text or HTML) in any language or an image
+      return q.en || q.hn || q.en_html || q.hn_html || (q.dom_images && q.dom_images.length > 0);
+    });
   };
 
   return (
@@ -353,7 +442,7 @@ export default function BulkIngestionPipeline() {
                   <div className="space-y-1.5">
                     <Label className="text-[10px] uppercase font-bold text-muted-foreground">Target Exam Series</Label>
                     <Select value={batchConfig.examId} onValueChange={(v) => setBatchConfig({ ...batchConfig, examId: v, typeId: "", subTypeId: "" })}>
-                      <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Select Exam" /></SelectTrigger>
+                      <SelectTrigger className="bg-white/5 border-white/10 h-11 text-sm"><SelectValue placeholder="Select Exam" /></SelectTrigger>
                       <SelectContent>
                         {exams?.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                       </SelectContent>
@@ -375,7 +464,7 @@ export default function BulkIngestionPipeline() {
                         </div>
                       ) : (
                         <Select value={batchConfig.typeId} onValueChange={(v) => setBatchConfig({ ...batchConfig, typeId: v, subTypeId: "" })} disabled={!batchConfig.examId}>
-                          <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Select Type" /></SelectTrigger>
+                          <SelectTrigger className="bg-white/5 border-white/10 h-11 text-sm"><SelectValue placeholder="Select Type" /></SelectTrigger>
                           <SelectContent>
                             {mockTypes?.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
                           </SelectContent>
@@ -397,7 +486,7 @@ export default function BulkIngestionPipeline() {
                         </div>
                       ) : (
                         <Select value={batchConfig.subTypeId} onValueChange={(v) => setBatchConfig({ ...batchConfig, subTypeId: v })} disabled={!batchConfig.typeId}>
-                          <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Select Subject" /></SelectTrigger>
+                          <SelectTrigger className="bg-white/5 border-white/10 h-11 text-sm"><SelectValue placeholder="Select Subject" /></SelectTrigger>
                           <SelectContent>
                             {subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
                           </SelectContent>
@@ -429,21 +518,21 @@ export default function BulkIngestionPipeline() {
                     <div className="space-y-1.5">
                       <Label className="text-[10px] uppercase opacity-60">Language</Label>
                       <Select value={batchConfig.language} onValueChange={(v) => setBatchConfig({ ...batchConfig, language: v })}>
-                        <SelectTrigger className="bg-white/5 h-10"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="bg-white/5 h-10 text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="en">English Only</SelectItem><SelectItem value="hn">Hindi Only</SelectItem><SelectItem value="bilingual">Bilingual</SelectItem></SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-[10px] uppercase opacity-60">Difficulty</Label>
                       <Select value={batchConfig.difficulty} onValueChange={(v) => setBatchConfig({ ...batchConfig, difficulty: v })}>
-                        <SelectTrigger className="bg-white/5 h-10"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="bg-white/5 h-10 text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="Easy">Easy</SelectItem><SelectItem value="Intermediate">Intermediate</SelectItem><SelectItem value="Hard">Hard</SelectItem></SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-[10px] uppercase opacity-60">Lifecycle</Label>
                       <Select value={batchConfig.status} onValueChange={(v) => setBatchConfig({ ...batchConfig, status: v })}>
-                        <SelectTrigger className="bg-white/5 h-10"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="bg-white/5 h-10 text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="Draft">Draft</SelectItem><SelectItem value="Published">Published</SelectItem></SelectContent>
                       </Select>
                     </div>
@@ -459,7 +548,7 @@ export default function BulkIngestionPipeline() {
                     </div>
                     <div className="flex-1 p-4 rounded-xl bg-white/5 border border-white/5 space-y-1.5">
                        <Label className="text-[9px] font-bold uppercase text-muted-foreground">Attempt Limit</Label>
-                       <Input type="number" className="h-8 bg-transparent" placeholder="0 = No limit" value={batchConfig.attemptLimit} onChange={(e) => setBatchConfig({ ...batchConfig, attemptLimit: e.target.value })} />
+                       <Input type="number" className="h-8 bg-transparent text-sm" placeholder="0 = No limit" value={batchConfig.attemptLimit} onChange={(e) => setBatchConfig({ ...batchConfig, attemptLimit: e.target.value })} />
                     </div>
                   </div>
                 </div>
