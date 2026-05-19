@@ -274,7 +274,15 @@ export default function MockTestManagementPage() {
                             <DropdownMenuItem className="gap-2" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate Test</DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-white/5" />
                             <DropdownMenuItem className="gap-2" onClick={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}><UploadCloud className="w-3.5 h-3.5 text-primary" /> Upload Questions</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive gap-2" onSelect={(e) => { e.preventDefault(); handleDeleteMock(mock.id, mock.title); }}><Trash2 className="w-3.5 h-3.5" /> Delete Mock</DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-destructive gap-2" 
+                              onSelect={(e) => { 
+                                e.preventDefault(); 
+                                handleDeleteMock(mock.id, mock.title); 
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Delete Mock
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       )}
@@ -319,7 +327,15 @@ export default function MockTestManagementPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="glass border-white/10">
                        <DropdownMenuItem className="gap-2" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /> Edit</DropdownMenuItem>
-                       <DropdownMenuItem className="gap-2 text-destructive" onSelect={(e) => { e.preventDefault(); handleDeleteMock(mock.id, mock.title); }}><Trash2 className="w-3.5 h-3.5" /> Delete</DropdownMenuItem>
+                       <DropdownMenuItem 
+                        className="gap-2 text-destructive" 
+                        onSelect={(e) => { 
+                          e.preventDefault(); 
+                          handleDeleteMock(mock.id, mock.title); 
+                        }}
+                       >
+                         <Trash2 className="w-3.5 h-3.5" /> Delete
+                       </DropdownMenuItem>
                     </DropdownMenuContent>
                  </DropdownMenu>
               </div>
@@ -362,7 +378,18 @@ function MockTestModal({ isOpen, onClose, editingItem, exams, mockTypes }: any) 
   const { data: subTypes } = useCollection<any>(subTypesQuery);
 
   React.useEffect(() => {
-    if (editingItem) setFormData(editingItem);
+    if (editingItem) setFormData({
+      ...editingItem,
+      title: editingItem.title || "",
+      slug: editingItem.slug || "",
+      examId: editingItem.examId || "",
+      typeId: editingItem.typeId || "",
+      subTypeId: editingItem.subTypeId || "",
+      durationMinutes: editingItem.durationMinutes ?? 90,
+      totalQuestions: editingItem.totalQuestions ?? 100,
+      totalMarks: editingItem.totalMarks ?? 100,
+      negativeMarks: editingItem.negativeMarks ?? 0.33,
+    });
     else setFormData({ title: "", slug: "", examId: "", typeId: "", typeName: "", subTypeId: "", subTypeName: "", durationMinutes: 90, totalQuestions: 100, totalMarks: 100, negativeMarks: 0.33, isFree: true, status: "Draft" });
   }, [editingItem, isOpen]);
 
@@ -404,7 +431,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams, mockTypes }: any) 
     try {
       const slug = title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const docRef = await addDoc(collection(db, "mockTypes"), { title, slug, deleted: false, isActive: true, order: Date.now(), createdAt: serverTimestamp() });
-      setFormData(prev => ({ ...prev, typeId: docRef.id, typeName: title }));
+      setFormData((prev: any) => ({ ...prev, typeId: docRef.id, typeName: title }));
       toast({ title: "New type created" });
     } catch (e: any) { toast({ variant: "destructive", title: "Failed", description: e.message }); }
   };
@@ -415,7 +442,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams, mockTypes }: any) 
     try {
       const slug = title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const docRef = await addDoc(collection(db, "mockTypes", formData.typeId, "subTypes"), { title, slug, deleted: false, isActive: true, order: Date.now(), createdAt: serverTimestamp() });
-      setFormData(prev => ({ ...prev, subTypeId: docRef.id, subTypeName: title }));
+      setFormData((prev: any) => ({ ...prev, subTypeId: docRef.id, subTypeName: title }));
       toast({ title: "New sub-type created" });
     } catch (e: any) { toast({ variant: "destructive", title: "Failed", description: e.message }); }
   };
@@ -428,12 +455,12 @@ function MockTestModal({ isOpen, onClose, editingItem, exams, mockTypes }: any) 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-6">
           <div className="md:col-span-2 space-y-2">
             <Label className="text-[10px] font-bold uppercase text-muted-foreground">Mock Title</Label>
-            <Input className="bg-white/5 border-white/10 h-12 text-lg font-headline font-bold" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
+            <Input className="bg-white/5 border-white/10 h-12 text-lg font-headline font-bold" value={formData.title || ""} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
           </div>
 
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase text-muted-foreground">Target Exam</Label>
-            <Select value={formData.examId} onValueChange={(v) => setFormData({ ...formData, examId: v })}>
+            <Select value={formData.examId || ""} onValueChange={(v) => setFormData({ ...formData, examId: v })}>
               <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Select Exam" /></SelectTrigger>
               <SelectContent>
                 {exams?.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
@@ -444,7 +471,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams, mockTypes }: any) 
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase text-muted-foreground">Mock Category</Label>
             <div className="flex gap-2">
-              <Select value={formData.typeId} onValueChange={(v) => setFormData({ ...formData, typeId: v, subTypeId: "", subTypeName: "" })}>
+              <Select value={formData.typeId || ""} onValueChange={(v) => setFormData({ ...formData, typeId: v, subTypeId: "", subTypeName: "" })}>
                 <SelectTrigger className="bg-white/5 border-white/10 h-11 flex-1"><SelectValue placeholder="Primary Type" /></SelectTrigger>
                 <SelectContent>
                   {mockTypes?.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
@@ -458,7 +485,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams, mockTypes }: any) 
           {formData.typeId && (subTypes?.length > 0 || formData.typeId === "new") && (
             <div className="space-y-2 animate-in slide-in-from-top-2">
               <Label className="text-[10px] font-bold uppercase text-muted-foreground">Sub-Type / Subject</Label>
-              <Select value={formData.subTypeId} onValueChange={(v) => setFormData({ ...formData, subTypeId: v })}>
+              <Select value={formData.subTypeId || ""} onValueChange={(v) => setFormData({ ...formData, subTypeId: v })}>
                 <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Select Sub-Type" /></SelectTrigger>
                 <SelectContent>
                   {subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
@@ -471,17 +498,17 @@ function MockTestModal({ isOpen, onClose, editingItem, exams, mockTypes }: any) 
 
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase text-muted-foreground">Time (Minutes)</Label>
-            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 0 })} />
+            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.durationMinutes ?? 0} onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 0 })} />
           </div>
 
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase text-muted-foreground">Total Marks</Label>
-            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.totalMarks} onChange={(e) => setFormData({ ...formData, totalMarks: parseInt(e.target.value) || 0 })} />
+            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.totalMarks ?? 0} onChange={(e) => setFormData({ ...formData, totalMarks: parseInt(e.target.value) || 0 })} />
           </div>
 
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase text-muted-foreground">Negative Marks</Label>
-            <Input type="number" step="0.01" className="bg-white/5 border-white/10 h-11" value={formData.negativeMarks} onChange={(e) => setFormData({ ...formData, negativeMarks: parseFloat(e.target.value) || 0 })} />
+            <Input type="number" step="0.01" className="bg-white/5 border-white/10 h-11" value={formData.negativeMarks ?? 0} onChange={(e) => setFormData({ ...formData, negativeMarks: parseFloat(e.target.value) || 0 })} />
           </div>
 
           <div className="md:col-span-2 flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10 group hover:border-primary/30 transition-colors">
@@ -489,7 +516,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams, mockTypes }: any) 
               <Label className="text-sm font-bold">Public & Free Accessibility</Label>
               <p className="text-[10px] text-muted-foreground">Allow non-premium users to attempt this module.</p>
             </div>
-            <Switch checked={formData.isFree} onCheckedChange={(val) => setFormData({ ...formData, isFree: val })} />
+            <Switch checked={formData.isFree ?? true} onCheckedChange={(val) => setFormData({ ...formData, isFree: val })} />
           </div>
         </div>
 

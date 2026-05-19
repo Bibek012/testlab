@@ -111,7 +111,6 @@ export default function MockTypeManagementPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Mock Types List */}
         <Card className="lg:col-span-5 glass border-white/10 overflow-hidden">
           <CardHeader className="bg-white/[0.02] border-b border-white/5">
             <CardTitle className="text-lg font-headline font-bold flex items-center gap-2">
@@ -169,7 +168,6 @@ export default function MockTypeManagementPage() {
           </CardContent>
         </Card>
 
-        {/* Sub-Types List */}
         <Card className="lg:col-span-7 glass border-white/10 overflow-hidden min-h-[400px]">
           <CardHeader className="bg-white/[0.02] border-b border-white/5 flex flex-row items-center justify-between space-y-0">
             <div>
@@ -254,20 +252,8 @@ export default function MockTypeManagementPage() {
         </Card>
       </div>
 
-      {/* Type Modal */}
-      <TypeModal 
-        isOpen={isTypeModalOpen} 
-        onClose={() => setIsTypeModalOpen(false)} 
-        editingItem={editingItem} 
-      />
-
-      {/* Sub-Type Modal */}
-      <SubTypeModal 
-        isOpen={isSubTypeModalOpen} 
-        onClose={() => setIsSubTypeModalOpen(false)} 
-        editingItem={editingItem} 
-        parentTypeId={selectedTypeId!}
-      />
+      <TypeModal isOpen={isTypeModalOpen} onClose={() => setIsTypeModalOpen(false)} editingItem={editingItem} />
+      <SubTypeModal isOpen={isSubTypeModalOpen} onClose={() => setIsSubTypeModalOpen(false)} editingItem={editingItem} parentTypeId={selectedTypeId!} />
     </div>
   );
 }
@@ -279,7 +265,13 @@ function TypeModal({ isOpen, onClose, editingItem }: any) {
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
-    if (editingItem) setFormData(editingItem);
+    if (editingItem) setFormData({
+      title: editingItem.title || "",
+      slug: editingItem.slug || "",
+      description: editingItem.description || "",
+      order: editingItem.order ?? 0,
+      isActive: editingItem.isActive ?? true
+    });
     else setFormData({ title: "", slug: "", description: "", order: 0, isActive: true });
   }, [editingItem, isOpen]);
 
@@ -289,12 +281,8 @@ function TypeModal({ isOpen, onClose, editingItem }: any) {
     try {
       const slug = formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const data = { ...formData, slug, deleted: false, updatedAt: serverTimestamp() };
-
-      if (editingItem) {
-        await updateDoc(doc(db, "mockTypes", editingItem.id), data);
-      } else {
-        await addDoc(collection(db, "mockTypes"), { ...data, createdAt: serverTimestamp() });
-      }
+      if (editingItem) await updateDoc(doc(db, "mockTypes", editingItem.id), data);
+      else await addDoc(collection(db, "mockTypes"), { ...data, createdAt: serverTimestamp() });
       toast({ title: "Mock Type Saved" });
       onClose();
     } catch (e: any) {
@@ -309,16 +297,16 @@ function TypeModal({ isOpen, onClose, editingItem }: any) {
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Type Title</Label>
-            <Input placeholder="e.g. Subject Test" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="bg-white/5 border-white/10 h-11" />
+            <Input placeholder="e.g. Subject Test" value={formData.title || ""} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="bg-white/5 border-white/10 h-11" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Slug</Label>
-              <Input placeholder="auto-generated" value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} className="bg-white/5 border-white/10 h-11 font-mono text-xs" />
+              <Input placeholder="auto-generated" value={formData.slug || ""} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} className="bg-white/5 border-white/10 h-11 font-mono text-xs" />
             </div>
             <div className="space-y-2">
               <Label>Sort Order</Label>
-              <Input type="number" value={formData.order} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })} className="bg-white/5 border-white/10 h-11" />
+              <Input type="number" value={formData.order ?? 0} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })} className="bg-white/5 border-white/10 h-11" />
             </div>
           </div>
         </div>
@@ -340,7 +328,12 @@ function SubTypeModal({ isOpen, onClose, editingItem, parentTypeId }: any) {
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
-    if (editingItem) setFormData(editingItem);
+    if (editingItem) setFormData({
+      title: editingItem.title || "",
+      slug: editingItem.slug || "",
+      order: editingItem.order ?? 0,
+      isActive: editingItem.isActive ?? true
+    });
     else setFormData({ title: "", slug: "", order: 0, isActive: true });
   }, [editingItem, isOpen]);
 
@@ -350,12 +343,8 @@ function SubTypeModal({ isOpen, onClose, editingItem, parentTypeId }: any) {
     try {
       const slug = formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const data = { ...formData, slug, deleted: false, updatedAt: serverTimestamp() };
-
-      if (editingItem) {
-        await updateDoc(doc(db, "mockTypes", parentTypeId, "subTypes", editingItem.id), data);
-      } else {
-        await addDoc(collection(db, "mockTypes", parentTypeId, "subTypes"), { ...data, createdAt: serverTimestamp() });
-      }
+      if (editingItem) await updateDoc(doc(db, "mockTypes", parentTypeId, "subTypes", editingItem.id), data);
+      else await addDoc(collection(db, "mockTypes", parentTypeId, "subTypes"), { ...data, createdAt: serverTimestamp() });
       toast({ title: "Sub-Type Saved" });
       onClose();
     } catch (e: any) {
@@ -370,16 +359,16 @@ function SubTypeModal({ isOpen, onClose, editingItem, parentTypeId }: any) {
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Sub-Type / Subject Title</Label>
-            <Input placeholder="e.g. Mathematics" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="bg-white/5 border-white/10 h-11" />
+            <Input placeholder="e.g. Mathematics" value={formData.title || ""} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="bg-white/5 border-white/10 h-11" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Slug</Label>
-              <Input placeholder="auto-generated" value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} className="bg-white/5 border-white/10 h-11 font-mono text-xs" />
+              <Input placeholder="auto-generated" value={formData.slug || ""} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} className="bg-white/5 border-white/10 h-11 font-mono text-xs" />
             </div>
             <div className="space-y-2">
               <Label>Sort Order</Label>
-              <Input type="number" value={formData.order} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })} className="bg-white/5 border-white/10 h-11" />
+              <Input type="number" value={formData.order ?? 0} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })} className="bg-white/5 border-white/10 h-11" />
             </div>
           </div>
         </div>

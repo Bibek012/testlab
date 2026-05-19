@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -83,7 +84,7 @@ export default function ExamManagementPage() {
   const filteredExams = useMemo(() => {
     if (!exams) return [];
     return exams.filter(exam => {
-      const matchesSearch = exam.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = exam.name?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = activeCategory === "all" || exam.categoryId === activeCategory;
       return matchesSearch && matchesCategory;
     });
@@ -93,111 +94,38 @@ export default function ExamManagementPage() {
     examId: string,
     examName: string
   ) => {
-
-    console.log("DELETE EXAM START");
-
     try {
-
-      if (!db) {
-        console.error("Firestore DB missing");
-
-        toast({
-          variant: "destructive",
-          title: "Database Error",
-          description: "Firestore not initialized",
-        });
-
-        return;
-      }
-
-      if (!user) {
-        console.error("User missing");
-
-        toast({
-          variant: "destructive",
-          title: "Authentication Error",
-          description: "User not authenticated",
-        });
-
-        return;
-      }
-
-      if (!examId) {
-        console.error("Exam ID missing");
-
-        toast({
-          variant: "destructive",
-          title: "Delete Failed",
-          description: "Invalid exam ID",
-        });
-
-        return;
-      }
+      if (!db || !user || !examId) return;
 
       setDeletingId(examId);
 
-      console.log("Checking linked mock tests...");
-
       const mocksRef = collection(db, "mockTests");
-
-      const q = query(
-        mocksRef,
-        where("examId", "==", examId)
-      );
-
+      const q = query(mocksRef, where("examId", "==", examId));
       const mocksSnap = await getDocs(q);
 
-      console.log(
-        "Linked mocks:",
-        mocksSnap.size
-      );
+      if (mocksSnap.size > 0) {
+        toast({
+          variant: "destructive",
+          title: "Delete Restricted",
+          description: `This exam has ${mocksSnap.size} linked mock tests. Delete them first.`,
+        });
+        return;
+      }
 
-      const examRef = doc(
-        db,
-        "exams",
-        examId
-      );
-
-      console.log(
-        "Deleting exam:",
-        examRef.path
-      );
-
-      await deleteDoc(examRef);
-
-      console.log("DELETE SUCCESS");
-
-      await logAction(
-        db,
-        user,
-        "delete_exam",
-        examId,
-        "exam",
-        `Deleted exam: ${examName}`
-      );
+      await deleteDoc(doc(db, "exams", examId));
+      await logAction(db, user, "delete_exam", examId, "exam", `Deleted exam: ${examName}`);
 
       toast({
         title: "Exam Deleted",
-        description:
-          `"${examName}" deleted successfully`,
+        description: `"${examName}" deleted successfully`,
       });
-
     } catch (e: any) {
-
-      console.error(
-        "DELETE ERROR:",
-        e
-      );
-
       toast({
         variant: "destructive",
         title: "Delete Failed",
-        description:
-          e?.message || "Unknown error",
+        description: e?.message || "Unknown error",
       });
-
     } finally {
-
       setDeletingId(null);
     }
   };
@@ -230,7 +158,6 @@ export default function ExamManagementPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-        {/* Category Navigation */}
         <aside className="lg:col-span-3 space-y-4">
           <div className="flex items-center justify-between lg:mb-2 px-1">
             <Label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Quick Filters</Label>
@@ -318,13 +245,10 @@ export default function ExamManagementPage() {
                                 <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => { setEditingItem(exam); setIsExamModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /> Edit Details</DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-destructive gap-2 cursor-pointer"
-                                  onClick={() =>
-                                    handleDeleteExam(
-                                      exam.id,
-                                      exam.name
-                                    )
-                                  }
-                                ></DropdownMenuItem>
+                                  onClick={() => handleDeleteExam(exam.id, exam.name)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Delete Exam
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
@@ -353,7 +277,11 @@ function CategoryModal({ isOpen, onClose, editingItem }: any) {
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
-    if (editingItem) setFormData(editingItem);
+    if (editingItem) setFormData({
+      title: editingItem.title || "",
+      slug: editingItem.slug || "",
+      description: editingItem.description || ""
+    });
     else setFormData({ title: "", slug: "", description: "" });
   }, [editingItem, isOpen]);
 
@@ -383,11 +311,11 @@ function CategoryModal({ isOpen, onClose, editingItem }: any) {
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label className="text-xs uppercase font-bold text-muted-foreground">Category Title</Label>
-            <Input className="bg-white/5 border-white/10 h-11" placeholder="e.g. Banking Exams" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
+            <Input className="bg-white/5 border-white/10 h-11" placeholder="e.g. Banking Exams" value={formData.title || ""} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
           </div>
           <div className="space-y-2">
             <Label className="text-xs uppercase font-bold text-muted-foreground">URL Slug (Optional)</Label>
-            <Input className="bg-white/5 border-white/10 h-11 font-mono" placeholder="auto-generated" value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} />
+            <Input className="bg-white/5 border-white/10 h-11 font-mono" placeholder="auto-generated" value={formData.slug || ""} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} />
           </div>
         </div>
         <DialogFooter className="gap-2 sm:gap-0">
@@ -409,7 +337,13 @@ function ExamModal({ isOpen, onClose, editingItem, categories }: any) {
   const [isSaving, setIsSaving] = useState(false);
 
   React.useEffect(() => {
-    if (editingItem) setFormData(editingItem);
+    if (editingItem) setFormData({
+      name: editingItem.name || "",
+      slug: editingItem.slug || "",
+      categoryId: editingItem.categoryId || "",
+      difficulty: editingItem.difficulty || "Intermediate",
+      description: editingItem.description || ""
+    });
     else setFormData({ name: "", slug: "", categoryId: "", difficulty: "Intermediate", description: "" });
   }, [editingItem, isOpen]);
 
@@ -448,25 +382,25 @@ function ExamModal({ isOpen, onClose, editingItem, categories }: any) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
           <div className="sm:col-span-2 space-y-2">
             <Label className="text-xs uppercase font-bold text-muted-foreground">Exam Name</Label>
-            <Input className="bg-white/5 border-white/10 h-11" placeholder="e.g. SBI PO Prelims" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+            <Input className="bg-white/5 border-white/10 h-11" placeholder="e.g. SBI PO Prelims" value={formData.name || ""} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
           </div>
           <div className="space-y-2">
             <Label className="text-xs uppercase font-bold text-muted-foreground">Category</Label>
-            <Select value={formData.categoryId} onValueChange={(val) => setFormData({ ...formData, categoryId: val })}>
+            <Select value={formData.categoryId || ""} onValueChange={(val) => setFormData({ ...formData, categoryId: val })}>
               <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Select Category" /></SelectTrigger>
               <SelectContent>{categories.map((cat: any) => <SelectItem key={cat.id} value={cat.id}>{cat.title}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
             <Label className="text-xs uppercase font-bold text-muted-foreground">Difficulty</Label>
-            <Select value={formData.difficulty} onValueChange={(val) => setFormData({ ...formData, difficulty: val })}>
+            <Select value={formData.difficulty || "Intermediate"} onValueChange={(val) => setFormData({ ...formData, difficulty: val })}>
               <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="Easy">Easy</SelectItem><SelectItem value="Intermediate">Intermediate</SelectItem><SelectItem value="Hard">Hard</SelectItem></SelectContent>
             </Select>
           </div>
           <div className="sm:col-span-2 space-y-2">
             <Label className="text-xs uppercase font-bold text-muted-foreground">Description (Short)</Label>
-            <Input className="bg-white/5 border-white/10 h-11" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+            <Input className="bg-white/5 border-white/10 h-11" value={formData.description || ""} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
           </div>
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2 mt-4">
