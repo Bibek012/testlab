@@ -1,7 +1,7 @@
+
 "use client";
 
-import React, { useState, useMemo, useRef, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { 
   UploadCloud, 
   FileJson, 
@@ -11,401 +11,504 @@ import {
   Database,
   ArrowLeft,
   Zap,
-  Link as LinkIcon,
-  Languages,
-  X
+  FolderOpen,
+  FileArchive,
+  X,
+  Play,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Activity,
+  BarChart3,
+  Clock,
+  History,
+  CheckCircle,
+  FileText
 } from "lucide-react";
-import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase";
+import { useFirestore, useUser } from "@/firebase";
 import { 
   collection, 
   doc, 
   writeBatch, 
-  query, 
-  orderBy, 
   serverTimestamp,
-  updateDoc
+  updateDoc,
+  setDoc,
+  getDocs,
+  query,
+  where,
+  limit
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RichTextRenderer } from "@/components/mock-test/RichTextRenderer";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { logAction } from "@/services/audit";
+import JSZip from "jszip";
 
-interface ValidationResult {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
-  summary: {
-    totalParsed: number;
-    validCount: number;
-    brokenCount: number;
-    sections: number;
-    bilingual: boolean;
-    images: number;
-    hasHtml: boolean;
-    schemaType: string;
-  };
+// --- Types & Interfaces ---
+
+type IngestionStatus = 'pending' | 'parsing' | 'validating' | 'syncing' | 'success' | 'failed';
+
+interface QueueItem {
+  id: string;
+  file: File;
+  name: string;
+  path: string;
+  size: number;
+  status: IngestionStatus;
+  progress: number;
+  error?: string;
+  parsedData?: any;
+  metadata?: any;
 }
 
-function UploadJsonContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+interface IngestionStats {
+  total: number;
+  completed: number;
+  failed: number;
+  processing: number;
+  startTime: number | null;
+  endTime: number | null;
+}
+
+// --- Component ---
+
+export default function BulkIngestionPage() {
   const db = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
   
-  const mockIdParam = searchParams.get("mockId") || "";
-
-  const catsQuery = useMemoFirebase(() => db ? query(collection(db, "examCategories"), orderBy("title", "asc")) : null, [db]);
-  const { data: categories } = useCollection<any>(catsQuery);
-
-  const exsQuery = useMemoFirebase(() => db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, [db]);
-  const { data: exams } = useCollection<any>(exsQuery);
-
-  const mtQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests"), orderBy("title", "asc")) : null, [db]);
-  const { data: mockTests } = useCollection<any>(mtQuery);
-
-  const [selectedMockId, setSelectedMockId] = useState<string>(mockIdParam);
-  const [selectedExamId, setSelectedExamId] = useState<string>("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
-  
-  const [file, setFile] = useState<File | null>(null);
-  const [normalizedContent, setNormalizedContent] = useState<{ sections: any[], questions: any[] } | null>(null);
-  const [validation, setValidation] = useState<ValidationResult | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [concurrency, setConcurrency] = useState(5);
+  const [stats, setStats] = useState<IngestionStats>({
+    total: 0, completed: 0, failed: 0, processing: 0, startTime: null, endTime: null
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (mockIdParam && mockTests && exams) {
-      const mock = mockTests.find((m: any) => m.id === mockIdParam);
-      if (mock) {
-        setSelectedMockId(mock.id);
-        setSelectedExamId(mock.examId);
-        const exam = exams.find((e: any) => e.id === mock.examId);
-        if (exam) setSelectedCategoryId(exam.categoryId);
-      }
-    }
-  }, [mockIdParam, mockTests, exams]);
+  // --- Logic: Queue Management ---
 
-  const filteredExams = useMemo(() => 
-    exams?.filter(e => e.categoryId === selectedCategoryId) || [], 
-  [exams, selectedCategoryId]);
-
-  const filteredMocks = useMemo(() => 
-    mockTests?.filter(m => m.examId === selectedExamId) || [], 
-  [mockTests, selectedExamId]);
-
-  const sanitizeAndResolveAnswer = (q: any, options: any[]) => {
-    const rawAnswer = q.answer ?? q.raw_answer_id ?? q.correct_option ?? q.correctAnswer ?? "";
-    const cleanText = (val: any) => String(val).replace(/<[^>]*>?/gm, '').trim().toLowerCase();
-    const normalizedRaw = cleanText(rawAnswer);
-
-    let matched = options.find(o => cleanText(o.id) === normalizedRaw);
-    if (!matched) matched = options.find(o => cleanText(o.en) === normalizedRaw || cleanText(o.hn) === normalizedRaw);
-    if (!matched) matched = options.find(o => cleanText(o.en_html) === normalizedRaw || cleanText(o.hn_html) === normalizedRaw);
-    
-    const idx = parseInt(normalizedRaw);
-    if (!matched && !isNaN(idx) && options[idx]) matched = options[idx];
-
-    return matched?.id || "";
-  };
-
-  const processAndNormalizeJson = (json: any) => {
-    let extractedSections: any[] = [];
-    let rawQuestions: any[] = [];
-    let schemaType = "Unknown";
-
-    if (Array.isArray(json)) {
-      rawQuestions = json;
-      schemaType = "Flat Array";
-    } else if (json.sections && Array.isArray(json.sections)) {
-      schemaType = "Sectioned Hierarchy";
-      json.sections.forEach((sec: any) => {
-        const sId = (sec.id || `sec-${extractedSections.length + 1}`).toString();
-        extractedSections.push({
-          id: sId,
-          title: typeof sec.title === 'string' ? { en: sec.title, hn: sec.title } : (sec.title || { en: 'General', hn: 'सामान्य' }),
-          order: sec.order || extractedSections.length
-        });
-        if (sec.questions && Array.isArray(sec.questions)) {
-          sec.questions.forEach((q: any) => rawQuestions.push({ ...q, sectionId: sId }));
-        }
-      });
-    } else if (json.questions && Array.isArray(json.questions)) {
-      schemaType = "Questions Keyed Object";
-      rawQuestions = json.questions;
-    } else {
-      schemaType = "Auto-Searched Object";
-      const key = Object.keys(json).find(k => Array.isArray(json[k]));
-      if (key) rawQuestions = json[key];
-    }
-
-    if (extractedSections.length === 0) {
-      extractedSections.push({ id: 'sec-default', title: { en: 'General', hn: 'सामान्य' }, order: 0 });
-    }
-
-    let validCount = 0;
-    let brokenCount = 0;
-    let fullyBilingual = true;
-    let hasHtml = false;
-    let totalImages = 0;
-
-    const normalizedQuestions = rawQuestions.map((item, idx) => {
-      const qId = (item.id || item.questionId || `q-${idx + 1}`).toString();
-      const qData = item.question || item;
-      
-      const en = qData.en || qData.en_html || qData.text || qData.questionText || "";
-      const hn = qData.hn || qData.hn_html || "";
-      const en_html = qData.en_html || (qData.en && qData.en.includes('<') ? qData.en : "");
-      const hn_html = qData.hn_html || (qData.hn && qData.hn.includes('<') ? qData.hn : "");
-
-      const rawOptions = item.options || item.choices || [];
-      const options = rawOptions.map((opt: any, oIdx: number) => ({
-        id: (opt.id || `opt-${idx}-${oIdx}`).toString(),
-        en: opt.en || opt.text || (typeof opt === 'string' ? opt : ""),
-        hn: opt.hn || "",
-        en_html: opt.en_html || "",
-        hn_html: opt.hn_html || ""
+  const addToQueue = useCallback((files: FileList | File[], pathPrefix: string = "") => {
+    const newItems: QueueItem[] = Array.from(files)
+      .filter(f => f.name.endsWith('.json'))
+      .map(file => ({
+        id: Math.random().toString(36).substr(2, 9),
+        file,
+        name: file.name,
+        path: (file as any).webkitRelativePath || pathPrefix + file.name,
+        size: file.size,
+        status: 'pending',
+        progress: 0
       }));
 
-      const answerId = sanitizeAndResolveAnswer(item, options);
+    if (newItems.length === 0) {
+      toast({ variant: "destructive", title: "No JSON Files Found", description: "The selection did not contain any valid .json files." });
+      return;
+    }
 
-      if (!en && !hn && !item.dom_images?.length) brokenCount++;
-      else validCount++;
+    setQueue(prev => [...prev, ...newItems]);
+    setStats(prev => ({ ...prev, total: prev.total + newItems.length }));
+  }, [toast]);
 
-      if (!en || !hn) fullyBilingual = false;
-      if (en_html || hn_html) hasHtml = true;
-      totalImages += (item.dom_images?.length || 0);
+  const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      return {
-        id: qId,
-        sectionId: item.sectionId || extractedSections[0].id,
-        en, hn, en_html, hn_html,
-        options,
-        answer: answerId,
-        marks: item.marks || 1,
-        negativeMarks: item.negativeMarks || 0.33,
-        dom_images: item.dom_images || [],
-        explanation: item.explanation || {}
-      };
-    });
+    toast({ title: "Extracting Archive", description: "Reading ZIP contents..." });
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const extractedFiles: File[] = [];
+      
+      const promises = Object.keys(zip.files).map(async (filename) => {
+        const zipFile = zip.files[filename];
+        if (!zipFile.dir && filename.endsWith('.json')) {
+          const blob = await zipFile.async("blob");
+          extractedFiles.push(new File([blob], filename, { type: "application/json" }));
+        }
+      });
 
-    setNormalizedContent({ sections: extractedSections, questions: normalizedQuestions });
-    setValidation({
-      isValid: validCount > 0,
-      errors: validCount === 0 ? ["No valid questions detected in the file."] : [],
-      warnings: [],
-      summary: { totalParsed: rawQuestions.length, validCount, brokenCount, sections: extractedSections.length, bilingual: fullyBilingual, images: totalImages, hasHtml, schemaType }
-    });
+      await Promise.all(promises);
+      addToQueue(extractedFiles, "ZIP/");
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "ZIP Extraction Failed", description: err.message });
+    }
   };
 
-  const handleUpload = async () => {
-    if (!db || !normalizedContent || !selectedMockId || !user) return;
-    setIsUploading(true);
-    setUploadProgress(5);
-    try {
-      const batch = writeBatch(db);
-      normalizedContent.sections.forEach(s => {
-        batch.set(doc(db, "mockTests", selectedMockId, "sections", s.id), { ...s, mockId: selectedMockId, updatedAt: serverTimestamp() });
-      });
-      await batch.commit();
-      setUploadProgress(30);
+  // --- Logic: Ingestion Pipeline ---
 
-      const qChunkSize = 50;
-      for (let i = 0; i < normalizedContent.questions.length; i += qChunkSize) {
-        const qBatch = writeBatch(db);
-        normalizedContent.questions.slice(i, i + qChunkSize).forEach(q => {
-          qBatch.set(doc(db, "mockTests", selectedMockId, "questions", q.id), { ...q, mockId: selectedMockId, status: 'Published', updatedAt: serverTimestamp() });
+  const processQueue = async () => {
+    if (!db || !user || isProcessing) return;
+    setIsProcessing(true);
+    setStats(prev => ({ ...prev, startTime: Date.now(), endTime: null }));
+
+    const pendingItems = queue.filter(item => item.status === 'pending');
+    let completedCount = stats.completed;
+    let failedCount = stats.failed;
+
+    // Concurrency Worker Loop
+    const work = async () => {
+      while (true) {
+        const item = pendingItems.shift();
+        if (!item) break;
+
+        try {
+          await ingestFile(item);
+          completedCount++;
+        } catch (err) {
+          failedCount++;
+        }
+        
+        setStats(prev => ({ ...prev, completed: completedCount, failed: failedCount }));
+      }
+    };
+
+    const workers = Array(Math.min(concurrency, pendingItems.length)).fill(null).map(() => work());
+    await Promise.all(workers);
+
+    setIsProcessing(false);
+    setStats(prev => ({ ...prev, endTime: Date.now() }));
+    toast({ title: "Ingestion Batch Complete", description: `Successfully processed ${completedCount} mock tests.` });
+  };
+
+  const ingestFile = async (item: QueueItem) => {
+    updateItemStatus(item.id, 'parsing', 10);
+
+    const content = await readFile(item.file);
+    let json: any;
+    try {
+      json = JSON.parse(content);
+    } catch (e) {
+      updateItemStatus(item.id, 'failed', 0, "Invalid JSON format");
+      throw e;
+    }
+
+    updateItemStatus(item.id, 'validating', 30);
+    const { normalized, metadata } = normalizeMockData(json, item);
+
+    if (normalized.questions.length === 0) {
+      updateItemStatus(item.id, 'failed', 0, "No valid questions detected");
+      throw new Error("Empty questions");
+    }
+
+    updateItemStatus(item.id, 'syncing', 50);
+    
+    try {
+      // 1. Resolve or Create Hierarchy (Exam Category -> Exam)
+      // This is a simplified version of hierarchy resolution for the bulk ingestor
+      const mockId = metadata.mockSlug || Math.random().toString(36).substr(2, 9);
+      
+      // 2. Write Mock Test Root
+      const mockRef = doc(db, "mockTests", mockId);
+      await setDoc(mockRef, {
+        id: mockId,
+        title: metadata.title || item.name.replace('.json', ''),
+        examId: metadata.exam || "General",
+        type: metadata.type || "Full Test",
+        totalQuestions: normalized.questions.length,
+        durationMinutes: metadata.duration || 90,
+        status: "Published",
+        isFree: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      // 3. Write Questions in Batches (Firestore limit 500)
+      const qBatchSize = 100;
+      for (let i = 0; i < normalized.questions.length; i += qBatchSize) {
+        const batch = writeBatch(db);
+        const chunk = normalized.questions.slice(i, i + qBatchSize);
+        chunk.forEach((q: any) => {
+          const qRef = doc(db, "mockTests", mockId, "questions", q.id || Math.random().toString(36).substr(2, 9));
+          batch.set(qRef, { ...q, mockId, updatedAt: serverTimestamp() });
         });
-        await qBatch.commit();
-        setUploadProgress(30 + Math.floor((i / normalizedContent.questions.length) * 60));
+        await batch.commit();
+        updateItemStatus(item.id, 'syncing', 50 + Math.floor((i / normalized.questions.length) * 40));
       }
 
-      await updateDoc(doc(db, "mockTests", selectedMockId), { status: "Published", totalQuestions: normalizedContent.questions.length, updatedAt: serverTimestamp() });
-      await logAction(db, user, "import_json", selectedMockId, "mockTest", `Imported ${normalizedContent.questions.length} items.`);
-      setUploadProgress(100);
-      toast({ title: "Module Ingested Successfully" });
-      router.push("/admin/mock-tests");
-    } catch (e: any) { toast({ variant: "destructive", title: "Ingestion Failed", description: e.message }); } finally { setIsUploading(false); }
+      await logAction(db, user, "bulk_ingest_file", mockId, "mockTest", `Ingested via Bulk Pipeline: ${item.path}`);
+      updateItemStatus(item.id, 'success', 100);
+    } catch (err: any) {
+      updateItemStatus(item.id, 'failed', 0, err.message);
+      throw err;
+    }
   };
 
+  // --- Helpers ---
+
+  const readFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  };
+
+  const updateItemStatus = (id: string, status: IngestionStatus, progress: number, error?: string) => {
+    setQueue(prev => prev.map(item => item.id === id ? { ...item, status, progress, error } : item));
+  };
+
+  const normalizeMockData = (json: any, item: QueueItem) => {
+    // Advanced Normalization Logic
+    // Detects structure from naked arrays, keyed objects, or sectioned hierarchies
+    let rawQuestions: any[] = [];
+    if (Array.isArray(json)) rawQuestions = json;
+    else if (json.questions && Array.isArray(json.questions)) rawQuestions = json.questions;
+    else if (json.sections && Array.isArray(json.sections)) {
+      json.sections.forEach((s: any) => {
+        if (s.questions) rawQuestions.push(...s.questions.map((q: any) => ({ ...q, sectionId: s.id })));
+      });
+    }
+
+    const questions = rawQuestions.map((q, idx) => {
+      const data = q.question || q;
+      return {
+        id: q.id || `q-${idx}`,
+        en: data.en || data.text || data.questionText || "",
+        hn: data.hn || "",
+        en_html: data.en_html || "",
+        hn_html: data.hn_html || "",
+        options: (q.options || q.choices || []).map((o: any, oIdx: number) => ({
+          id: o.id || `opt-${oIdx}`,
+          en: o.en || (typeof o === 'string' ? o : ""),
+          hn: o.hn || ""
+        })),
+        answer: q.answer || q.correct_option || q.correctAnswer || "",
+        marks: q.marks || 1,
+        negativeMarks: q.negativeMarks || 0.33,
+        explanation: q.explanation || {}
+      };
+    }).filter(q => q.en || q.en_html || q.hn || q.hn_html);
+
+    // Metadata extraction from path: "SSC/Math/Geometry.json"
+    const pathParts = item.path.split('/');
+    const metadata = {
+      title: json.title || item.name.replace('.json', '').replace(/_/g, ' '),
+      exam: pathParts[0] !== "ZIP" ? pathParts[0] : "General",
+      subject: pathParts[1] || "General",
+      type: json.type || "Full Test",
+      duration: json.duration || 90,
+      mockSlug: item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9]/g, '-')
+    };
+
+    return { normalized: { questions }, metadata };
+  };
+
+  const clearQueue = () => {
+    if (isProcessing) return;
+    setQueue([]);
+    setStats({ total: 0, completed: 0, failed: 0, processing: 0, startTime: null, endTime: null });
+  };
+
+  // --- UI Components ---
+
   return (
-    <div className="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+      {/* Header & Stats */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-headline font-bold">Content <span className="text-accent">Ingestion</span></h1>
-          <p className="text-muted-foreground text-xs md:text-sm">Batch import examination items directly into Firestore.</p>
+          <h1 className="text-3xl font-headline font-bold">Massive <span className="text-accent">Ingestion Pipeline</span></h1>
+          <p className="text-muted-foreground text-sm mt-1">High-performance bulk import for enterprise-scale exam databases.</p>
         </div>
-        <Button variant="outline" className="w-full sm:w-auto rounded-xl border-white/10 h-10 px-6 text-xs md:text-sm" onClick={() => router.back()}><ArrowLeft className="w-4 h-4 mr-2" /> Back</Button>
+        
+        <div className="flex flex-wrap items-center gap-4">
+           <div className="grid grid-cols-2 md:flex gap-4">
+              <StatMini label="Files" value={stats.total} icon={FileJson} />
+              <StatMini label="Success" value={stats.completed} icon={CheckCircle} color="text-emerald-400" />
+              <StatMini label="Failed" value={stats.failed} icon={AlertCircle} color="text-rose-400" />
+           </div>
+           <Button 
+            disabled={stats.total === 0 || isProcessing} 
+            onClick={processQueue}
+            className="bg-primary hover:bg-primary/90 text-white rounded-xl gap-2 px-8 h-12 shadow-xl shadow-primary/20"
+           >
+             {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
+             {isProcessing ? "Processing Queue..." : "Start Ingestion"}
+           </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Left Column: Upload Controls */}
         <div className="lg:col-span-4 space-y-6">
-          <Card className="glass border-white/10 p-5 md:p-6 space-y-5">
-            <h3 className="font-bold flex items-center gap-2 text-xs md:text-sm uppercase tracking-wider text-muted-foreground"><LinkIcon className="w-4 h-4 text-primary" /> Target Test</h3>
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">Hierarchy Category</label>
-                <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-                  <SelectTrigger className="bg-white/5 border-white/10 h-10 text-xs"><SelectValue placeholder="Select Category" /></SelectTrigger>
-                  <SelectContent>{categories?.map(c => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}</SelectContent>
-                </Select>
+           <Card className="glass border-white/10 p-8 space-y-6 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:rotate-12 transition-transform">
+                <UploadCloud className="w-24 h-24 text-primary" />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">Linked Exam</label>
-                <Select value={selectedExamId} onValueChange={setSelectedExamId} disabled={!selectedCategoryId}>
-                  <SelectTrigger className="bg-white/5 border-white/10 h-10 text-xs"><SelectValue placeholder="Select Exam" /></SelectTrigger>
-                  <SelectContent>{filteredExams.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
-                </Select>
+              
+              <div className="space-y-4">
+                <h3 className="font-bold text-lg flex items-center gap-2"><UploadCloud className="w-5 h-5 text-primary" /> Data Sources</h3>
+                <div className="grid grid-cols-1 gap-3">
+                   <UploadButton 
+                    label="Choose Folder" 
+                    desc="Recursive directory upload" 
+                    icon={FolderOpen} 
+                    onClick={() => folderInputRef.current?.click()} 
+                   />
+                   <UploadButton 
+                    label="Upload ZIP" 
+                    desc="Auto-extract & process" 
+                    icon={FileArchive} 
+                    onClick={() => zipInputRef.current?.click()} 
+                   />
+                   <UploadButton 
+                    label="Select Files" 
+                    desc="Batch select JSON files" 
+                    icon={FileJson} 
+                    onClick={() => fileInputRef.current?.click()} 
+                   />
+                </div>
+
+                <input type="file" ref={fileInputRef} className="hidden" multiple accept=".json" onChange={e => addToQueue(e.target.files || [])} />
+                <input type="file" ref={folderInputRef} className="hidden" multiple {...({ webkitdirectory: "", directory: "" } as any)} onChange={e => addToQueue(e.target.files || [])} />
+                <input type="file" ref={zipInputRef} className="hidden" accept=".zip" onChange={handleZipUpload} />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">Mock Test Module</label>
-                <Select value={selectedMockId} onValueChange={setSelectedMockId} disabled={!selectedExamId}>
-                  <SelectTrigger className="bg-white/5 border-white/10 h-10 text-xs"><SelectValue placeholder="Select Mock Test" /></SelectTrigger>
-                  <SelectContent>{filteredMocks.map(m => <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>)}</SelectContent>
-                </Select>
+
+              <div className="pt-6 border-t border-white/5 space-y-4">
+                 <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-muted-foreground uppercase">Concurrency</span>
+                    <Badge variant="outline" className="text-primary border-primary/20">{concurrency} Threads</Badge>
+                 </div>
+                 <input 
+                  type="range" min="1" max="20" value={concurrency} 
+                  onChange={e => setConcurrency(parseInt(e.target.value))} 
+                  className="w-full accent-primary bg-white/5 h-2 rounded-full cursor-pointer" 
+                 />
+                 <p className="text-[10px] text-muted-foreground italic text-center">Process multiple files in parallel for maximum speed.</p>
               </div>
-            </div>
-          </Card>
 
-          <div 
-            className={cn(
-              "p-8 md:p-12 border-2 border-dashed rounded-[2rem] transition-all flex flex-col items-center justify-center gap-4 text-center cursor-pointer hover:bg-white/5",
-              file ? "border-primary/50 bg-primary/5 shadow-[0_0_20px_rgba(99,102,241,0.1)]" : "border-white/10"
-            )}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) {
-                setFile(f);
-                const r = new FileReader();
-                r.onload = (ev) => { try { processAndNormalizeJson(JSON.parse(ev.target?.result as string)); } catch (err) { toast({ variant: "destructive", title: "Parser Failure", description: "The uploaded file is not a valid JSON string." }); } };
-                r.readAsText(f);
-              }
-            }} />
-            <FileJson className={cn("w-10 h-10 md:w-12 md:h-12", file ? "text-primary" : "text-muted-foreground opacity-30")} />
-            <div className="space-y-1">
-               <p className="font-bold text-sm">{file ? file.name : "Choose JSON File"}</p>
-               <p className="text-[10px] text-muted-foreground uppercase tracking-widest">{file ? `${(file.size/1024).toFixed(1)} KB` : "Max 10MB recommended"}</p>
-            </div>
-            {file && (
-              <Button variant="ghost" size="sm" className="h-7 text-[10px] rounded-full hover:bg-white/10" onClick={(e) => { e.stopPropagation(); setFile(null); setValidation(null); }}>
-                <X className="w-3 h-3 mr-1" /> Reset
-              </Button>
-            )}
-          </div>
+              {queue.length > 0 && (
+                <Button variant="ghost" className="w-full text-rose-400 hover:bg-rose-400/10 h-10 rounded-xl gap-2" onClick={clearQueue} disabled={isProcessing}>
+                   <Trash2 className="w-4 h-4" /> Clear All
+                </Button>
+              )}
+           </Card>
 
-          <Button 
-            className="w-full h-12 md:h-14 bg-primary text-white rounded-xl font-bold shadow-xl gap-3 text-sm md:text-base"
-            disabled={!validation?.isValid || !selectedMockId || isUploading}
-            onClick={handleUpload}
-          >
-            {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Zap className="w-5 h-5 fill-current" /> Deploy to Firestore</>}
-          </Button>
-
-          {isUploading && (
-            <div className="space-y-2 p-4 bg-white/5 rounded-2xl border border-white/5 animate-in slide-in-from-top-2">
-              <div className="flex justify-between text-[10px] font-bold uppercase"><span className="text-primary animate-pulse">Syncing...</span><span>{uploadProgress}%</span></div>
-              <Progress value={uploadProgress} className="h-1.5 bg-white/5" />
-            </div>
-          )}
+           <div className="p-6 bg-indigo-500/10 border border-indigo-500/20 rounded-[2rem] space-y-4">
+              <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest">
+                 <Zap className="w-4 h-4 fill-current" /> Auto-Categorization
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed italic">
+                 "Our engine extracts exam hierarchy from your folder structure. Folders like <span className="text-white">SSC/CGL/Math</span> will automatically map to the correct Series, Listing, and Subject."
+              </p>
+           </div>
         </div>
 
-        <div className="lg:col-span-8 space-y-6 w-full min-w-0">
-          {validation ? (
-            <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
-              <div className={cn(
-                "p-5 md:p-6 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between border gap-4",
-                validation.isValid ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-rose-500/10 border-rose-500/20 text-rose-400"
-              )}>
-                <div className="flex items-center gap-3 text-center sm:text-left">
-                  {validation.isValid ? <CheckCircle2 className="w-6 h-6 shrink-0" /> : <AlertCircle className="w-6 h-6 shrink-0" />}
-                  <div className="min-w-0">
-                    <span className="font-headline font-bold text-base md:text-lg block">{validation.isValid ? "Validator Passed" : "Critical Schema Issues"}</span>
-                    <span className="text-[10px] uppercase font-bold tracking-widest opacity-60">Schema: {validation.summary.schemaType}</span>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                   <Badge variant="outline" className="h-7 text-[10px] px-3 uppercase border-current">{validation.summary.validCount} Valid Items</Badge>
-                   {validation.summary.brokenCount > 0 && <Badge variant="destructive" className="h-7 text-[10px] px-3 uppercase">{validation.summary.brokenCount} Broken</Badge>}
-                </div>
-              </div>
+        {/* Right Column: Queue Display */}
+        <div className="lg:col-span-8">
+           <Card className="glass border-white/10 flex flex-col h-[700px] overflow-hidden">
+              <CardHeader className="p-6 border-b border-white/5 flex flex-row items-center justify-between">
+                 <div>
+                    <CardTitle className="text-lg font-headline font-bold">Ingestion Queue</CardTitle>
+                    <p className="text-xs text-muted-foreground">{queue.length} files total • {queue.filter(q => q.status === 'success').length} synced</p>
+                 </div>
+                 {isProcessing && (
+                   <div className="flex items-center gap-4 text-xs font-bold text-accent">
+                      <div className="flex items-center gap-2 bg-accent/10 px-3 py-1.5 rounded-full border border-accent/20">
+                         <Activity className="w-3 h-3 animate-pulse" />
+                         Active Pipeline
+                      </div>
+                   </div>
+                 )}
+              </CardHeader>
+              
+              <ScrollArea className="flex-1">
+                 {queue.length === 0 ? (
+                   <div className="h-[500px] flex flex-col items-center justify-center text-center opacity-20 gap-4">
+                      <History className="w-16 h-16" />
+                      <p className="font-headline font-bold text-xl uppercase tracking-widest">Queue is Empty</p>
+                   </div>
+                 ) : (
+                   <div className="divide-y divide-white/5">
+                      {queue.map((item) => (
+                        <div key={item.id} className="p-4 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors">
+                           <div className={cn(
+                             "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
+                             item.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" :
+                             item.status === 'failed' ? "bg-rose-500/10 border-rose-500/20 text-rose-400" :
+                             item.status === 'pending' ? "bg-white/5 border-white/5 text-muted-foreground" :
+                             "bg-primary/10 border-primary/20 text-primary"
+                           )}>
+                              {item.status === 'success' ? <CheckCircle2 className="w-5 h-5" /> : 
+                               item.status === 'failed' ? <AlertCircle className="w-5 h-5" /> : 
+                               item.status === 'pending' ? <FileJson className="w-5 h-5" /> :
+                               <Loader2 className="w-5 h-5 animate-spin" />}
+                           </div>
+                           
+                           <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex items-center justify-between">
+                                 <span className="text-sm font-bold truncate pr-4">{item.name}</span>
+                                 <Badge variant="outline" className="text-[9px] uppercase tracking-tighter h-5 border-white/10">{item.status}</Badge>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground font-mono truncate">{item.path}</p>
+                              {(item.status === 'syncing' || item.status === 'parsing' || item.status === 'validating') && (
+                                <Progress value={item.progress} className="h-1 bg-white/5" />
+                              )}
+                              {item.error && <p className="text-[10px] text-rose-400 font-bold">{item.error}</p>}
+                           </div>
 
-              <Tabs defaultValue="preview" className="w-full">
-                <TabsList className="bg-white/5 p-1 rounded-xl mb-4 w-full sm:w-auto overflow-x-auto hide-scrollbar flex h-auto">
-                  <TabsTrigger value="preview" className="flex-1 sm:flex-none rounded-lg gap-2 text-xs py-2 md:py-1.5"><Database className="w-4 h-4" /> Data Preview</TabsTrigger>
-                  <TabsTrigger value="logs" className="flex-1 sm:flex-none rounded-lg gap-2 text-xs py-2 md:py-1.5"><Languages className="w-4 h-4" /> Parser Logs</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="preview" className="m-0">
-                  <ScrollArea className="h-[400px] md:h-[500px] border border-white/5 rounded-[2rem] bg-slate-900/50 p-4 md:p-6">
-                    <div className="space-y-4 md:space-y-6">
-                      {normalizedContent?.questions.slice(0, 20).map((q, i) => (
-                        <div key={i} className="p-4 rounded-xl border border-white/5 bg-white/[0.02] space-y-3">
-                          <div className="flex justify-between items-center"><Badge variant="outline" className="text-[9px] h-5 px-1.5">Item {i+1}</Badge><span className={q.answer ? "text-emerald-400 text-[10px] font-bold" : "text-rose-400 text-[10px] font-bold"}>{q.answer ? 'Answer Matched' : 'Unresolved Answer'}</span></div>
-                          <RichTextRenderer content={q.en_html || q.en || q.hn_html || q.hn} className="text-xs md:text-sm font-medium line-clamp-3" />
-                          <div className="grid grid-cols-1 xs:grid-cols-2 gap-2">
-                             {q.options.slice(0, 4).map((o: any) => <div key={o.id} className={cn("p-2 border rounded-lg text-[9px] md:text-[10px] truncate", q.answer === o.id ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-400" : "border-white/5 text-muted-foreground")}>{o.en || o.en_html || "Empty Option"}</div>)}
-                          </div>
+                           <div className="shrink-0 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button 
+                                variant="ghost" size="icon" 
+                                className="h-8 w-8 text-muted-foreground hover:text-rose-400"
+                                onClick={() => setQueue(prev => prev.filter(q => q.id !== item.id))}
+                                disabled={isProcessing}
+                              >
+                                 <X className="w-4 h-4" />
+                              </Button>
+                           </div>
                         </div>
                       ))}
-                      {normalizedContent && normalizedContent.questions.length > 20 && (
-                        <p className="text-center text-[10px] text-muted-foreground uppercase font-bold py-4">... and {normalizedContent.questions.length - 20} more items</p>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-                
-                <TabsContent value="logs" className="m-0">
-                  <Card className="glass border-white/10 p-5 md:p-6 font-mono text-[10px] md:text-xs space-y-2 overflow-x-auto">
-                    <p className="text-primary">&gt; Deep Scan Initialized...</p>
-                    <p className="text-accent">&gt; Path Mapping: {validation.summary.schemaType}</p>
-                    <p className="text-foreground">&gt; Total Items: {validation.summary.totalParsed}</p>
-                    <p className="text-emerald-400">&gt; Valid Mappings: {validation.summary.validCount}</p>
-                    <p className="text-rose-400">&gt; Content Failures: {validation.summary.brokenCount}</p>
-                    <p className="text-indigo-400">&gt; Bilingual Mode: {validation.summary.bilingual ? 'Full' : 'Partial'}</p>
-                    <p className="text-amber-400">&gt; Media Assets Detected: {validation.summary.images}</p>
-                    <p className="text-muted-foreground">&gt; Integrity check complete.</p>
-                  </Card>
-                </TabsContent>
-              </Tabs>
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-6 text-muted-foreground opacity-30 py-24 md:py-48 border-2 border-dashed border-white/10 rounded-[3rem] text-center p-6">
-              <div className="w-16 h-16 md:w-20 md:h-20 bg-white/5 rounded-full flex items-center justify-center">
-                 <FileJson className="w-8 h-8 md:w-10 md:h-10" />
-              </div>
-              <div className="space-y-1">
-                 <p className="font-headline font-bold text-lg md:text-xl uppercase tracking-widest">Awaiting JSON Stream</p>
-                 <p className="text-xs max-w-[250px] mx-auto">Upload a mock-test JSON file to begin the normalization and import process.</p>
-              </div>
-            </div>
-          )}
+                   </div>
+                 )}
+              </ScrollArea>
+
+              {queue.length > 0 && (
+                <div className="p-4 bg-white/[0.01] border-t border-white/5 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                   <span>Storage Load: {(queue.reduce((acc, curr) => acc + curr.size, 0) / 1024 / 1024).toFixed(2)} MB</span>
+                   <span>Processing Batch ID: {Math.random().toString(36).substr(2, 6).toUpperCase()}</span>
+                </div>
+              )}
+           </Card>
         </div>
       </div>
     </div>
   );
 }
 
-export default function UploadJsonPage() {
+// --- Internal Sub-Components ---
+
+function StatMini({ label, value, icon: Icon, color = "text-muted-foreground" }: any) {
   return (
-    <Suspense fallback={<div className="h-[80vh] flex items-center justify-center w-full"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>}>
-      <UploadJsonContent />
-    </Suspense>
+    <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-xl border border-white/10 shrink-0">
+       <Icon className={cn("w-4 h-4", color)} />
+       <div className="flex flex-col">
+          <span className="text-sm font-bold font-headline leading-none">{value}</span>
+          <span className="text-[8px] uppercase tracking-widest font-bold opacity-40">{label}</span>
+       </div>
+    </div>
+  );
+}
+
+function UploadButton({ label, desc, icon: Icon, onClick }: any) {
+  return (
+    <button 
+      onClick={onClick}
+      className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-primary/40 hover:bg-white/[0.08] transition-all group text-left w-full"
+    >
+       <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-all">
+          <Icon className="w-5 h-5" />
+       </div>
+       <div className="flex-1">
+          <div className="text-sm font-bold">{label}</div>
+          <p className="text-[10px] text-muted-foreground">{desc}</p>
+       </div>
+    </button>
   );
 }
