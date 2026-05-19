@@ -1,54 +1,56 @@
 
 "use client";
 
-import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import { 
   UploadCloud, 
   FileJson, 
   CheckCircle2, 
   AlertCircle, 
   Loader2,
-  Database,
-  ArrowLeft,
   Zap,
   FolderOpen,
   FileArchive,
   X,
   Play,
   Trash2,
-  ChevronDown,
-  ChevronUp,
   Activity,
-  BarChart3,
-  Clock,
   History,
   CheckCircle,
-  FileText
+  PlusCircle,
+  Settings2,
+  ChevronRight
 } from "lucide-react";
-import { useFirestore, useUser } from "@/firebase";
+import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
 import { 
   collection, 
   doc, 
   writeBatch, 
   serverTimestamp,
-  updateDoc,
   setDoc,
-  getDocs,
   query,
-  where,
-  limit
+  orderBy,
+  addDoc
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { logAction } from "@/services/audit";
 import JSZip from "jszip";
-
-// --- Types & Interfaces ---
 
 type IngestionStatus = 'pending' | 'parsing' | 'validating' | 'syncing' | 'success' | 'failed';
 
@@ -61,420 +63,311 @@ interface QueueItem {
   status: IngestionStatus;
   progress: number;
   error?: string;
-  parsedData?: any;
-  metadata?: any;
 }
 
-interface IngestionStats {
-  total: number;
-  completed: number;
-  failed: number;
-  processing: number;
-  startTime: number | null;
-  endTime: number | null;
-}
-
-// --- Component ---
-
-export default function BulkIngestionPage() {
+export default function BulkIngestionPipeline() {
   const db = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
   
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [concurrency, setConcurrency] = useState(5);
-  const [stats, setStats] = useState<IngestionStats>({
-    total: 0, completed: 0, failed: 0, processing: 0, startTime: null, endTime: null
+  const [stats, setStats] = useState({ total: 0, completed: 0, failed: 0 });
+  const [autoDetect, setAutoDetect] = useState(true);
+
+  // Batch Configuration State
+  const [batchConfig, setBatchConfig] = useState<any>({
+    examId: "",
+    typeId: "",
+    subTypeId: "",
+    durationMinutes: 90,
+    fullMarks: 100,
+    negativeMarks: 0.33,
+    isFree: true,
+    language: "en"
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
 
-  // --- Logic: Queue Management ---
+  // Firestore Listeners
+  const examsQuery = useMemoFirebase(() => db ? query(collection(db, "exams"), orderBy("name", "asc")) : null, [db]);
+  const { data: exams } = useCollection<any>(examsQuery);
 
-  const addToQueue = useCallback((files: FileList | File[], pathPrefix: string = "") => {
+  const mockTypesQuery = useMemoFirebase(() => 
+    db && batchConfig.examId ? query(collection(db, "exams", batchConfig.examId, "mockTypes"), orderBy("order", "asc")) : null,
+  [db, batchConfig.examId]);
+  const { data: mockTypes } = useCollection<any>(mockTypesQuery);
+
+  const subTypesQuery = useMemoFirebase(() => 
+    db && batchConfig.examId && batchConfig.typeId 
+      ? query(collection(db, "exams", batchConfig.examId, "mockTypes", batchConfig.typeId, "subTypes"), orderBy("order", "asc")) 
+      : null,
+  [db, batchConfig.examId, batchConfig.typeId]);
+  const { data: subTypes } = useCollection<any>(subTypesQuery);
+
+  const addToQueue = useCallback((files: FileList | File[]) => {
     const newItems: QueueItem[] = Array.from(files)
       .filter(f => f.name.endsWith('.json'))
       .map(file => ({
         id: Math.random().toString(36).substr(2, 9),
         file,
         name: file.name,
-        path: (file as any).webkitRelativePath || pathPrefix + file.name,
+        path: (file as any).webkitRelativePath || file.name,
         size: file.size,
         status: 'pending',
         progress: 0
       }));
-
-    if (newItems.length === 0) {
-      toast({ variant: "destructive", title: "No JSON Files Found", description: "The selection did not contain any valid .json files." });
-      return;
-    }
-
+    if (newItems.length === 0) return;
     setQueue(prev => [...prev, ...newItems]);
     setStats(prev => ({ ...prev, total: prev.total + newItems.length }));
-  }, [toast]);
+  }, []);
 
   const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    toast({ title: "Extracting Archive", description: "Reading ZIP contents..." });
     try {
       const zip = await JSZip.loadAsync(file);
-      const extractedFiles: File[] = [];
-      
-      const promises = Object.keys(zip.files).map(async (filename) => {
-        const zipFile = zip.files[filename];
-        if (!zipFile.dir && filename.endsWith('.json')) {
+      const extracted: File[] = [];
+      const promises = Object.keys(zip.files).map(async (name) => {
+        const zipFile = zip.files[name];
+        if (!zipFile.dir && name.endsWith('.json')) {
           const blob = await zipFile.async("blob");
-          extractedFiles.push(new File([blob], filename, { type: "application/json" }));
+          extracted.push(new File([blob], name, { type: "application/json" }));
         }
       });
-
       await Promise.all(promises);
-      addToQueue(extractedFiles, "ZIP/");
+      addToQueue(extracted);
     } catch (err: any) {
-      toast({ variant: "destructive", title: "ZIP Extraction Failed", description: err.message });
+      toast({ variant: "destructive", title: "ZIP Failed", description: err.message });
     }
   };
 
-  // --- Logic: Ingestion Pipeline ---
+  const updateItem = (id: string, updates: Partial<QueueItem>) => {
+    setQueue(prev => prev.map(q => q.id === id ? { ...q, ...updates } : q));
+  };
 
   const processQueue = async () => {
     if (!db || !user || isProcessing) return;
+    if (!batchConfig.examId && !autoDetect) {
+      toast({ variant: "destructive", title: "Config Required", description: "Select an Exam or enable Auto-Detect." });
+      return;
+    }
+
     setIsProcessing(true);
-    setStats(prev => ({ ...prev, startTime: Date.now(), endTime: null }));
+    const pending = queue.filter(q => q.status === 'pending');
 
-    const pendingItems = queue.filter(item => item.status === 'pending');
-    let completedCount = stats.completed;
-    let failedCount = stats.failed;
+    for (const item of pending) {
+      try {
+        updateItem(item.id, { status: 'parsing', progress: 10 });
+        const content = await item.file.text();
+        const json = JSON.parse(content);
 
-    // Concurrency Worker Loop
-    const work = async () => {
-      while (true) {
-        const item = pendingItems.shift();
-        if (!item) break;
+        updateItem(item.id, { status: 'validating', progress: 30 });
+        const questions = normalizeQuestions(json);
+        if (questions.length === 0) throw new Error("No valid questions found.");
 
-        try {
-          await ingestFile(item);
-          completedCount++;
-        } catch (err) {
-          failedCount++;
-        }
+        updateItem(item.id, { status: 'syncing', progress: 50 });
         
-        setStats(prev => ({ ...prev, completed: completedCount, failed: failedCount }));
-      }
-    };
+        // Resolve Metadata
+        const exam = exams?.find(e => e.id === batchConfig.examId);
+        const type = mockTypes?.find(t => t.id === batchConfig.typeId);
+        const sub = subTypes?.find(s => s.id === batchConfig.subTypeId);
 
-    const workers = Array(Math.min(concurrency, pendingItems.length)).fill(null).map(() => work());
-    await Promise.all(workers);
+        const mockId = item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const mockRef = doc(db, "mockTests", mockId);
 
-    setIsProcessing(false);
-    setStats(prev => ({ ...prev, endTime: Date.now() }));
-    toast({ title: "Ingestion Batch Complete", description: `Successfully processed ${completedCount} mock tests.` });
-  };
+        const mockData = {
+          id: mockId,
+          title: json.title || item.name.replace('.json', '').replace(/_/g, ' '),
+          examId: batchConfig.examId,
+          examName: exam?.name || "Uncategorized",
+          typeId: batchConfig.typeId,
+          typeName: type?.title || "Full Test",
+          subTypeId: batchConfig.subTypeId,
+          subTypeName: sub?.title || "",
+          hierarchyPath: `${exam?.name || 'Bulk'} > ${type?.title || 'Unknown'}${sub ? ` > ${sub.title}` : ''}`,
+          totalQuestions: questions.length,
+          durationMinutes: batchConfig.durationMinutes,
+          fullMarks: batchConfig.fullMarks,
+          negativeMarks: batchConfig.negativeMarks,
+          isFree: batchConfig.isFree,
+          status: "Published",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
 
-  const ingestFile = async (item: QueueItem) => {
-    updateItemStatus(item.id, 'parsing', 10);
+        await setDoc(mockRef, mockData, { merge: true });
 
-    const content = await readFile(item.file);
-    let json: any;
-    try {
-      json = JSON.parse(content);
-    } catch (e) {
-      updateItemStatus(item.id, 'failed', 0, "Invalid JSON format");
-      throw e;
-    }
-
-    updateItemStatus(item.id, 'validating', 30);
-    const { normalized, metadata } = normalizeMockData(json, item);
-
-    if (normalized.questions.length === 0) {
-      updateItemStatus(item.id, 'failed', 0, "No valid questions detected");
-      throw new Error("Empty questions");
-    }
-
-    updateItemStatus(item.id, 'syncing', 50);
-    
-    try {
-      // 1. Resolve or Create Hierarchy (Exam Category -> Exam)
-      // This is a simplified version of hierarchy resolution for the bulk ingestor
-      const mockId = metadata.mockSlug || Math.random().toString(36).substr(2, 9);
-      
-      // 2. Write Mock Test Root
-      const mockRef = doc(db, "mockTests", mockId);
-      await setDoc(mockRef, {
-        id: mockId,
-        title: metadata.title || item.name.replace('.json', ''),
-        examId: metadata.exam || "General",
-        type: metadata.type || "Full Test",
-        totalQuestions: normalized.questions.length,
-        durationMinutes: metadata.duration || 90,
-        status: "Published",
-        isFree: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      // 3. Write Questions in Batches (Firestore limit 500)
-      const qBatchSize = 100;
-      for (let i = 0; i < normalized.questions.length; i += qBatchSize) {
         const batch = writeBatch(db);
-        const chunk = normalized.questions.slice(i, i + qBatchSize);
-        chunk.forEach((q: any) => {
-          const qRef = doc(db, "mockTests", mockId, "questions", q.id || Math.random().toString(36).substr(2, 9));
-          batch.set(qRef, { ...q, mockId, updatedAt: serverTimestamp() });
+        questions.forEach((q, idx) => {
+          const qRef = doc(db, "mockTests", mockId, "questions", q.id || `q-${idx}`);
+          batch.set(qRef, { ...q, mockId, status: "Verified", updatedAt: serverTimestamp() });
         });
         await batch.commit();
-        updateItemStatus(item.id, 'syncing', 50 + Math.floor((i / normalized.questions.length) * 40));
+
+        updateItem(item.id, { status: 'success', progress: 100 });
+        setStats(prev => ({ ...prev, completed: prev.completed + 1 }));
+      } catch (err: any) {
+        updateItem(item.id, { status: 'failed', error: err.message });
+        setStats(prev => ({ ...prev, failed: prev.failed + 1 }));
       }
-
-      await logAction(db, user, "bulk_ingest_file", mockId, "mockTest", `Ingested via Bulk Pipeline: ${item.path}`);
-      updateItemStatus(item.id, 'success', 100);
-    } catch (err: any) {
-      updateItemStatus(item.id, 'failed', 0, err.message);
-      throw err;
     }
+    setIsProcessing(false);
+    toast({ title: "Ingestion Batch Finalized" });
   };
 
-  // --- Helpers ---
-
-  const readFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target?.result as string);
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
+  const normalizeQuestions = (json: any) => {
+    let raw: any[] = Array.isArray(json) ? json : json.questions || (json.sections ? json.sections.flatMap((s: any) => s.questions || []) : []);
+    return raw.map((q, i) => ({
+      id: q.id || `q-${i}`,
+      en: q.en || q.text || "",
+      hn: q.hn || "",
+      en_html: q.en_html || "",
+      hn_html: q.hn_html || "",
+      options: (q.options || []).map((o: any, oi: number) => ({
+        id: o.id || `opt-${oi}`,
+        en: o.en || (typeof o === 'string' ? o : ""),
+        hn: o.hn || ""
+      })),
+      answer: q.answer || q.correctAnswer || "",
+      marks: q.marks || 1,
+      negativeMarks: q.negativeMarks || 0.33,
+      explanation: q.explanation || {}
+    })).filter(q => q.en || q.en_html);
   };
-
-  const updateItemStatus = (id: string, status: IngestionStatus, progress: number, error?: string) => {
-    setQueue(prev => prev.map(item => item.id === id ? { ...item, status, progress, error } : item));
-  };
-
-  const normalizeMockData = (json: any, item: QueueItem) => {
-    // Advanced Normalization Logic
-    // Detects structure from naked arrays, keyed objects, or sectioned hierarchies
-    let rawQuestions: any[] = [];
-    if (Array.isArray(json)) rawQuestions = json;
-    else if (json.questions && Array.isArray(json.questions)) rawQuestions = json.questions;
-    else if (json.sections && Array.isArray(json.sections)) {
-      json.sections.forEach((s: any) => {
-        if (s.questions) rawQuestions.push(...s.questions.map((q: any) => ({ ...q, sectionId: s.id })));
-      });
-    }
-
-    const questions = rawQuestions.map((q, idx) => {
-      const data = q.question || q;
-      return {
-        id: q.id || `q-${idx}`,
-        en: data.en || data.text || data.questionText || "",
-        hn: data.hn || "",
-        en_html: data.en_html || "",
-        hn_html: data.hn_html || "",
-        options: (q.options || q.choices || []).map((o: any, oIdx: number) => ({
-          id: o.id || `opt-${oIdx}`,
-          en: o.en || (typeof o === 'string' ? o : ""),
-          hn: o.hn || ""
-        })),
-        answer: q.answer || q.correct_option || q.correctAnswer || "",
-        marks: q.marks || 1,
-        negativeMarks: q.negativeMarks || 0.33,
-        explanation: q.explanation || {}
-      };
-    }).filter(q => q.en || q.en_html || q.hn || q.hn_html);
-
-    // Metadata extraction from path: "SSC/Math/Geometry.json"
-    const pathParts = item.path.split('/');
-    const metadata = {
-      title: json.title || item.name.replace('.json', '').replace(/_/g, ' '),
-      exam: pathParts[0] !== "ZIP" ? pathParts[0] : "General",
-      subject: pathParts[1] || "General",
-      type: json.type || "Full Test",
-      duration: json.duration || 90,
-      mockSlug: item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9]/g, '-')
-    };
-
-    return { normalized: { questions }, metadata };
-  };
-
-  const clearQueue = () => {
-    if (isProcessing) return;
-    setQueue([]);
-    setStats({ total: 0, completed: 0, failed: 0, processing: 0, startTime: null, endTime: null });
-  };
-
-  // --- UI Components ---
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-      {/* Header & Stats */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-headline font-bold">Massive <span className="text-accent">Ingestion Pipeline</span></h1>
-          <p className="text-muted-foreground text-sm mt-1">High-performance bulk import for enterprise-scale exam databases.</p>
+          <h1 className="text-3xl font-headline font-bold">Bulk Ingestion <span className="text-accent">Pipeline</span></h1>
+          <p className="text-muted-foreground text-sm mt-1">Transform folder hierarchies into dynamic mock series instantly.</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-4">
-           <div className="grid grid-cols-2 md:flex gap-4">
-              <StatMini label="Files" value={stats.total} icon={FileJson} />
-              <StatMini label="Success" value={stats.completed} icon={CheckCircle} color="text-emerald-400" />
-              <StatMini label="Failed" value={stats.failed} icon={AlertCircle} color="text-rose-400" />
+           <div className="flex gap-4">
+              <Stat label="Total" value={stats.total} icon={FileJson} />
+              <Stat label="Success" value={stats.completed} icon={CheckCircle} color="text-emerald-400" />
+              <Stat label="Failed" value={stats.failed} icon={AlertCircle} color="text-rose-400" />
            </div>
-           <Button 
-            disabled={stats.total === 0 || isProcessing} 
-            onClick={processQueue}
-            className="bg-primary hover:bg-primary/90 text-white rounded-xl gap-2 px-8 h-12 shadow-xl shadow-primary/20"
-           >
+           <Button disabled={stats.total === 0 || isProcessing} onClick={processQueue} className="bg-primary hover:bg-primary/90 text-white rounded-xl h-12 shadow-xl shadow-primary/20 gap-2 px-8">
              {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
-             {isProcessing ? "Processing Queue..." : "Start Ingestion"}
+             Start Batch Ingestion
            </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Upload Controls */}
-        <div className="lg:col-span-4 space-y-6">
-           <Card className="glass border-white/10 p-8 space-y-6 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:rotate-12 transition-transform">
-                <UploadCloud className="w-24 h-24 text-primary" />
-              </div>
-              
-              <div className="space-y-4">
-                <h3 className="font-bold text-lg flex items-center gap-2"><UploadCloud className="w-5 h-5 text-primary" /> Data Sources</h3>
-                <div className="grid grid-cols-1 gap-3">
-                   <UploadButton 
-                    label="Choose Folder" 
-                    desc="Recursive directory upload" 
-                    icon={FolderOpen} 
-                    onClick={() => folderInputRef.current?.click()} 
-                   />
-                   <UploadButton 
-                    label="Upload ZIP" 
-                    desc="Auto-extract & process" 
-                    icon={FileArchive} 
-                    onClick={() => zipInputRef.current?.click()} 
-                   />
-                   <UploadButton 
-                    label="Select Files" 
-                    desc="Batch select JSON files" 
-                    icon={FileJson} 
-                    onClick={() => fileInputRef.current?.click()} 
-                   />
+      <div className="grid lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-5 space-y-6">
+           <Card className="glass border-white/10 p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold flex items-center gap-2 text-sm uppercase tracking-widest"><Settings2 className="w-4 h-4 text-primary" /> Batch Config</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase">Auto-Detect</span>
+                  <Switch checked={autoDetect} onCheckedChange={setAutoDetect} />
                 </div>
-
-                <input type="file" ref={fileInputRef} className="hidden" multiple accept=".json" onChange={e => addToQueue(e.target.files || [])} />
-                <input type="file" ref={folderInputRef} className="hidden" multiple {...({ webkitdirectory: "", directory: "" } as any)} onChange={e => addToQueue(e.target.files || [])} />
-                <input type="file" ref={zipInputRef} className="hidden" accept=".zip" onChange={handleZipUpload} />
               </div>
 
-              <div className="pt-6 border-t border-white/5 space-y-4">
-                 <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-muted-foreground uppercase">Concurrency</span>
-                    <Badge variant="outline" className="text-primary border-primary/20">{concurrency} Threads</Badge>
-                 </div>
-                 <input 
-                  type="range" min="1" max="20" value={concurrency} 
-                  onChange={e => setConcurrency(parseInt(e.target.value))} 
-                  className="w-full accent-primary bg-white/5 h-2 rounded-full cursor-pointer" 
-                 />
-                 <p className="text-[10px] text-muted-foreground italic text-center">Process multiple files in parallel for maximum speed.</p>
-              </div>
+              {!autoDetect && (
+                <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Target Exam</Label>
+                    <Select value={batchConfig.examId} onValueChange={(v) => setBatchConfig({ ...batchConfig, examId: v, typeId: "", subTypeId: "" })}>
+                      <SelectTrigger className="bg-white/5 border-white/10"><SelectValue placeholder="Select Exam" /></SelectTrigger>
+                      <SelectContent>{exams?.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
 
-              {queue.length > 0 && (
-                <Button variant="ghost" className="w-full text-rose-400 hover:bg-rose-400/10 h-10 rounded-xl gap-2" onClick={clearQueue} disabled={isProcessing}>
-                   <Trash2 className="w-4 h-4" /> Clear All
-                </Button>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase font-bold text-muted-foreground">Mock Type</Label>
+                      <Select value={batchConfig.typeId} onValueChange={(v) => setBatchConfig({ ...batchConfig, typeId: v, subTypeId: "" })} disabled={!batchConfig.examId}>
+                        <SelectTrigger className="bg-white/5 border-white/10"><SelectValue placeholder="Select Type" /></SelectTrigger>
+                        <SelectContent>{mockTypes?.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase font-bold text-muted-foreground">Sub-Type</Label>
+                      <Select value={batchConfig.subTypeId} onValueChange={(v) => setBatchConfig({ ...batchConfig, subTypeId: v })} disabled={!batchConfig.typeId}>
+                        <SelectTrigger className="bg-white/5 border-white/10"><SelectValue placeholder="All Subjects" /></SelectTrigger>
+                        <SelectContent>{subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
               )}
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5"><Label className="text-[10px] uppercase font-bold text-muted-foreground">Mins</Label><Input type="number" className="h-9 bg-white/5" value={batchConfig.durationMinutes} onChange={(e) => setBatchConfig({ ...batchConfig, durationMinutes: e.target.value })} /></div>
+                <div className="space-y-1.5"><Label className="text-[10px] uppercase font-bold text-muted-foreground">Marks</Label><Input type="number" className="h-9 bg-white/5" value={batchConfig.fullMarks} onChange={(e) => setBatchConfig({ ...batchConfig, fullMarks: e.target.value })} /></div>
+                <div className="space-y-1.5"><Label className="text-[10px] uppercase font-bold text-muted-foreground">Neg.</Label><Input type="number" className="h-9 bg-white/5" value={batchConfig.negativeMarks} onChange={(e) => setBatchConfig({ ...batchConfig, negativeMarks: e.target.value })} /></div>
+              </div>
            </Card>
 
-           <div className="p-6 bg-indigo-500/10 border border-indigo-500/20 rounded-[2rem] space-y-4">
-              <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-widest">
-                 <Zap className="w-4 h-4 fill-current" /> Auto-Categorization
+           <Card className="glass border-white/10 p-6 space-y-4">
+              <h3 className="font-bold text-sm uppercase tracking-widest flex items-center gap-2"><UploadCloud className="w-4 h-4 text-accent" /> Data Sources</h3>
+              <div className="grid grid-cols-1 gap-2">
+                <UploadBtn label="Upload Files" icon={FileJson} onClick={() => fileInputRef.current?.click()} />
+                <UploadBtn label="Recursive Folder" icon={FolderOpen} onClick={() => folderInputRef.current?.click()} />
+                <UploadBtn label="ZIP Archive" icon={FileArchive} onClick={() => zipInputRef.current?.click()} />
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed italic">
-                 "Our engine extracts exam hierarchy from your folder structure. Folders like <span className="text-white">SSC/CGL/Math</span> will automatically map to the correct Series, Listing, and Subject."
-              </p>
-           </div>
+              <input type="file" ref={fileInputRef} className="hidden" multiple accept=".json" onChange={e => addToQueue(e.target.files || [])} />
+              <input type="file" ref={folderInputRef} className="hidden" multiple {...({ webkitdirectory: "", directory: "" } as any)} onChange={e => addToQueue(e.target.files || [])} />
+              <input type="file" ref={zipInputRef} className="hidden" accept=".zip" onChange={handleZipUpload} />
+           </Card>
         </div>
 
-        {/* Right Column: Queue Display */}
-        <div className="lg:col-span-8">
-           <Card className="glass border-white/10 flex flex-col h-[700px] overflow-hidden">
+        <div className="lg:col-span-7">
+           <Card className="glass border-white/10 flex flex-col h-[650px] overflow-hidden">
               <CardHeader className="p-6 border-b border-white/5 flex flex-row items-center justify-between">
                  <div>
                     <CardTitle className="text-lg font-headline font-bold">Ingestion Queue</CardTitle>
-                    <p className="text-xs text-muted-foreground">{queue.length} files total • {queue.filter(q => q.status === 'success').length} synced</p>
+                    <p className="text-xs text-muted-foreground">{queue.length} files total • {stats.completed} synced</p>
                  </div>
-                 {isProcessing && (
-                   <div className="flex items-center gap-4 text-xs font-bold text-accent">
-                      <div className="flex items-center gap-2 bg-accent/10 px-3 py-1.5 rounded-full border border-accent/20">
-                         <Activity className="w-3 h-3 animate-pulse" />
-                         Active Pipeline
-                      </div>
-                   </div>
+                 {queue.length > 0 && !isProcessing && (
+                   <Button variant="ghost" size="sm" onClick={() => setQueue([])} className="text-rose-400 h-8 gap-2"><Trash2 className="w-3.5 h-3.5" /> Clear Queue</Button>
                  )}
               </CardHeader>
               
               <ScrollArea className="flex-1">
                  {queue.length === 0 ? (
-                   <div className="h-[500px] flex flex-col items-center justify-center text-center opacity-20 gap-4">
-                      <History className="w-16 h-16" />
-                      <p className="font-headline font-bold text-xl uppercase tracking-widest">Queue is Empty</p>
+                   <div className="h-[400px] flex flex-col items-center justify-center opacity-20 gap-4">
+                      <History className="w-12 h-12" />
+                      <p className="font-bold uppercase tracking-widest text-xs">Queue Empty</p>
                    </div>
                  ) : (
                    <div className="divide-y divide-white/5">
                       {queue.map((item) => (
-                        <div key={item.id} className="p-4 flex items-center gap-4 group hover:bg-white/[0.02] transition-colors">
+                        <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors group">
                            <div className={cn(
                              "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border",
                              item.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" :
                              item.status === 'failed' ? "bg-rose-500/10 border-rose-500/20 text-rose-400" :
-                             item.status === 'pending' ? "bg-white/5 border-white/5 text-muted-foreground" :
-                             "bg-primary/10 border-primary/20 text-primary"
+                             "bg-white/5 border-white/5 text-muted-foreground"
                            )}>
                               {item.status === 'success' ? <CheckCircle2 className="w-5 h-5" /> : 
                                item.status === 'failed' ? <AlertCircle className="w-5 h-5" /> : 
-                               item.status === 'pending' ? <FileJson className="w-5 h-5" /> :
-                               <Loader2 className="w-5 h-5 animate-spin" />}
+                               isProcessing && item.status !== 'pending' ? <Loader2 className="w-5 h-5 animate-spin" /> :
+                               <FileJson className="w-5 h-5" />}
                            </div>
-                           
                            <div className="flex-1 min-w-0 space-y-1">
                               <div className="flex items-center justify-between">
                                  <span className="text-sm font-bold truncate pr-4">{item.name}</span>
-                                 <Badge variant="outline" className="text-[9px] uppercase tracking-tighter h-5 border-white/10">{item.status}</Badge>
+                                 <Badge variant="outline" className="text-[8px] h-4 border-white/10 uppercase">{item.status}</Badge>
                               </div>
                               <p className="text-[10px] text-muted-foreground font-mono truncate">{item.path}</p>
-                              {(item.status === 'syncing' || item.status === 'parsing' || item.status === 'validating') && (
-                                <Progress value={item.progress} className="h-1 bg-white/5" />
+                              {item.status !== 'pending' && item.status !== 'success' && item.status !== 'failed' && (
+                                <Progress value={item.progress} className="h-0.5 bg-white/5" />
                               )}
-                              {item.error && <p className="text-[10px] text-rose-400 font-bold">{item.error}</p>}
-                           </div>
-
-                           <div className="shrink-0 text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button 
-                                variant="ghost" size="icon" 
-                                className="h-8 w-8 text-muted-foreground hover:text-rose-400"
-                                onClick={() => setQueue(prev => prev.filter(q => q.id !== item.id))}
-                                disabled={isProcessing}
-                              >
-                                 <X className="w-4 h-4" />
-                              </Button>
+                              {item.error && <p className="text-[9px] text-rose-400 font-bold">{item.error}</p>}
                            </div>
                         </div>
                       ))}
                    </div>
                  )}
               </ScrollArea>
-
-              {queue.length > 0 && (
-                <div className="p-4 bg-white/[0.01] border-t border-white/5 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                   <span>Storage Load: {(queue.reduce((acc, curr) => acc + curr.size, 0) / 1024 / 1024).toFixed(2)} MB</span>
-                   <span>Processing Batch ID: {Math.random().toString(36).substr(2, 6).toUpperCase()}</span>
-                </div>
-              )}
            </Card>
         </div>
       </div>
@@ -482,33 +375,23 @@ export default function BulkIngestionPage() {
   );
 }
 
-// --- Internal Sub-Components ---
-
-function StatMini({ label, value, icon: Icon, color = "text-muted-foreground" }: any) {
+function Stat({ label, value, icon: Icon, color = "text-muted-foreground" }: any) {
   return (
     <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-xl border border-white/10 shrink-0">
        <Icon className={cn("w-4 h-4", color)} />
        <div className="flex flex-col">
-          <span className="text-sm font-bold font-headline leading-none">{value}</span>
-          <span className="text-[8px] uppercase tracking-widest font-bold opacity-40">{label}</span>
+          <span className="text-sm font-bold leading-none">{value}</span>
+          <span className="text-[8px] uppercase font-bold opacity-40">{label}</span>
        </div>
     </div>
   );
 }
 
-function UploadButton({ label, desc, icon: Icon, onClick }: any) {
+function UploadBtn({ label, icon: Icon, onClick }: any) {
   return (
-    <button 
-      onClick={onClick}
-      className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-primary/40 hover:bg-white/[0.08] transition-all group text-left w-full"
-    >
-       <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-all">
-          <Icon className="w-5 h-5" />
-       </div>
-       <div className="flex-1">
-          <div className="text-sm font-bold">{label}</div>
-          <p className="text-[10px] text-muted-foreground">{desc}</p>
-       </div>
+    <button onClick={onClick} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:border-primary/40 hover:bg-white/[0.08] transition-all text-left">
+       <Icon className="w-4 h-4 text-muted-foreground" />
+       <span className="text-xs font-bold">{label}</span>
     </button>
   );
 }

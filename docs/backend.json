@@ -23,44 +23,26 @@
       "required": ["uid", "email"]
     },
     "MockType": {
-      "title": "Mock Test Category",
-      "description": "Top-level category for mock tests (e.g., Full Test, Subject Test).",
+      "title": "Exam-Specific Mock Category",
+      "description": "Custom category under a specific exam (e.g., Full Test, Mains).",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
         "slug": { "type": "string" },
-        "description": { "type": "string" },
         "order": { "type": "number" },
         "isActive": { "type": "boolean" },
-        "deleted": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
     "MockSubType": {
-      "title": "Mock Test Sub-Category",
-      "description": "Nested category under a MockType (e.g., Mathematics under Subject Test).",
+      "title": "Nested Subject/Chapter",
+      "description": "Subject or Chapter linked to a MockType (e.g., Math under Subject Test).",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
         "slug": { "type": "string" },
         "order": { "type": "number" },
-        "isActive": { "type": "boolean" },
-        "deleted": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "AuditLog": {
-      "title": "Audit Log",
-      "description": "System-wide tracking of administrative actions.",
-      "type": "object",
-      "properties": {
-        "adminId": { "type": "string" },
-        "adminName": { "type": "string" },
-        "action": { "type": "string" },
-        "targetId": { "type": "string" },
-        "targetType": { "type": "string" },
-        "details": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "isActive": { "type": "boolean" }
       }
     }
   },
@@ -72,17 +54,17 @@
       "schema": "User",
       "description": "Stores user profile and aggregate stats."
     },
-    "/mockTypes/{typeId}": {
+    "/exams/{examId}/mockTypes/{typeId}": {
       "schema": "MockType",
-      "description": "Defines global mock test categories."
+      "description": "Exam-specific test categories."
     },
-    "/mockTypes/{typeId}/subTypes/{subTypeId}": {
+    "/exams/{examId}/mockTypes/{typeId}/subTypes/{subTypeId}": {
       "schema": "MockSubType",
-      "description": "Defines nested sub-categories (subjects/chapters)."
+      "description": "Nested level (Subject/Chapter) for that exam."
     },
-    "/auditLogs/{logId}": {
-      "schema": "AuditLog",
-      "description": "Administrative action history."
+    "/mockTests/{testId}": {
+      "schema": "object",
+      "description": "The mock test root containing flattened metadata."
     }
   }
 }
