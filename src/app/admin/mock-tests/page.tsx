@@ -94,25 +94,27 @@ export default function MockTestManagementPage() {
   }, [mockTests, searchQuery, activeTab, filters]);
 
   const handleDeleteMock = async (id: string, title: string) => {
+    console.log("DELETE CLICKED - TARGET ID:", id);
     if (!db) return;
     
-    // Explicit confirmation for administrative safety
-    if (!confirm(`Are you sure you want to permanently delete "${title}"?`)) return;
+    // Administrative Confirmation
+    const isConfirmed = confirm(`Are you sure you want to permanently delete "${title}"? This action cannot be undone.`);
+    if (!isConfirmed) return;
     
-    console.log("Admin: Deleting mock test document:", id);
+    console.log("CONFIRMED - DELETING FROM FIRESTORE...");
     try {
       await deleteDoc(doc(db, "mockTests", id));
-      console.log("Admin: Delete successful for:", id);
+      console.log("DELETE SUCCESSFUL");
       toast({
         title: "Mock Test Deleted",
         description: `"${title}" has been removed from the platform.`,
       });
     } catch (e: any) {
-      console.error("Admin Error: Failed to delete mock:", e);
+      console.error("ADMIN DELETE ERROR:", e);
       toast({
         variant: "destructive",
         title: "Delete Failed",
-        description: e.message || "You may not have permissions to perform this action.",
+        description: e.message || "Failed to remove the document. Check permissions.",
       });
     }
   };
@@ -267,18 +269,23 @@ export default function MockTestManagementPage() {
                           <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10 transition-opacity"><MoreVertical className="w-4 h-4" /></Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="glass border-white/10 w-48">
-                          <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /> Edit Settings</DropdownMenuItem>
-                          <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
+                          <DropdownMenuItem className="cursor-pointer gap-2" onSelect={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /> Edit Settings</DropdownMenuItem>
+                          <DropdownMenuItem className="cursor-pointer gap-2" onSelect={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
                           <DropdownMenuSeparator className="bg-white/5" />
-                          <DropdownMenuItem className="cursor-pointer gap-2 text-primary font-bold" onClick={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}><UploadCloud className="w-3.5 h-3.5" /> Upload Questions</DropdownMenuItem>
-                          <DropdownMenuItem 
-                            className="cursor-pointer gap-2 text-destructive focus:text-destructive" 
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              handleDeleteMock(mock.id, mock.title);
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> Delete Mock
+                          <DropdownMenuItem className="cursor-pointer gap-2 text-primary font-bold" onSelect={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}><UploadCloud className="w-3.5 h-3.5" /> Upload Questions</DropdownMenuItem>
+                          
+                          {/* CRITICAL FIX: Wrapped in native button + asChild + onSelect(preventDefault) */}
+                          <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
+                             <button 
+                              className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-destructive focus:bg-destructive/10 outline-none transition-colors cursor-default"
+                              onClick={() => {
+                                console.log("ADMIN: TABLE DELETE CLICKED");
+                                handleDeleteMock(mock.id, mock.title);
+                              }}
+                             >
+                               <Trash2 className="w-3.5 h-3.5" />
+                               <span>Delete Mock</span>
+                             </button>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -303,17 +310,21 @@ export default function MockTestManagementPage() {
                     <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2"><MoreVertical className="w-4 h-4" /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="glass border-white/10">
-                    <DropdownMenuItem className="cursor-pointer" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}>Edit Settings</DropdownMenuItem>
-                    <DropdownMenuItem className="cursor-pointer" onClick={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}>Upload Questions</DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2 text-destructive focus:text-destructive"
-                      onSelect={(e) => {
-                        e.preventDefault();
-                        handleDeleteMock(mock.id, mock.title);
-                      }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Delete Mock
+                    <DropdownMenuItem className="cursor-pointer" onSelect={() => { setEditingItem(mock); setIsModalOpen(true); }}>Edit Settings</DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer" onSelect={() => router.push(`/admin/upload-json?mockId=${mock.id}`)}>Upload Questions</DropdownMenuItem>
+                    
+                    {/* CRITICAL FIX: Wrapped in native button + asChild + onSelect(preventDefault) */}
+                    <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
+                       <button 
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-destructive focus:bg-destructive/10 outline-none transition-colors cursor-default"
+                        onClick={() => {
+                          console.log("ADMIN: GRID DELETE CLICKED");
+                          handleDeleteMock(mock.id, mock.title);
+                        }}
+                       >
+                         <Trash2 className="w-3.5 h-3.5" />
+                         <span>Delete Mock</span>
+                       </button>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
