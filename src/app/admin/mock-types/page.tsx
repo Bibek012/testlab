@@ -14,9 +14,10 @@ import {
   MoreVertical,
   CheckCircle2,
   XCircle,
-  GripVertical
+  GripVertical,
+  ChevronDown
 } from "lucide-react";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { 
   collection, 
   query, 
@@ -37,8 +38,19 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle, 
-  DialogFooter 
+  DialogFooter,
+  DialogDescription 
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,17 +59,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { logAction } from "@/services/audit";
 
 export default function MockTypeManagementPage() {
   const db = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
   
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const [isSubTypeModalOpen, setIsSubTypeModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ path: string, id: string, title: string } | null>(null);
 
-  // Fetch Mock Types
+  // Fetch Primary Mock Types
   const typesQuery = useMemoFirebase(() => 
     db ? query(collection(db, "mockTypes"), where("deleted", "==", false), orderBy("order", "asc")) : null,
   [db]);
@@ -71,117 +86,149 @@ export default function MockTypeManagementPage() {
   [db, selectedTypeId]);
   const { data: subTypes, loading: subTypesLoading } = useCollection<any>(subTypesQuery);
 
-  const handleDelete = async (path: string, id: string) => {
-    if (!db || !confirm("Are you sure you want to delete this category?")) return;
+  const handleSoftDelete = async () => {
+    if (!db || !itemToDelete || !user) return;
     try {
-      await updateDoc(doc(db, path, id), { 
+      await updateDoc(doc(db, itemToDelete.path, itemToDelete.id), { 
         deleted: true, 
         isActive: false,
-        deletedAt: serverTimestamp() 
+        updatedAt: serverTimestamp() 
       });
-      toast({ title: "Deleted", description: "Category removed successfully." });
+      await logAction(db, user, "delete_type", itemToDelete.id, "mock_type", `Soft deleted: ${itemToDelete.title}`);
+      toast({ title: "Archived", description: `"${itemToDelete.title}" removed successfully.` });
+      if (selectedTypeId === itemToDelete.id) setSelectedTypeId(null);
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Error", description: e.message });
+      toast({ variant: "destructive", title: "Action Failed", description: e.message });
+    } finally {
+      setItemToDelete(null);
     }
   };
 
-  const handleToggleStatus = async (path: string, id: string, current: boolean) => {
-    if (!db) return;
+  const handleToggleStatus = async (path: string, id: string, current: boolean, title: string) => {
+    if (!db || !user) return;
     try {
-      await updateDoc(doc(db, path, id), { isActive: !current });
+      await updateDoc(doc(db, path, id), { 
+        isActive: !current,
+        updatedAt: serverTimestamp() 
+      });
+      toast({ title: "Status Updated", description: `${title} is now ${!current ? 'active' : 'hidden'}.` });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Error", description: e.message });
+      toast({ variant: "destructive", title: "Update Failed", description: e.message });
     }
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+    <div className="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-headline font-bold text-foreground">Hierarchy <span className="text-accent">Manager</span></h1>
-          <p className="text-muted-foreground text-sm mt-1">Define dynamic mock test types and nested sub-categories.</p>
+          <h1 className="text-2xl md:text-3xl font-headline font-bold text-foreground">Hierarchy <span className="text-accent">Manager</span></h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">Define dynamic mock test types and nested sub-categories for all series.</p>
         </div>
         <Button 
           onClick={() => { setEditingItem(null); setIsTypeModalOpen(true); }}
-          className="bg-primary hover:bg-primary/90 text-white rounded-xl gap-2 h-11 shadow-lg shadow-primary/20"
+          className="bg-primary hover:bg-primary/90 text-white rounded-xl gap-2 h-11 shadow-lg shadow-primary/20 font-bold"
         >
           <Plus className="w-4 h-4" />
-          Add New Type
+          Add Primary Type
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <Card className="lg:col-span-5 glass border-white/10 overflow-hidden">
-          <CardHeader className="bg-white/[0.02] border-b border-white/5">
-            <CardTitle className="text-lg font-headline font-bold flex items-center gap-2">
-              <Layers className="w-5 h-5 text-primary" />
-              Primary Mock Types
-            </CardTitle>
-            <CardDescription className="text-xs">Categories like Full Test, Subject Test, etc.</CardDescription>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">
+        {/* Left Panel: Primary Types */}
+        <Card className="lg:col-span-5 glass border-white/10 overflow-hidden shadow-xl">
+          <CardHeader className="bg-white/[0.02] border-b border-white/5 p-4 md:p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <CardTitle className="text-lg font-headline font-bold flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-primary" />
+                  Primary Types
+                </CardTitle>
+                <CardDescription className="text-[10px] uppercase font-bold tracking-wider">Master Categories</CardDescription>
+              </div>
+              <Badge variant="outline" className="bg-white/5 border-white/10">{mockTypes?.length || 0}</Badge>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {typesLoading ? (
-              <div className="p-12 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary opacity-20" /></div>
+              <div className="p-12 text-center flex flex-col items-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-[10px] uppercase font-bold text-muted-foreground animate-pulse">Syncing Types...</p>
+              </div>
             ) : (
               <div className="divide-y divide-white/5">
                 {mockTypes?.map((type) => (
                   <div 
                     key={type.id} 
                     className={cn(
-                      "flex items-center justify-between p-4 hover:bg-white/[0.02] transition-colors group cursor-pointer",
-                      selectedTypeId === type.id && "bg-primary/[0.05] border-l-4 border-l-primary"
+                      "flex items-center justify-between p-4 md:p-5 hover:bg-white/[0.02] transition-all group cursor-pointer border-l-4",
+                      selectedTypeId === type.id ? "bg-primary/[0.08] border-primary" : "border-transparent"
                     )}
                     onClick={() => setSelectedTypeId(type.id)}
                   >
                     <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <div className="p-2 rounded-lg bg-white/5 text-muted-foreground">
+                      <div className="p-2.5 rounded-xl bg-white/5 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
                         <GripVertical className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-bold text-sm truncate">{type.title}</h4>
-                        <p className="text-[10px] text-muted-foreground truncate uppercase tracking-widest">{type.slug}</p>
+                        <h4 className="font-bold text-sm md:text-base truncate group-hover:text-primary transition-colors">{type.title}</h4>
+                        <p className="text-[10px] text-muted-foreground truncate font-mono uppercase tracking-tighter opacity-60">ID: {type.slug}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                      <Badge className={cn("h-5 px-1.5 text-[9px]", type.isActive ? "bg-emerald-500/10 text-emerald-400" : "bg-white/5 text-muted-foreground")}>
+                    <div className="flex items-center gap-2 md:gap-3" onClick={e => e.stopPropagation()}>
+                      <Badge className={cn(
+                        "h-5 px-2 text-[9px] font-bold uppercase", 
+                        type.isActive ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-white/5 text-muted-foreground"
+                      )}>
                         {type.isActive ? "Active" : "Hidden"}
                       </Badge>
+                      
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-white/10"><MoreVertical className="w-4 h-4" /></Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="glass border-white/10">
-                          <DropdownMenuItem className="gap-2" onClick={() => { setEditingItem(type); setIsTypeModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /> Edit</DropdownMenuItem>
-                          <DropdownMenuItem className="gap-2" onClick={() => handleToggleStatus("mockTypes", type.id, type.isActive)}>{type.isActive ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />} {type.isActive ? "Deactivate" : "Activate"}</DropdownMenuItem>
-                          <DropdownMenuItem className="gap-2 text-destructive" onClick={() => handleDelete("mockTypes", type.id)}><Trash2 className="w-3.5 h-3.5" /> Delete</DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="glass border-white/10 w-48 p-1">
+                          <DropdownMenuItem className="gap-2 focus:bg-white/5 py-2" onClick={() => { setEditingItem(type); setIsTypeModalOpen(true); }}>
+                            <Edit2 className="w-3.5 h-3.5" /> Edit Configuration
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="gap-2 focus:bg-white/5 py-2" onClick={() => handleToggleStatus("mockTypes", type.id, type.isActive, type.title)}>
+                            {type.isActive ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />} 
+                            {type.isActive ? "Hide from Users" : "Make Live"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="gap-2 text-rose-400 focus:text-rose-400 focus:bg-rose-500/10 py-2" 
+                            onClick={() => setItemToDelete({ path: "mockTypes", id: type.id, title: type.title })}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete Category
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                      <ChevronRight className={cn("w-4 h-4 text-muted-foreground transition-transform", selectedTypeId === type.id ? "rotate-90 text-primary" : "")} />
+                      <ChevronRight className={cn("w-4 h-4 text-muted-foreground transition-transform", selectedTypeId === type.id ? "rotate-90 text-primary" : "group-hover:translate-x-1")} />
                     </div>
                   </div>
                 ))}
                 {mockTypes?.length === 0 && (
-                  <div className="p-12 text-center text-muted-foreground italic text-sm">No types defined yet.</div>
+                  <div className="p-12 text-center text-muted-foreground italic text-sm">No types defined yet. Click "Add Primary Type" to start.</div>
                 )}
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-7 glass border-white/10 overflow-hidden min-h-[400px]">
-          <CardHeader className="bg-white/[0.02] border-b border-white/5 flex flex-row items-center justify-between space-y-0">
-            <div>
+        {/* Right Panel: Sub-Types & Subjects */}
+        <Card className="lg:col-span-7 glass border-white/10 overflow-hidden min-h-[400px] shadow-xl">
+          <CardHeader className="bg-white/[0.02] border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between p-4 md:p-6 gap-4">
+            <div className="space-y-1">
               <CardTitle className="text-lg font-headline font-bold flex items-center gap-2">
                 <Settings2 className="w-5 h-5 text-accent" />
-                Sub-Types & Subjects
+                Subjects & Sub-Categories
               </CardTitle>
-              <CardDescription className="text-xs">Nested levels for the selected Mock Type.</CardDescription>
+              <CardDescription className="text-[10px] uppercase font-bold tracking-wider">Nested levels for selection</CardDescription>
             </div>
             {selectedTypeId && (
               <Button 
                 size="sm" 
-                variant="outline" 
-                className="rounded-lg border-white/10 h-9 gap-2"
+                className="rounded-xl bg-accent text-white h-10 gap-2 font-bold shadow-lg shadow-accent/20 px-6"
                 onClick={() => { setEditingItem(null); setIsSubTypeModalOpen(true); }}
               >
                 <Plus className="w-4 h-4" /> Add Sub-Type
@@ -190,35 +237,49 @@ export default function MockTypeManagementPage() {
           </CardHeader>
           <CardContent className="p-0">
             {!selectedTypeId ? (
-              <div className="h-[300px] flex flex-col items-center justify-center gap-4 text-muted-foreground opacity-30">
-                <Layers className="w-12 h-12" />
-                <p className="text-sm font-bold uppercase tracking-widest">Select a Primary Type</p>
+              <div className="h-[400px] flex flex-col items-center justify-center gap-6 text-muted-foreground opacity-30 text-center p-8">
+                <div className="w-20 h-20 rounded-[2rem] bg-white/5 flex items-center justify-center">
+                  <Layers className="w-10 h-10" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-lg font-headline font-bold uppercase tracking-widest">No Selection</p>
+                  <p className="text-sm">Select a Primary Type on the left to manage its subjects.</p>
+                </div>
               </div>
             ) : subTypesLoading ? (
-              <div className="p-12 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary opacity-20" /></div>
+              <div className="p-12 text-center flex flex-col items-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-accent" />
+                <p className="text-[10px] uppercase font-bold text-muted-foreground animate-pulse">Syncing Subjects...</p>
+              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-left text-sm min-w-[500px]">
                   <thead>
                     <tr className="border-b border-white/5 bg-white/[0.01]">
-                      <th className="px-6 py-4 font-bold text-muted-foreground uppercase tracking-widest text-[10px]">Sub-Type Title</th>
-                      <th className="px-6 py-4 font-bold text-muted-foreground uppercase tracking-widest text-[10px]">Slug</th>
-                      <th className="px-6 py-4 font-bold text-muted-foreground uppercase tracking-widest text-[10px]">Status</th>
+                      <th className="px-6 py-4 font-bold text-muted-foreground uppercase tracking-widest text-[10px]">Title & Slug</th>
+                      <th className="px-6 py-4 font-bold text-muted-foreground uppercase tracking-widest text-[10px]">Visibility</th>
                       <th className="px-6 py-4 font-bold text-muted-foreground uppercase tracking-widest text-[10px] text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {subTypes?.map((sub) => (
-                      <tr key={sub.id} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="px-6 py-4 font-bold">{sub.title}</td>
-                        <td className="px-6 py-4 font-mono text-[10px] text-muted-foreground">{sub.slug}</td>
+                      <tr key={sub.id} className="hover:bg-white/[0.02] transition-colors group">
                         <td className="px-6 py-4">
-                          <Badge className={cn("h-5", sub.isActive ? "bg-emerald-500/10 text-emerald-400" : "bg-white/5 text-muted-foreground")}>
+                           <div className="flex flex-col">
+                              <span className="font-bold text-sm md:text-base group-hover:text-accent transition-colors">{sub.title}</span>
+                              <span className="text-[10px] font-mono text-muted-foreground opacity-60 uppercase">{sub.slug}</span>
+                           </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge className={cn(
+                            "h-5 px-2 text-[9px] font-bold uppercase", 
+                            sub.isActive ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-white/5 text-muted-foreground"
+                          )}>
                             {sub.isActive ? "Active" : "Inactive"}
                           </Badge>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1">
                             <Button 
                               variant="ghost" 
                               size="icon" 
@@ -227,21 +288,30 @@ export default function MockTypeManagementPage() {
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400"
-                              onClick={() => handleDelete(`mockTypes/${selectedTypeId}/subTypes`, sub.id)}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-white/10"><MoreVertical className="w-4 h-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="glass border-white/10 w-48 p-1">
+                                <DropdownMenuItem className="gap-2 focus:bg-white/5 py-2" onClick={() => handleToggleStatus(`mockTypes/${selectedTypeId}/subTypes`, sub.id, sub.isActive, sub.title)}>
+                                  {sub.isActive ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />} 
+                                  {sub.isActive ? "Deactivate" : "Activate"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="gap-2 text-rose-400 focus:text-rose-400 focus:bg-rose-500/10 py-2" 
+                                  onClick={() => setItemToDelete({ path: `mockTypes/${selectedTypeId}/subTypes`, id: sub.id, title: sub.title })}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Delete Subject
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </td>
                       </tr>
                     ))}
                     {subTypes?.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="p-20 text-center text-muted-foreground italic">No sub-types defined for this category.</td>
+                        <td colSpan={3} className="p-20 text-center text-muted-foreground italic text-sm">No subjects defined for this category.</td>
                       </tr>
                     )}
                   </tbody>
@@ -252,14 +322,33 @@ export default function MockTypeManagementPage() {
         </Card>
       </div>
 
+      {/* Modals */}
       <TypeModal isOpen={isTypeModalOpen} onClose={() => setIsTypeModalOpen(false)} editingItem={editingItem} />
       <SubTypeModal isOpen={isSubTypeModalOpen} onClose={() => setIsSubTypeModalOpen(false)} editingItem={editingItem} parentTypeId={selectedTypeId!} />
+      
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent className="glass border-white/10 shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl font-headline font-bold">Archive Category?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              Are you sure you want to remove <span className="text-white font-bold">"{itemToDelete?.title}"</span>? 
+              This will hide it from students but preserve existing test data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel className="border-white/10 rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSoftDelete} className="bg-rose-500 hover:bg-rose-600 rounded-xl font-bold">Archive Item</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 function TypeModal({ isOpen, onClose, editingItem }: any) {
   const db = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
   const [formData, setFormData] = useState({ title: "", slug: "", description: "", order: 0, isActive: true });
   const [isSaving, setIsSaving] = useState(false);
@@ -276,44 +365,60 @@ function TypeModal({ isOpen, onClose, editingItem }: any) {
   }, [editingItem, isOpen]);
 
   const handleSave = async () => {
-    if (!db || !formData.title) return;
+    if (!db || !user || !formData.title.trim()) return;
     setIsSaving(true);
     try {
-      const slug = formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      const data = { ...formData, slug, deleted: false, updatedAt: serverTimestamp() };
-      if (editingItem) await updateDoc(doc(db, "mockTypes", editingItem.id), data);
-      else await addDoc(collection(db, "mockTypes"), { ...data, createdAt: serverTimestamp() });
-      toast({ title: "Mock Type Saved" });
+      const slug = formData.slug.trim() || formData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const data = { 
+        ...formData, 
+        slug, 
+        deleted: false, 
+        updatedAt: serverTimestamp() 
+      };
+      
+      if (editingItem) {
+        await updateDoc(doc(db, "mockTypes", editingItem.id), data);
+        await logAction(db, user, "update_type", editingItem.id, "mock_type", `Updated: ${formData.title}`);
+      } else {
+        const docRef = await addDoc(collection(db, "mockTypes"), { ...data, createdAt: serverTimestamp() });
+        await logAction(db, user, "create_type", docRef.id, "mock_type", `Created: ${formData.title}`);
+      }
+      toast({ title: "Success", description: "Mock type saved to global registry." });
       onClose();
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Error", description: e.message });
+      toast({ variant: "destructive", title: "Save Failed", description: e.message });
     } finally { setIsSaving(false); }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="glass border-white/10 sm:max-w-md">
-        <DialogHeader><DialogTitle>{editingItem ? "Edit Mock Type" : "New Mock Type"}</DialogTitle></DialogHeader>
-        <div className="space-y-4 py-4">
+      <DialogContent className="glass border-white/10 sm:max-w-md w-[95%] shadow-3xl">
+        <DialogHeader><DialogTitle className="text-xl font-headline font-bold">{editingItem ? "Edit Mock Type" : "New Primary Type"}</DialogTitle></DialogHeader>
+        <div className="space-y-5 py-6">
           <div className="space-y-2">
-            <Label>Type Title</Label>
-            <Input placeholder="e.g. Subject Test" value={formData.title || ""} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="bg-white/5 border-white/10 h-11" />
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Type Title</Label>
+            <Input placeholder="e.g. Subject Test" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="bg-white/5 border-white/10 h-12 text-lg font-medium" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Slug</Label>
-              <Input placeholder="auto-generated" value={formData.slug || ""} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} className="bg-white/5 border-white/10 h-11 font-mono text-xs" />
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">URL Slug</Label>
+              <Input placeholder="auto-generated" value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} className="bg-white/5 border-white/10 h-11 font-mono text-xs" />
             </div>
             <div className="space-y-2">
-              <Label>Sort Order</Label>
-              <Input type="number" value={formData.order ?? 0} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })} className="bg-white/5 border-white/10 h-11" />
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Sort Order</Label>
+              <Input type="number" value={formData.order} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })} className="bg-white/5 border-white/10 h-11 font-mono" />
             </div>
           </div>
+          <div className="space-y-2">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Short Description</Label>
+            <Input value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="bg-white/5 border-white/10 h-11" placeholder="Brief hint for admins..." />
+          </div>
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} className="border-white/10">Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving} className="bg-primary text-white font-bold px-8">
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Primary Type"}
+        <DialogFooter className="gap-3 pt-2">
+          <Button variant="outline" onClick={onClose} className="border-white/10 rounded-xl h-11 flex-1">Cancel</Button>
+          <Button onClick={handleSave} disabled={isSaving} className="bg-primary text-white font-bold rounded-xl h-11 flex-[2] shadow-lg shadow-primary/20">
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Save Category
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -323,6 +428,7 @@ function TypeModal({ isOpen, onClose, editingItem }: any) {
 
 function SubTypeModal({ isOpen, onClose, editingItem, parentTypeId }: any) {
   const db = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
   const [formData, setFormData] = useState({ title: "", slug: "", order: 0, isActive: true });
   const [isSaving, setIsSaving] = useState(false);
@@ -338,44 +444,57 @@ function SubTypeModal({ isOpen, onClose, editingItem, parentTypeId }: any) {
   }, [editingItem, isOpen]);
 
   const handleSave = async () => {
-    if (!db || !formData.title || !parentTypeId) return;
+    if (!db || !user || !formData.title.trim() || !parentTypeId) return;
     setIsSaving(true);
     try {
-      const slug = formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      const data = { ...formData, slug, deleted: false, updatedAt: serverTimestamp() };
-      if (editingItem) await updateDoc(doc(db, "mockTypes", parentTypeId, "subTypes", editingItem.id), data);
-      else await addDoc(collection(db, "mockTypes", parentTypeId, "subTypes"), { ...data, createdAt: serverTimestamp() });
-      toast({ title: "Sub-Type Saved" });
+      const slug = formData.slug.trim() || formData.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const data = { 
+        ...formData, 
+        slug, 
+        deleted: false, 
+        parentTypeId,
+        updatedAt: serverTimestamp() 
+      };
+      
+      if (editingItem) {
+        await updateDoc(doc(db, "mockTypes", parentTypeId, "subTypes", editingItem.id), data);
+        await logAction(db, user, "update_subtype", editingItem.id, "mock_subtype", `Updated Subject: ${formData.title}`);
+      } else {
+        const docRef = await addDoc(collection(db, "mockTypes", parentTypeId, "subTypes"), { ...data, createdAt: serverTimestamp() });
+        await logAction(db, user, "create_subtype", docRef.id, "mock_subtype", `Added Subject: ${formData.title}`);
+      }
+      toast({ title: "Success", description: "Subject synchronized successfully." });
       onClose();
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Error", description: e.message });
+      toast({ variant: "destructive", title: "Save Failed", description: e.message });
     } finally { setIsSaving(false); }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="glass border-white/10 sm:max-w-md">
-        <DialogHeader><DialogTitle>{editingItem ? "Edit Sub-Type" : "New Sub-Type"}</DialogTitle></DialogHeader>
-        <div className="space-y-4 py-4">
+      <DialogContent className="glass border-white/10 sm:max-w-md w-[95%] shadow-3xl">
+        <DialogHeader><DialogTitle className="text-xl font-headline font-bold">{editingItem ? "Edit Subject" : "New Subject"}</DialogTitle></DialogHeader>
+        <div className="space-y-5 py-6">
           <div className="space-y-2">
-            <Label>Sub-Type / Subject Title</Label>
-            <Input placeholder="e.g. Mathematics" value={formData.title || ""} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="bg-white/5 border-white/10 h-11" />
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Subject Name</Label>
+            <Input placeholder="e.g. Mathematics" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="bg-white/5 border-white/10 h-12 text-lg font-medium" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Slug</Label>
-              <Input placeholder="auto-generated" value={formData.slug || ""} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} className="bg-white/5 border-white/10 h-11 font-mono text-xs" />
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">URL Slug</Label>
+              <Input placeholder="auto-generated" value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} className="bg-white/5 border-white/10 h-11 font-mono text-xs" />
             </div>
             <div className="space-y-2">
-              <Label>Sort Order</Label>
-              <Input type="number" value={formData.order ?? 0} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })} className="bg-white/5 border-white/10 h-11" />
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Sort Order</Label>
+              <Input type="number" value={formData.order} onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })} className="bg-white/5 border-white/10 h-11 font-mono" />
             </div>
           </div>
         </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} className="border-white/10">Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving} className="bg-accent text-white font-bold px-8">
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Sub-Type"}
+        <DialogFooter className="gap-3 pt-2">
+          <Button variant="outline" onClick={onClose} className="border-white/10 rounded-xl h-11 flex-1">Cancel</Button>
+          <Button onClick={handleSave} disabled={isSaving} className="bg-accent text-white font-bold rounded-xl h-11 flex-[2] shadow-lg shadow-accent/20">
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Sync Subject
           </Button>
         </DialogFooter>
       </DialogContent>
