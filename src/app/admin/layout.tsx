@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -107,17 +108,15 @@ export default function AdminLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen bg-[#0b1120] text-foreground font-body w-full overflow-hidden">
-        <AdminSidebar role={(profile?.role || "super-admin") as AdminRole} />
-        <SidebarInset className="flex flex-col min-h-screen min-w-0">
-          <AdminNavbar profile={profile || { email: user?.email, role: 'super-admin' }} />
-          <main className="flex-1 overflow-y-auto bg-[#0b1120]/20 p-4 md:p-6 lg:p-8">
-            <div className="max-w-[1600px] mx-auto w-full">
-              {children}
-            </div>
-          </main>
-        </SidebarInset>
-      </div>
+      <AdminSidebar role={(profile?.role || "super-admin") as AdminRole} />
+      <SidebarInset className="bg-[#0b1120] min-h-screen">
+        <AdminNavbar profile={profile || { email: user?.email, role: 'super-admin' }} />
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+          <div className="max-w-[1600px] mx-auto w-full">
+            {children}
+          </div>
+        </main>
+      </SidebarInset>
     </SidebarProvider>
   );
 }
