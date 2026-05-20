@@ -40,30 +40,56 @@ export const ResultPage = ({
   const [isSaving, setIsSaving] = useState(false);
   const saveInitiated = useRef(false);
 
+  // DATABASE DRIVEN SCORING ENGINE
   const metrics = useMemo(() => {
     let correct = 0;
     let incorrect = 0;
     let unattempted = 0;
     let totalScore = 0;
+    let maxPossibleScore = 0;
 
     testData.questions.forEach(q => {
       const resp = responses[q.id];
+      const pos = q.marks?.positive ?? 1;
+      const neg = q.marks?.negative ?? 0.33;
+      const skip = q.marks?.skip ?? 0;
+
+      maxPossibleScore += pos;
+
       if (resp?.selectedOptionId === q.answer) {
         correct++;
-        totalScore += q.marks;
+        totalScore += pos;
       } else if (resp?.selectedOptionId) {
         incorrect++;
-        totalScore -= q.negativeMarks;
+        totalScore -= neg;
       } else {
         unattempted++;
+        totalScore += skip;
       }
+    });
+
+    console.log("RESULT_ENGINE: Calculation finalized", { 
+      totalScore, 
+      maxPossibleScore, 
+      correct, 
+      incorrect 
     });
 
     const timeTaken = Math.floor((endTime - startTime) / 1000);
     const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
     const percentile = 84.5; 
 
-    return { correct, incorrect, unattempted, totalScore, timeTaken, accuracy, totalQuestions: testData.questions.length, percentile };
+    return { 
+      correct, 
+      incorrect, 
+      unattempted, 
+      totalScore, 
+      maxPossibleScore,
+      timeTaken, 
+      accuracy, 
+      totalQuestions: testData.questions.length, 
+      percentile 
+    };
   }, [testData, responses, startTime, endTime]);
 
   // Persist result to Firestore - exactly once
@@ -78,6 +104,7 @@ export const ResultPage = ({
             testId: testData.id,
             examId: testData.examName,
             score: metrics.totalScore,
+            maxPossibleScore: metrics.maxPossibleScore,
             correctCount: metrics.correct,
             incorrectCount: metrics.incorrect,
             unattemptedCount: metrics.unattempted,
@@ -130,7 +157,7 @@ export const ResultPage = ({
 
       <div className="container mx-auto px-6 max-w-6xl mt-12 space-y-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <ResultStatCard title="Overall Score" value={metrics.totalScore.toFixed(2)} icon={Target} color="primary" trend="+12%" />
+          <ResultStatCard title={`Score / ${metrics.maxPossibleScore}`} value={metrics.totalScore.toFixed(2)} icon={Target} color="primary" trend="+12%" />
           <ResultStatCard title="Accuracy" value={`${metrics.accuracy.toFixed(1)}%`} icon={CheckCircle} color="emerald-400" />
           <ResultStatCard title="Percentile" value={`${metrics.percentile}%`} icon={TrendingUp} color="indigo-400" />
           <ResultStatCard title="Speed" value={`${(metrics.timeTaken / metrics.totalQuestions).toFixed(1)}s/q`} icon={Clock} color="accent" />

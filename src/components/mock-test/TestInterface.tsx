@@ -319,10 +319,11 @@ export const TestInterface = ({
                       className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentLang === 'hn' ? "bg-accent text-white" : "text-muted-foreground")}
                     >HN</button>
                   </div>
+                  {/* Database-Driven Marks Display */}
                   <div className="text-[10px] font-bold bg-white/5 px-3 py-1 rounded-lg border border-white/5">
-                    <span className="text-emerald-400">+{currentQuestion.marks}</span>
+                    <span className="text-emerald-400">+{currentQuestion.marks?.positive || 1}</span>
                     <span className="text-white/20 mx-1">/</span>
-                    <span className="text-rose-400">-{currentQuestion.negativeMarks}</span>
+                    <span className="text-rose-400">-{currentQuestion.marks?.negative || 0.33}</span>
                   </div>
                </div>
             </div>

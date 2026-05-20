@@ -22,8 +22,11 @@ export interface Question {
   hn_html?: string;
   options: Option[];
   answer: string; // The ID of the correct option
-  marks: number;
-  negativeMarks: number;
+  marks: {
+    positive: number;
+    negative: number;
+    skip: number;
+  };
   dom_images?: string[];
   memory_images?: string[];
   explanation?: {
@@ -86,51 +89,15 @@ export const getSampleMockTest = (mockId: string): MockTestData => ({
         { id: 'opt-d', en: '20', hn: '20' },
       ],
       answer: 'opt-a',
-      marks: 1,
-      negativeMarks: 0.33,
+      marks: {
+        positive: 1,
+        negative: 0.33,
+        skip: 0
+      },
       explanation: {
         en: "To solve: 2x = 15 - 5 => 2x = 10 => x = 5.",
         hn: "हल करने के लिए: 2x = 15 - 5 => 2x = 10 => x = 5.",
         en_html: "<p>2x + 5 = 15<br/>2x = 10<br/><strong>x = 5</strong></p>"
-      }
-    },
-    {
-      id: 'q2',
-      sectionId: 'sec-1',
-      en: "Identify the missing number in the following sequence based on the image.",
-      hn: "छवि के आधार पर निम्नलिखित अनुक्रम में लुप्त संख्या की पहचान करें।",
-      options: [
-        { id: 'opt-2a', en: '45', hn: '45' },
-        { id: 'opt-2b', en: '50', hn: '50' },
-        { id: 'opt-2c', en: '55', hn: '55' },
-        { id: 'opt-2d', en: '60', hn: '60' },
-      ],
-      answer: 'opt-2c',
-      marks: 1,
-      negativeMarks: 0.33,
-      dom_images: ["https://picsum.photos/seed/math1/400/200"],
-      explanation: {
-        en: "The sequence increases by 5 each time.",
-        hn: "अनुक्रम हर बार 5 से बढ़ता है।",
-      }
-    },
-    {
-      id: 'q3',
-      sectionId: 'sec-2',
-      en: "Which of the following figures is the odd one out?",
-      hn: "निम्नलिखित में से कौन सी आकृति विषम है?",
-      options: [
-        { id: 'opt-3a', en: 'Figure A', hn: 'आकृति A', image: "https://picsum.photos/seed/reasoning1/100/100" },
-        { id: 'opt-3b', en: 'Figure B', hn: 'आकृति B', image: "https://picsum.photos/seed/reasoning2/100/100" },
-        { id: 'opt-3c', en: 'Figure C', hn: 'आकृति C', image: "https://picsum.photos/seed/reasoning3/100/100" },
-        { id: 'opt-3d', en: 'Figure D', hn: 'आकृति D', image: "https://picsum.photos/seed/reasoning4/100/100" },
-      ],
-      answer: 'opt-3b',
-      marks: 1,
-      negativeMarks: 0.33,
-      explanation: {
-        en: "Figure B is the only one with a closed loop.",
-        hn: "आकृति B ही एकमात्र ऐसी आकृति है जिसमें बंद पाश है।",
       }
     }
   ]

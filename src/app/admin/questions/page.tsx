@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -210,7 +211,7 @@ export default function QuestionManagementPage() {
               <tr className="border-b border-white/5 bg-white/[0.01]">
                 <th className="px-6 py-4 font-semibold text-muted-foreground">Item Identity & Preview</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground">Hierarchy</th>
-                <th className="px-6 py-4 font-semibold text-muted-foreground">Attributes</th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground">Database Rules</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground">Status</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground text-right">Control</th>
               </tr>
@@ -246,8 +247,8 @@ export default function QuestionManagementPage() {
                   </td>
                   <td className="px-6 py-4">
                      <div className="flex items-center gap-4 text-[10px] font-bold text-muted-foreground uppercase tracking-widest shrink-0">
-                        <div className="flex flex-col"><span>Marks</span><span className="text-emerald-400 text-xs mt-0.5">+{q.marks}</span></div>
-                        <div className="flex flex-col border-l border-white/5 pl-4"><span>Neg.</span><span className="text-rose-400 text-xs mt-0.5">-{q.negativeMarks}</span></div>
+                        <div className="flex flex-col"><span>Correct</span><span className="text-emerald-400 text-xs mt-0.5">+{q.marks?.positive ?? 1}</span></div>
+                        <div className="flex flex-col border-l border-white/5 pl-4"><span>Penalty</span><span className="text-rose-400 text-xs mt-0.5">-{q.marks?.negative ?? 0.33}</span></div>
                      </div>
                   </td>
                   <td className="px-6 py-4">

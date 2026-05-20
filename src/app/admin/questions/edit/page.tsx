@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
@@ -54,7 +55,12 @@ function QuestionEditorContent() {
       const ref = doc(db, "mockTests", mockId, "questions", qId);
       const snap = await getDoc(ref);
       if (snap.exists()) {
-        setFormData(snap.data());
+        const data = snap.data();
+        // Ensure marks object exists
+        if (!data.marks || typeof data.marks !== 'object') {
+          data.marks = { positive: data.marks || 1, negative: data.negativeMarks || 0.33, skip: 0 };
+        }
+        setFormData(data);
       } else {
         toast({ variant: "destructive", title: "Question not found" });
         router.push("/admin/questions");
@@ -72,7 +78,10 @@ function QuestionEditorContent() {
     setIsSaving(true);
     try {
       const ref = doc(db, "mockTests", mockId, "questions", qId);
-      await updateDoc(ref, { ...formData, updatedAt: serverTimestamp() });
+      await updateDoc(ref, { 
+        ...formData, 
+        updatedAt: serverTimestamp() 
+      });
       toast({ title: "Question synchronized" });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Save failed", description: e.message });
@@ -84,6 +93,17 @@ function QuestionEditorContent() {
   const updateOption = (id: string, field: string, val: string) => {
     const newOptions = formData.options.map((opt: any) => opt.id === id ? { ...opt, [field]: val } : opt);
     setFormData({ ...formData, options: newOptions });
+  };
+
+  const updateMark = (field: string, val: string) => {
+    const numericVal = parseFloat(val) || 0;
+    setFormData({
+      ...formData,
+      marks: {
+        ...formData.marks,
+        [field]: numericVal
+      }
+    });
   };
 
   return (
@@ -221,21 +241,25 @@ function QuestionEditorContent() {
 
         <div className="lg:col-span-4 space-y-6 w-full">
            <Card className="glass border-white/10 p-5 md:p-6">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-6">Metadata & Verification</CardTitle>
+              <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-6">Database Scoring Logic</CardTitle>
               <div className="space-y-6">
-                 <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 gap-4">
                     <div className="space-y-1.5">
-                       <Label className="text-[10px] uppercase font-bold text-muted-foreground">Marks</Label>
-                       <Input type="number" value={formData.marks} onChange={(e) => setFormData({ ...formData, marks: parseFloat(e.target.value) })} className="bg-white/5 border-white/10 h-11" />
+                       <Label className="text-[10px] uppercase font-bold text-muted-foreground">Correct Award</Label>
+                       <Input type="number" step="0.5" value={formData.marks?.positive ?? 1} onChange={(e) => updateMark('positive', e.target.value)} className="bg-white/5 border-white/10 h-11" />
                     </div>
                     <div className="space-y-1.5">
-                       <Label className="text-[10px] uppercase font-bold text-muted-foreground">Penalty</Label>
-                       <Input type="number" step="0.01" value={formData.negativeMarks} onChange={(e) => setFormData({ ...formData, negativeMarks: parseFloat(e.target.value) })} className="bg-white/5 border-white/10 h-11" />
+                       <Label className="text-[10px] uppercase font-bold text-muted-foreground">Penalty (Wrong)</Label>
+                       <Input type="number" step="0.01" value={formData.marks?.negative ?? 0.33} onChange={(e) => updateMark('negative', e.target.value)} className="bg-white/5 border-white/10 h-11" />
+                    </div>
+                    <div className="space-y-1.5">
+                       <Label className="text-[10px] uppercase font-bold text-muted-foreground">Penalty (Skipped)</Label>
+                       <Input type="number" step="0.01" value={formData.marks?.skip ?? 0} onChange={(e) => updateMark('skip', e.target.value)} className="bg-white/5 border-white/10 h-11" />
                     </div>
                  </div>
 
-                 <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Status</Label>
+                 <div className="space-y-1.5 pt-4 border-t border-white/5">
+                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Content Status</Label>
                     <Select value={formData.status} onValueChange={(val) => setFormData({ ...formData, status: val })}>
                        <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue /></SelectTrigger>
                        <SelectContent>
@@ -271,20 +295,20 @@ function QuestionEditorContent() {
 
            <div className="p-5 md:p-6 rounded-[2rem] bg-indigo-500/10 border border-indigo-500/20 space-y-3">
               <div className="flex items-center gap-2 text-indigo-400 font-bold text-[10px] uppercase tracking-widest">
-                 <AlertCircle className="w-4 h-4 shrink-0" /> Audit Checklist
+                 <AlertCircle className="w-4 h-4 shrink-0" /> Accuracy Checklist
               </div>
               <ul className="text-[10px] md:text-xs text-muted-foreground space-y-2.5">
                  <li className="flex items-center gap-2.5">
-                    <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", (formData.en || formData.en_html) && (formData.hn || formData.hn_html) ? "bg-emerald-400" : "bg-rose-400")} /> 
-                    Full Bilingual content presence
+                    <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", formData.marks?.positive > 0 ? "bg-emerald-400" : "bg-rose-400")} /> 
+                    Valid award points configured
                  </li>
                  <li className="flex items-center gap-2.5">
                     <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", formData.answer ? "bg-emerald-400" : "bg-rose-400")} /> 
-                    Valid answer mapping resolved
+                    Correct answer ID verified
                  </li>
                  <li className="flex items-center gap-2.5">
-                    <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", formData.explanation?.en || formData.explanation?.en_html ? "bg-emerald-400" : "bg-rose-400")} /> 
-                    Step-by-step solution provided
+                    <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", formData.explanation?.en_html || formData.explanation?.en ? "bg-emerald-400" : "bg-amber-400")} /> 
+                    Detailed explanation availability
                  </li>
               </ul>
            </div>

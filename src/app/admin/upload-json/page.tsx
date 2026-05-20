@@ -246,6 +246,9 @@ export default function BulkIngestionPipeline() {
         const mockId = item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9]/g, '-');
         const mockRef = doc(db, "mockTests", mockId);
 
+        // Calculate dynamic full marks based on summed positive scores
+        const calculatedFullMarks = questions.reduce((sum, q) => sum + (q.marks?.positive || 1), 0);
+
         const mockData = {
           id: mockId,
           title: json.title || item.name.replace('.json', '').replace(/_/g, ' '),
@@ -258,7 +261,7 @@ export default function BulkIngestionPipeline() {
           hierarchyPath: `${exam?.name || 'Bulk'} > ${type?.title || 'Unknown'}${sub ? ` > ${sub.title}` : ''}`,
           totalQuestions: questions.length,
           durationMinutes: parseInt(batchConfig.durationMinutes) || 90,
-          fullMarks: parseFloat(batchConfig.fullMarks) || 100,
+          fullMarks: calculatedFullMarks || parseFloat(batchConfig.fullMarks) || 100,
           negativeMarks: parseFloat(batchConfig.negativeMarks) || 0.33,
           passingMarks: parseFloat(batchConfig.passingMarks) || 33,
           isFree: batchConfig.isFree,
@@ -329,15 +332,18 @@ export default function BulkIngestionPipeline() {
       // Determine explanation data
       const solBase = q.explanation || q.solution || (Array.isArray(q.solutions) ? q.solutions[0] : {});
 
-      // Determine marks
+      // Determine marks via database-driven rules
       let posMark = 1;
       let negMark = 0.33;
+      let skipMark = 0;
+
       if (typeof q.marks === 'object') {
-        posMark = parseFloat(q.marks.positive) || 1;
-        negMark = parseFloat(q.marks.negative) || 0;
+        posMark = parseFloat(q.marks.positive) ?? 1;
+        negMark = parseFloat(q.marks.negative) ?? 0;
+        skipMark = parseFloat(q.marks.skip) ?? 0;
       } else {
-        posMark = parseFloat(q.marks) || 1;
-        negMark = parseFloat(q.negativeMarks) || 0.33;
+        posMark = parseFloat(q.marks) ?? 1;
+        negMark = parseFloat(q.negativeMarks) ?? 0.33;
       }
 
       const normalized = {
@@ -364,9 +370,12 @@ export default function BulkIngestionPipeline() {
         answer: q.answer || q.correctAnswer || q.correctOption || "",
         raw_answer_id: q.raw_answer_id || q.correct_option_id || "",
 
-        // Scoring
-        marks: posMark,
-        negativeMarks: negMark,
+        // Database Driven Scoring
+        marks: {
+          positive: posMark,
+          negative: negMark,
+          skip: skipMark
+        },
 
         // Explanation / Solution
         explanation: {
