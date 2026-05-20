@@ -40,44 +40,56 @@ export const ResultPage = ({
   const [isSaving, setIsSaving] = useState(false);
   const saveInitiated = useRef(false);
 
-  // DATABASE DRIVEN SCORING ENGINE
+  // REFACTORED SCORING ENGINE - DATABASE DRIVEN
   const metrics = useMemo(() => {
     let correct = 0;
     let incorrect = 0;
     let unattempted = 0;
     let totalScore = 0;
     let maxPossibleScore = 0;
+    const analysis: any[] = [];
 
     testData.questions.forEach(q => {
       const resp = responses[q.id];
-      const pos = q.marks?.positive ?? 1;
-      const neg = q.marks?.negative ?? 0.33;
+      // Priority: Question-level marks > Mock-level marks > Defaults
+      const pos = q.marks?.positive ?? testData.marksPerQuestion ?? 1;
+      const neg = q.marks?.negative ?? testData.negativeMarks ?? 0;
       const skip = q.marks?.skip ?? 0;
 
       maxPossibleScore += pos;
 
-      if (resp?.selectedOptionId === q.answer) {
+      const isCorrect = resp?.selectedOptionId === q.answer;
+      const isWrong = resp?.selectedOptionId !== null && !isCorrect;
+      let marksAwarded = 0;
+
+      if (isCorrect) {
         correct++;
         totalScore += pos;
-      } else if (resp?.selectedOptionId) {
+        marksAwarded = pos;
+      } else if (isWrong) {
         incorrect++;
         totalScore -= neg;
+        marksAwarded = -neg;
       } else {
         unattempted++;
         totalScore += skip;
+        marksAwarded = skip;
       }
-    });
 
-    console.log("RESULT_ENGINE: Calculation finalized", { 
-      totalScore, 
-      maxPossibleScore, 
-      correct, 
-      incorrect 
+      analysis.push({
+        questionId: q.id,
+        selectedAnswer: resp?.selectedOptionId || null,
+        correctAnswer: q.answer,
+        isCorrect,
+        isWrong,
+        marksAwarded,
+        timeTaken: resp?.timeSpentSeconds || 0
+      });
     });
 
     const timeTaken = Math.floor((endTime - startTime) / 1000);
     const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
-    const percentile = 84.5; 
+    const percentage = (totalScore / (maxPossibleScore || 1)) * 100;
 
     return { 
       correct, 
@@ -87,12 +99,13 @@ export const ResultPage = ({
       maxPossibleScore,
       timeTaken, 
       accuracy, 
-      totalQuestions: testData.questions.length, 
-      percentile 
+      percentage,
+      totalQuestions: testData.questions.length,
+      questionAnalysis: analysis
     };
   }, [testData, responses, startTime, endTime]);
 
-  // Persist result to Firestore - exactly once
+  // Persist Refactored Submission
   useEffect(() => {
     const saveResult = async () => {
       if (user && db && !saveInitiated.current) {
@@ -101,46 +114,56 @@ export const ResultPage = ({
         try {
           await addDoc(collection(db, 'attempts'), {
             uid: user.uid,
-            testId: testData.id,
-            examId: testData.examName,
+            mockId: testData.id,
+            examId: testData.examId || 'unmapped',
+            examName: testData.examName || 'Mock Test',
+            
+            totalQuestions: metrics.totalQuestions,
+            attempted: metrics.correct + metrics.incorrect,
+            correct: metrics.correct,
+            wrong: metrics.incorrect,
+            unattempted: metrics.unattempted,
+            
             score: metrics.totalScore,
-            maxPossibleScore: metrics.maxPossibleScore,
-            correctCount: metrics.correct,
-            incorrectCount: metrics.incorrect,
-            unattemptedCount: metrics.unattempted,
+            totalMarks: metrics.maxPossibleScore,
             accuracy: metrics.accuracy,
+            percentage: metrics.percentage,
+            
             timeTakenSeconds: metrics.timeTaken,
             completedAt: serverTimestamp(),
-            responses: responses
+            userLanguage,
+            
+            // Critical: Individual question insights for the analysis page
+            questionAnalysis: metrics.questionAnalysis,
+            rawResponses: responses
           });
         } catch (error) {
-          console.error("Error saving result:", error);
-          saveInitiated.current = false; // Allow retry on failure
+          console.error("ResultEngine: Persistence failure", error);
+          saveInitiated.current = false;
         } finally {
           setIsSaving(false);
         }
       }
     };
     saveResult();
-  }, [user, db, testData.id, testData.examName, metrics, responses]);
+  }, [user, db, testData.id, metrics, responses]);
 
   const chartData = [
     { name: 'Correct', value: metrics.correct, color: '#10b981' },
     { name: 'Incorrect', value: metrics.incorrect, color: '#f43f5e' },
-    { name: 'Unattempted', value: metrics.unattempted, color: '#64748b' },
+    { name: 'Skipped', value: metrics.unattempted, color: '#64748b' },
   ];
 
   return (
     <div className="min-h-screen bg-[#0b1120] pb-24 animate-in fade-in duration-700">
-      {/* Header with Save Status */}
       <div className="relative pt-24 pb-12 overflow-hidden border-b border-white/5">
-        <div className="absolute top-0 left-0 w-full h-full -z-10">
+        <div className="absolute inset-0 -z-10">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px]" />
           <div className="absolute bottom-[10%] right-[-10%] w-[30%] h-[30%] bg-accent/20 rounded-full blur-[120px]" />
         </div>
 
         <div className="container mx-auto px-6 flex flex-col items-center text-center space-y-6">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white shadow-2xl shadow-primary/20">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white shadow-2xl">
             <Trophy className="w-10 h-10" />
           </div>
           <div className="space-y-2">
@@ -157,29 +180,40 @@ export const ResultPage = ({
 
       <div className="container mx-auto px-6 max-w-6xl mt-12 space-y-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <ResultStatCard title={`Score / ${metrics.maxPossibleScore}`} value={metrics.totalScore.toFixed(2)} icon={Target} color="primary" trend="+12%" />
-          <ResultStatCard title="Accuracy" value={`${metrics.accuracy.toFixed(1)}%`} icon={CheckCircle} color="emerald-400" />
-          <ResultStatCard title="Percentile" value={`${metrics.percentile}%`} icon={TrendingUp} color="indigo-400" />
-          <ResultStatCard title="Speed" value={`${(metrics.timeTaken / metrics.totalQuestions).toFixed(1)}s/q`} icon={Clock} color="accent" />
+          <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
+             <Target className="absolute top-2 right-2 w-12 h-12 opacity-5 text-primary" />
+             <div className="text-2xl font-bold font-headline">{metrics.totalScore.toFixed(2)}</div>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Final Score / {metrics.maxPossibleScore}</p>
+          </Card>
+          <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
+             <CheckCircle className="absolute top-2 right-2 w-12 h-12 opacity-5 text-emerald-400" />
+             <div className="text-2xl font-bold font-headline text-emerald-400">{metrics.accuracy.toFixed(1)}%</div>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Accuracy</p>
+          </Card>
+          <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
+             <TrendingUp className="absolute top-2 right-2 w-12 h-12 opacity-5 text-indigo-400" />
+             <div className="text-2xl font-bold font-headline text-indigo-400">{metrics.percentage.toFixed(1)}%</div>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Percentage</p>
+          </Card>
+          <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
+             <Clock className="absolute top-2 right-2 w-12 h-12 opacity-5 text-accent" />
+             <div className="text-2xl font-bold font-headline text-accent">{(metrics.timeTaken / 60).toFixed(1)}m</div>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Time Taken</p>
+          </Card>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-8">
           <Card className="glass border-white/10 p-6 lg:col-span-8">
-            <CardHeader className="px-0 pt-0 pb-8 flex flex-row items-center justify-between">
-              <CardTitle className="text-lg font-headline font-bold">Performance Breakdown</CardTitle>
-              <div className="flex gap-4">
-                <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Correct</div>
-                <div className="flex items-center gap-1.5 text-[10px] font-bold text-rose-400"><div className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Incorrect</div>
-                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500"><div className="w-2.5 h-2.5 rounded-full bg-slate-500" /> Skipped</div>
-              </div>
+            <CardHeader className="px-0 pt-0 pb-8">
+              <CardTitle className="text-lg font-headline font-bold">Category Distribution</CardTitle>
             </CardHeader>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} layout="vertical" margin={{ left: -20, right: 20 }}>
+                <BarChart data={chartData} layout="vertical">
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }} />
-                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
-                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={45}>
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={40}>
                     {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
@@ -191,28 +225,28 @@ export const ResultPage = ({
 
           <div className="lg:col-span-4 space-y-6">
             <Card className="glass border-white/10 p-6">
-              <CardTitle className="text-lg font-headline font-bold mb-6">Action Center</CardTitle>
+              <CardTitle className="text-lg font-headline font-bold mb-6">Review & Improve</CardTitle>
               <div className="space-y-3">
-                <Button onClick={onViewSolutions} className="w-full bg-primary h-12 rounded-xl font-bold shadow-lg shadow-primary/20 gap-2 group">
-                  <BookOpen className="w-4 h-4 group-hover:scale-110 transition-transform" /> Review Solutions
+                <Button onClick={onViewSolutions} className="w-full bg-primary h-12 rounded-xl font-bold gap-2">
+                  <BookOpen className="w-4 h-4" /> View Step Solutions
                 </Button>
-                <Button variant="outline" onClick={onReattempt} className="w-full h-12 rounded-xl border-white/10 hover:bg-white/5 font-bold gap-2">
-                  <RotateCcw className="w-4 h-4" /> Reattempt Test
+                <Button variant="outline" onClick={onReattempt} className="w-full h-12 rounded-xl border-white/10 font-bold gap-2">
+                  <RotateCcw className="w-4 h-4" /> Try Reattempt
                 </Button>
                 <Link href={dashboardUrl} className="block">
-                  <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold hover:text-foreground">
-                    Return to Dashboard
+                  <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold">
+                    Back to Library
                   </Button>
                 </Link>
               </div>
             </Card>
-
-            <div className="p-6 bg-gradient-to-br from-indigo-500/10 to-accent/10 rounded-3xl border border-white/10 space-y-4">
-               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase">
-                 <Zap className="w-4 h-4 fill-current" /> AI Growth Projection
+            
+            <div className="p-6 bg-indigo-500/10 rounded-3xl border border-indigo-500/20">
+               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase mb-3">
+                 <Zap className="w-4 h-4 fill-current" /> AI Analyst Insight
                </div>
                <p className="text-xs text-muted-foreground leading-relaxed italic">
-                 "Great performance! Based on this attempt, your projected rank in the actual exam is <span className="text-emerald-400 font-bold">Top 5,000</span>. Focus on Reasoning speed to break into the Top 1,000."
+                 "You are scoring well but accuracy is below 85%. Focus on eliminating easy mistakes in {testData.examName} to boost your rank significantly."
                </p>
             </div>
           </div>
@@ -221,22 +255,3 @@ export const ResultPage = ({
     </div>
   );
 };
-
-const ResultStatCard = React.memo(({ title, value, icon: Icon, color, trend }: any) => (
-  <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden group">
-    <div className={cn("absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity", `text-${color}`)}>
-      <Icon className="w-16 h-16" />
-    </div>
-    <div className={cn("p-2 rounded-lg inline-block", `bg-${color}/10`, `text-${color}`)}>
-      <Icon className="w-5 h-5" />
-    </div>
-    <div className="relative">
-      <div className="flex items-baseline gap-2">
-        <div className="text-2xl font-bold font-headline">{value}</div>
-        {trend && <span className="text-[10px] text-emerald-400 font-bold">{trend}</span>}
-      </div>
-      <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{title}</div>
-    </div>
-  </Card>
-));
-ResultStatCard.displayName = "ResultStatCard";

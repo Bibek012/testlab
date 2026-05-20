@@ -22,7 +22,7 @@ export interface Question {
   hn_html?: string;
   options: Option[];
   answer: string; // The ID of the correct option
-  marks: {
+  marks?: {
     positive: number;
     negative: number;
     skip: number;
@@ -48,8 +48,13 @@ export interface Section {
 export interface MockTestData {
   id: string;
   title: string;
+  examId: string;
   examName: string;
   durationMinutes: number;
+  totalQuestions: number;
+  marksPerQuestion: number;
+  negativeMarks: number;
+  fullMarks: number;
   sections: Section[];
   questions: Question[];
 }
@@ -63,16 +68,19 @@ export interface UserResponse {
   timeSpentSeconds: number;
 }
 
-// Sample Data matching the specific JSON requirements
+// Sample Data matching the standardized schema
 export const getSampleMockTest = (mockId: string): MockTestData => ({
   id: mockId,
   title: "RRB NTPC CBT-1 Full Mock 01",
+  examId: "rrb-ntpc",
   examName: "RRB NTPC",
   durationMinutes: 90,
+  totalQuestions: 1,
+  marksPerQuestion: 1,
+  negativeMarks: 0.33,
+  fullMarks: 1,
   sections: [
     { id: 'sec-1', title: { en: 'Mathematics', hn: 'गणित' } },
-    { id: 'sec-2', title: { en: 'General Intelligence', hn: 'सामान्य बुद्धिमत्ता' } },
-    { id: 'sec-3', title: { en: 'General Awareness', hn: 'सामान्य जागरूकता' } },
   ],
   questions: [
     {
