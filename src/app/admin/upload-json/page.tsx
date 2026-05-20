@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
@@ -25,7 +24,8 @@ import {
   Layers,
   Layout,
   MessageSquare,
-  BadgeInfo
+  BadgeInfo,
+  Target
 } from "lucide-react";
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
 import { 
@@ -87,7 +87,7 @@ export default function BulkIngestionPipeline() {
     typeId: "",
     subTypeId: "",
     durationMinutes: 90,
-    fullMarks: 100,
+    marksPerQuestion: 1.0, // Replaced fullMarks with marksPerQuestion
     negativeMarks: 0.33,
     passingMarks: 33,
     isFree: true,
@@ -216,7 +216,6 @@ export default function BulkIngestionPipeline() {
 
     for (const item of pending) {
       try {
-        console.group(`Ingesting: ${item.name}`);
         updateItem(item.id, { status: 'parsing', progress: 10 });
         
         const content = await item.file.text();
@@ -224,17 +223,14 @@ export default function BulkIngestionPipeline() {
         try {
           json = JSON.parse(content);
         } catch (e) {
-          throw new Error("Invalid JSON format. Check file for syntax errors.");
+          throw new Error("Invalid JSON format.");
         }
 
-        console.log("RAW JSON", json);
-
         updateItem(item.id, { status: 'validating', progress: 30 });
-        const questions = normalizeQuestions(json);
-        console.log("NORMALIZED QUESTIONS", questions);
+        const questions = normalizeQuestions(json, batchConfig.marksPerQuestion, batchConfig.negativeMarks);
 
         if (questions.length === 0) {
-          throw new Error("No valid questions detected. Ensure JSON follows supported schema (sections[].questions or flat array).");
+          throw new Error("No valid questions detected.");
         }
 
         updateItem(item.id, { status: 'syncing', progress: 50 });
@@ -246,8 +242,8 @@ export default function BulkIngestionPipeline() {
         const mockId = item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9]/g, '-');
         const mockRef = doc(db, "mockTests", mockId);
 
-        // Calculate dynamic full marks based on summed positive scores
-        const calculatedFullMarks = questions.reduce((sum, q) => sum + (q.marks?.positive || 1), 0);
+        // Dynamically calculate full marks based on summed question weights
+        const totalMarks = questions.reduce((sum, q) => sum + (q.marks?.positive || 0), 0);
 
         const mockData = {
           id: mockId,
@@ -261,7 +257,7 @@ export default function BulkIngestionPipeline() {
           hierarchyPath: `${exam?.name || 'Bulk'} > ${type?.title || 'Unknown'}${sub ? ` > ${sub.title}` : ''}`,
           totalQuestions: questions.length,
           durationMinutes: parseInt(batchConfig.durationMinutes) || 90,
-          fullMarks: calculatedFullMarks || parseFloat(batchConfig.fullMarks) || 100,
+          fullMarks: totalMarks, // Calculated dynamically
           negativeMarks: parseFloat(batchConfig.negativeMarks) || 0.33,
           passingMarks: parseFloat(batchConfig.passingMarks) || 33,
           isFree: batchConfig.isFree,
@@ -277,7 +273,6 @@ export default function BulkIngestionPipeline() {
 
         await setDoc(mockRef, mockData, { merge: true });
 
-        // Chunk questions for batch writes (max 500 per batch)
         const CHUNK_SIZE = 100;
         for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
           const chunk = questions.slice(i, i + CHUNK_SIZE);
@@ -293,24 +288,16 @@ export default function BulkIngestionPipeline() {
 
         updateItem(item.id, { status: 'success', progress: 100 });
         setStats(prev => ({ ...prev, completed: prev.completed + 1 }));
-        console.log("Ingestion Success");
       } catch (err: any) {
-        console.error("Ingestion Failed", err);
         updateItem(item.id, { status: 'failed', error: err.message });
         setStats(prev => ({ ...prev, failed: prev.failed + 1 }));
-      } finally {
-        console.groupEnd();
       }
     }
     setIsProcessing(false);
     toast({ title: "Bulk Ingestion Finalized" });
   };
 
-  /**
-   * Powerful question normalizer supporting industry-standard nested formats (Testbook, etc)
-   */
-  const normalizeQuestions = (json: any) => {
-    // 1. Identify raw array from common patterns
+  const normalizeQuestions = (json: any, defaultPos: number, defaultNeg: number) => {
     let raw: any[] = [];
     if (Array.isArray(json)) {
       raw = json;
@@ -322,42 +309,30 @@ export default function BulkIngestionPipeline() {
       raw = json.data.questions;
     }
 
-    console.log(`Questions found in raw data: ${raw.length}`);
-
-    // 2. Map items using a deep-path checking strategy
     return raw.map((q, i) => {
-      // Determine base question data (handle nested "question" objects)
       const base = q.question || q;
-      
-      // Determine explanation data
       const solBase = q.explanation || q.solution || (Array.isArray(q.solutions) ? q.solutions[0] : {});
 
-      // Determine marks via database-driven rules
-      let posMark = 1;
-      let negMark = 0.33;
+      let posMark = parseFloat(defaultPos) || 1;
+      let negMark = parseFloat(defaultNeg) || 0.33;
       let skipMark = 0;
 
       if (typeof q.marks === 'object') {
-        posMark = parseFloat(q.marks.positive) ?? 1;
-        negMark = parseFloat(q.marks.negative) ?? 0;
-        skipMark = parseFloat(q.marks.skip) ?? 0;
-      } else {
-        posMark = parseFloat(q.marks) ?? 1;
-        negMark = parseFloat(q.negativeMarks) ?? 0.33;
+        posMark = parseFloat(q.marks.positive) ?? posMark;
+        negMark = parseFloat(q.marks.negative) ?? negMark;
+        skipMark = parseFloat(q.marks.skip) ?? skipMark;
+      } else if (q.marks !== undefined) {
+        posMark = parseFloat(q.marks) ?? posMark;
       }
 
-      const normalized = {
+      return {
         id: q.id || q.questionId || q._id || `q-${i}`,
         type: q.type || 'mcq',
         sectionId: q.sectionId || 'general',
-        
-        // Bilingual Text Support
         en: base.en || base.text || (typeof base === 'string' ? base : ""),
         hn: base.hn || "",
         en_html: base.en_html || base.html || "",
         hn_html: base.hn_html || "",
-
-        // Option Normalization
         options: (q.options || []).map((o: any, oi: number) => ({
           id: o.id || o.optionId || `opt-${oi}`,
           en: o.en || o.text || (typeof o === 'string' ? o : ""),
@@ -365,36 +340,22 @@ export default function BulkIngestionPipeline() {
           en_html: o.en_html || o.html || "",
           hn_html: o.hn_html || ""
         })),
-
-        // Answer resolution
         answer: q.answer || q.correctAnswer || q.correctOption || "",
-        raw_answer_id: q.raw_answer_id || q.correct_option_id || "",
-
-        // Database Driven Scoring
         marks: {
           positive: posMark,
           negative: negMark,
           skip: skipMark
         },
-
-        // Explanation / Solution
         explanation: {
           en: solBase.en || solBase.text || "",
           hn: solBase.hn || "",
           en_html: solBase.en_html || solBase.html || "",
           hn_html: solBase.hn_html || ""
         },
-
-        // Media Extraction
         dom_images: q.dom_images || base.images || base.dom_images || [],
         memory_images: q.memory_images || base.memory_images || []
       };
-
-      return normalized;
-    }).filter(q => {
-      // Robust validation: Question must have some content (text or HTML) in any language or an image
-      return q.en || q.hn || q.en_html || q.hn_html || (q.dom_images && q.dom_images.length > 0);
-    });
+    }).filter(q => q.en || q.hn || q.en_html || q.hn_html || (q.dom_images && q.dom_images.length > 0));
   };
 
   return (
@@ -414,7 +375,7 @@ export default function BulkIngestionPipeline() {
            <Button 
             disabled={stats.total === 0 || isProcessing} 
             onClick={processQueue} 
-            className="bg-primary hover:bg-primary/90 text-white rounded-xl h-10 md:h-12 shadow-xl shadow-primary/20 gap-2 px-8 font-bold"
+            className="bg-primary hover:bg-primary/90 text-white rounded-xl h-12 shadow-xl shadow-primary/20 gap-2 px-8 font-bold"
            >
              {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
              Initiate Batch
@@ -423,58 +384,56 @@ export default function BulkIngestionPipeline() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
-        {/* Left: Configuration Form */}
         <div className="lg:col-span-6 space-y-6">
-           <Card className="glass border-white/10 overflow-hidden">
-              <CardHeader className="bg-white/5 border-b border-white/5 p-4 md:p-6">
+           <Card className="glass border-white/10 overflow-hidden shadow-2xl">
+              <CardHeader className="bg-white/5 border-b border-white/5 p-5 md:p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                      <Settings2 className="w-4 h-4" />
+                    <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center text-primary">
+                      <Settings2 className="w-5 h-5" />
                     </div>
-                    <CardTitle className="text-sm font-bold uppercase tracking-widest">Batch Parameters</CardTitle>
+                    <CardTitle className="text-sm font-bold uppercase tracking-widest">Module Parameters</CardTitle>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Detect</span>
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Smart Detection</span>
                     <Switch checked={autoDetect} onCheckedChange={setAutoDetect} />
                   </div>
                 </div>
               </CardHeader>
               
-              <CardContent className="p-4 md:p-6 space-y-8">
-                {/* Section 1: Hierarchy */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase tracking-widest mb-2">
-                    <Layers className="w-3 h-3" /> Hierarchy & Selection
+              <CardContent className="p-5 md:p-8 space-y-10">
+                <div className="space-y-5">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase tracking-widest mb-3">
+                    <Layers className="w-3.5 h-3.5" /> Logical Hierarchy
                   </div>
                   
                   <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Target Exam Series</Label>
+                    <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-tighter">Target Exam Group</Label>
                     <Select value={batchConfig.examId} onValueChange={(v) => setBatchConfig({ ...batchConfig, examId: v, typeId: "", subTypeId: "" })}>
-                      <SelectTrigger className="bg-white/5 border-white/10 h-11 text-sm"><SelectValue placeholder="Select Exam" /></SelectTrigger>
-                      <SelectContent>
+                      <SelectTrigger className="bg-white/5 border-white/10 h-12 rounded-xl text-sm"><SelectValue placeholder="Select Examination" /></SelectTrigger>
+                      <SelectContent className="glass border-white/10">
                         {exams?.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between mb-0.5">
-                        <Label className="text-[10px] uppercase font-bold text-muted-foreground">Mock Type</Label>
+                        <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-tighter">Mock Category</Label>
                         {batchConfig.examId && (
-                          <button onClick={() => setIsAddingType(true)} className="text-[9px] text-primary font-bold hover:underline">+ New</button>
+                          <button onClick={() => setIsAddingType(true)} className="text-[9px] text-primary font-bold hover:underline">+ New Type</button>
                         )}
                       </div>
                       {isAddingType ? (
                         <div className="flex gap-2 animate-in slide-in-from-top-1">
-                          <Input size="sm" className="h-11 bg-white/10" value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Type title..." />
-                          <Button size="sm" onClick={handleAddType} className="h-11 px-3"><PlusCircle className="w-4 h-4" /></Button>
+                          <Input size="sm" className="h-12 bg-white/10 border-white/10 rounded-xl" value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Title..." />
+                          <Button size="sm" onClick={handleAddType} className="h-12 px-3 rounded-xl bg-primary"><PlusCircle className="w-4 h-4" /></Button>
                         </div>
                       ) : (
                         <Select value={batchConfig.typeId} onValueChange={(v) => setBatchConfig({ ...batchConfig, typeId: v, subTypeId: "" })} disabled={!batchConfig.examId}>
-                          <SelectTrigger className="bg-white/5 border-white/10 h-11 text-sm"><SelectValue placeholder="Select Type" /></SelectTrigger>
-                          <SelectContent>
+                          <SelectTrigger className="bg-white/5 border-white/10 h-12 rounded-xl text-sm"><SelectValue placeholder="Select Type" /></SelectTrigger>
+                          <SelectContent className="glass border-white/10">
                             {mockTypes?.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
                           </SelectContent>
                         </Select>
@@ -483,20 +442,20 @@ export default function BulkIngestionPipeline() {
 
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between mb-0.5">
-                        <Label className="text-[10px] uppercase font-bold text-muted-foreground">Sub-Type / Subject</Label>
+                        <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-tighter">Sub-Type / Focus</Label>
                         {batchConfig.typeId && (
-                          <button onClick={() => setIsAddingSubType(true)} className="text-[9px] text-primary font-bold hover:underline">+ New</button>
+                          <button onClick={() => setIsAddingSubType(true)} className="text-[9px] text-primary font-bold hover:underline">+ New Subject</button>
                         )}
                       </div>
                       {isAddingSubType ? (
                         <div className="flex gap-2">
-                          <Input size="sm" className="h-11 bg-white/10" value={newSubTypeName} onChange={(e) => setNewSubTypeName(e.target.value)} placeholder="Subject title..." />
-                          <Button size="sm" onClick={handleAddSubType} className="h-11 px-3"><PlusCircle className="w-4 h-4" /></Button>
+                          <Input size="sm" className="h-12 bg-white/10 border-white/10 rounded-xl" value={newSubTypeName} onChange={(e) => setNewSubTypeName(e.target.value)} placeholder="Title..." />
+                          <Button size="sm" onClick={handleAddSubType} className="h-12 px-3 rounded-xl bg-primary"><FolderPlus className="w-4 h-4" /></Button>
                         </div>
                       ) : (
                         <Select value={batchConfig.subTypeId} onValueChange={(v) => setBatchConfig({ ...batchConfig, subTypeId: v })} disabled={!batchConfig.typeId}>
-                          <SelectTrigger className="bg-white/5 border-white/10 h-11 text-sm"><SelectValue placeholder="Select Subject" /></SelectTrigger>
-                          <SelectContent>
+                          <SelectTrigger className="bg-white/5 border-white/10 h-12 rounded-xl text-sm"><SelectValue placeholder="Select Focus" /></SelectTrigger>
+                          <SelectContent className="glass border-white/10">
                             {subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
                           </SelectContent>
                         </Select>
@@ -505,91 +464,84 @@ export default function BulkIngestionPipeline() {
                   </div>
                 </div>
 
-                {/* Section 2: Logic */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-2">
-                    <Layout className="w-3 h-3" /> Scoring & Timing
+                <div className="space-y-5">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-3">
+                    <Target className="w-3.5 h-3.5" /> Marking & Logic
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="space-y-1.5"><Label className="text-[10px] uppercase opacity-60">Full Marks</Label><Input type="number" className="h-10 bg-white/5" value={batchConfig.fullMarks} onChange={(e) => setBatchConfig({ ...batchConfig, fullMarks: e.target.value })} /></div>
-                    <div className="space-y-1.5"><Label className="text-[10px] uppercase opacity-60">Neg. Mark</Label><Input type="number" step="0.01" className="h-10 bg-white/5" value={batchConfig.negativeMarks} onChange={(e) => setBatchConfig({ ...batchConfig, negativeMarks: e.target.value })} /></div>
-                    <div className="space-y-1.5"><Label className="text-[10px] uppercase opacity-60">Passing</Label><Input type="number" className="h-10 bg-white/5" value={batchConfig.passingMarks} onChange={(e) => setBatchConfig({ ...batchConfig, passingMarks: e.target.value })} /></div>
-                    <div className="space-y-1.5"><Label className="text-[10px] uppercase opacity-60">Mins</Label><Input type="number" className="h-10 bg-white/5" value={batchConfig.durationMinutes} onChange={(e) => setBatchConfig({ ...batchConfig, durationMinutes: e.target.value })} /></div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase opacity-60 font-bold tracking-tighter">Marks / Question</Label>
+                      <Input type="number" step="0.5" className="h-12 bg-white/5 rounded-xl text-center font-bold" value={batchConfig.marksPerQuestion} onChange={(e) => setBatchConfig({ ...batchConfig, marksPerQuestion: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase opacity-60 font-bold tracking-tighter">Negative Marks</Label>
+                      <Input type="number" step="0.01" className="h-12 bg-white/5 rounded-xl text-center font-bold text-rose-400" value={batchConfig.negativeMarks} onChange={(e) => setBatchConfig({ ...batchConfig, negativeMarks: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase opacity-60 font-bold tracking-tighter">Pass Target (%)</Label>
+                      <Input type="number" className="h-12 bg-white/5 rounded-xl text-center font-bold" value={batchConfig.passingMarks} onChange={(e) => setBatchConfig({ ...batchConfig, passingMarks: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase opacity-60 font-bold tracking-tighter">Duration (m)</Label>
+                      <Input type="number" className="h-12 bg-white/5 rounded-xl text-center font-bold text-accent" value={batchConfig.durationMinutes} onChange={(e) => setBatchConfig({ ...batchConfig, durationMinutes: e.target.value })} />
+                    </div>
                   </div>
                 </div>
 
-                {/* Section 3: Access & Attributes */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-[10px] font-bold text-accent uppercase tracking-widest mb-2">
-                    <Lock className="w-3 h-3" /> Access & Attributes
+                <div className="space-y-5">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-accent uppercase tracking-widest mb-3">
+                    <Lock className="w-3.5 h-3.5" /> Access Control
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="space-y-1.5">
-                      <Label className="text-[10px] uppercase opacity-60">Language</Label>
+                      <Label className="text-[10px] uppercase opacity-60 font-bold tracking-tighter">Primary Language</Label>
                       <Select value={batchConfig.language} onValueChange={(v) => setBatchConfig({ ...batchConfig, language: v })}>
-                        <SelectTrigger className="bg-white/5 h-10 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="en">English Only</SelectItem><SelectItem value="hn">Hindi Only</SelectItem><SelectItem value="bilingual">Bilingual</SelectItem></SelectContent>
+                        <SelectTrigger className="bg-white/5 h-12 rounded-xl text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent className="glass"><SelectItem value="en">English Only</SelectItem><SelectItem value="hn">Hindi Only</SelectItem><SelectItem value="bilingual">Bilingual</SelectItem></SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-[10px] uppercase opacity-60">Difficulty</Label>
+                      <Label className="text-[10px] uppercase opacity-60 font-bold tracking-tighter">Complexity</Label>
                       <Select value={batchConfig.difficulty} onValueChange={(v) => setBatchConfig({ ...batchConfig, difficulty: v })}>
-                        <SelectTrigger className="bg-white/5 h-10 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="Easy">Easy</SelectItem><SelectItem value="Intermediate">Intermediate</SelectItem><SelectItem value="Hard">Hard</SelectItem></SelectContent>
+                        <SelectTrigger className="bg-white/5 h-12 rounded-xl text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent className="glass"><SelectItem value="Easy">Easy</SelectItem><SelectItem value="Intermediate">Intermediate</SelectItem><SelectItem value="Hard">Hard</SelectItem></SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-[10px] uppercase opacity-60">Lifecycle</Label>
+                      <Label className="text-[10px] uppercase opacity-60 font-bold tracking-tighter">Visibility State</Label>
                       <Select value={batchConfig.status} onValueChange={(v) => setBatchConfig({ ...batchConfig, status: v })}>
-                        <SelectTrigger className="bg-white/5 h-10 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="Draft">Draft</SelectItem><SelectItem value="Published">Published</SelectItem></SelectContent>
+                        <SelectTrigger className="bg-white/5 h-12 rounded-xl text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent className="glass"><SelectItem value="Draft">Draft Mode</SelectItem><SelectItem value="Published">Live Asset</SelectItem></SelectContent>
                       </Select>
                     </div>
                   </div>
 
                   <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 p-4 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between">
+                    <div className="flex-1 p-5 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-between">
                        <div className="space-y-0.5">
-                          <p className="text-xs font-bold">Public Asset</p>
-                          <p className="text-[9px] text-muted-foreground uppercase">Enable for Free Users</p>
+                          <p className="text-xs font-bold">Public Lead Magnet</p>
+                          <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold opacity-60">Enable for Free Tier</p>
                        </div>
                        <Switch checked={batchConfig.isFree} onCheckedChange={(v) => setBatchConfig({ ...batchConfig, isFree: v })} />
                     </div>
-                    <div className="flex-1 p-4 rounded-xl bg-white/5 border border-white/5 space-y-1.5">
-                       <Label className="text-[9px] font-bold uppercase text-muted-foreground">Attempt Limit</Label>
-                       <Input type="number" className="h-8 bg-transparent text-sm" placeholder="0 = No limit" value={batchConfig.attemptLimit} onChange={(e) => setBatchConfig({ ...batchConfig, attemptLimit: e.target.value })} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 4: Content Details */}
-                <div className="space-y-4">
-                   <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-2">
-                    <MessageSquare className="w-3 h-3" /> Content & Metadata
-                  </div>
-                  <div className="space-y-3">
-                    <div className="space-y-1.5">
-                       <Label className="text-[10px] uppercase opacity-60">Instructions (Markdown)</Label>
-                       <Textarea className="bg-white/5 min-h-[80px] text-xs" value={batchConfig.instructions} onChange={(e) => setBatchConfig({ ...batchConfig, instructions: e.target.value })} />
-                    </div>
-                    <div className="space-y-1.5">
-                       <Label className="text-[10px] uppercase opacity-60">Search Tags (Comma separated)</Label>
-                       <Input className="bg-white/5 h-10 text-xs" placeholder="ssc, math, algebra, 2024" value={batchConfig.tags} onChange={(e) => setBatchConfig({ ...batchConfig, tags: e.target.value })} />
+                    <div className="flex-1 p-5 rounded-2xl bg-white/5 border border-white/5 space-y-1.5">
+                       <Label className="text-[9px] font-bold uppercase text-muted-foreground tracking-widest">Max Attempts</Label>
+                       <Input type="number" className="h-8 bg-transparent text-sm font-bold border-none p-0 focus-visible:ring-0" placeholder="Unlimited" value={batchConfig.attemptLimit || ""} onChange={(e) => setBatchConfig({ ...batchConfig, attemptLimit: e.target.value })} />
                     </div>
                   </div>
                 </div>
               </CardContent>
            </Card>
 
-           <Card className="glass border-white/10 p-4 md:p-6 space-y-4">
+           <Card className="glass border-white/10 p-5 md:p-8 space-y-5 shadow-xl">
               <div className="flex items-center gap-3">
                 <UploadCloud className="w-5 h-5 text-accent" />
-                <h3 className="font-bold text-sm uppercase tracking-widest">Ingestion Sources</h3>
+                <h3 className="font-bold text-sm uppercase tracking-widest">Content Inflow</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <UploadBtn label="JSON Files" icon={FileJson} onClick={() => fileInputRef.current?.click()} />
-                <UploadBtn label="Folder" icon={FolderOpen} onClick={() => folderInputRef.current?.click()} />
-                <UploadBtn label="ZIP Archive" icon={FileArchive} onClick={() => zipInputRef.current?.click()} />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <UploadBtn label="Raw JSON" icon={FileJson} onClick={() => fileInputRef.current?.click()} />
+                <UploadBtn label="Hierarchy" icon={FolderOpen} onClick={() => folderInputRef.current?.click()} />
+                <UploadBtn label="ZIP Package" icon={FileArchive} onClick={() => zipInputRef.current?.click()} />
               </div>
               <input type="file" ref={fileInputRef} className="hidden" multiple accept=".json" onChange={e => addToQueue(e.target.files || [])} />
               <input type="file" ref={folderInputRef} className="hidden" multiple {...({ webkitdirectory: "", directory: "" } as any)} onChange={e => addToQueue(e.target.files || [])} />
@@ -597,39 +549,42 @@ export default function BulkIngestionPipeline() {
            </Card>
         </div>
 
-        {/* Right: Queue & Stats */}
         <div className="lg:col-span-6 space-y-6">
-           <Card className="glass border-white/10 flex flex-col h-[850px] overflow-hidden">
-              <CardHeader className="p-4 md:p-6 border-b border-white/5 flex flex-row items-center justify-between shrink-0">
+           <Card className="glass border-white/10 flex flex-col h-[900px] overflow-hidden shadow-2xl">
+              <CardHeader className="p-5 md:p-6 border-b border-white/5 flex flex-row items-center justify-between shrink-0 bg-white/[0.02]">
                  <div>
-                    <CardTitle className="text-lg font-headline font-bold">Ingestion Queue</CardTitle>
-                    <p className="text-xs text-muted-foreground">{queue.length} modules staged for processing</p>
+                    <CardTitle className="text-lg font-headline font-bold">Parser Queue</CardTitle>
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-0.5">{queue.length} modules staged</p>
                  </div>
                  {queue.length > 0 && !isProcessing && (
-                   <Button variant="ghost" size="sm" onClick={() => setQueue([])} className="text-rose-400 h-8 gap-2 hover:bg-rose-500/10">
-                     <Trash2 className="w-3.5 h-3.5" /> Clear
+                   <Button variant="ghost" size="sm" onClick={() => setQueue([])} className="text-rose-400 h-9 gap-2 hover:bg-rose-500/10 rounded-xl px-4 font-bold text-[10px] uppercase">
+                     <Trash2 className="w-4 h-4" /> Reset Queue
                    </Button>
                  )}
               </CardHeader>
               
-              <ScrollArea className="flex-1">
+              <ScrollArea className="flex-1 custom-scrollbar">
                  {queue.length === 0 ? (
-                   <div className="h-[500px] flex flex-col items-center justify-center opacity-20 gap-4">
-                      <History className="w-16 h-16" />
-                      <div className="text-center">
-                        <p className="font-bold uppercase tracking-widest text-xs">Ready for intake</p>
-                        <p className="text-[10px] max-w-[200px] mt-1">Upload JSON files from your dashboard or local database dumps.</p>
+                   <div className="h-[500px] flex flex-col items-center justify-center opacity-20 gap-6 text-center p-10">
+                      <div className="p-8 rounded-[3rem] bg-white/5 border border-white/5">
+                        <History className="w-16 h-16" />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="font-bold uppercase tracking-[0.2em] text-xs">Ready for intake</p>
+                        <p className="text-[10px] max-w-[250px] mx-auto leading-relaxed">
+                          Staging area is empty. Upload examination modules to begin the ingestion workflow.
+                        </p>
                       </div>
                    </div>
                  ) : (
                    <div className="divide-y divide-white/5">
                       {queue.map((item) => (
-                        <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors group">
+                        <div key={item.id} className="p-5 flex items-center gap-5 hover:bg-white/[0.02] transition-all group">
                            <div className={cn(
-                             "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border transition-all",
+                             "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border transition-all shadow-lg",
                              item.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" :
                              item.status === 'failed' ? "bg-rose-500/10 border-rose-500/20 text-rose-400" :
-                             isProcessing && item.status !== 'pending' ? "bg-primary/10 border-primary/20 text-primary" :
+                             isProcessing && item.status !== 'pending' ? "bg-primary/10 border-primary/20 text-primary animate-pulse" :
                              "bg-white/5 border-white/5 text-muted-foreground"
                            )}>
                               {item.status === 'success' ? <CheckCircle2 className="w-6 h-6" /> : 
@@ -637,11 +592,11 @@ export default function BulkIngestionPipeline() {
                                isProcessing && item.status !== 'pending' ? <Loader2 className="w-6 h-6 animate-spin" /> :
                                <FileJson className="w-6 h-6" />}
                            </div>
-                           <div className="flex-1 min-w-0 space-y-1.5">
+                           <div className="flex-1 min-w-0 space-y-2">
                               <div className="flex items-center justify-between">
-                                 <span className="text-sm font-bold truncate pr-4">{item.name}</span>
+                                 <span className="text-sm font-bold truncate pr-4 text-foreground">{item.name}</span>
                                  <Badge variant="outline" className={cn(
-                                   "text-[8px] h-4 uppercase",
+                                   "text-[8px] h-4 uppercase font-bold tracking-widest",
                                    item.status === 'success' ? "border-emerald-500/30 text-emerald-400" : 
                                    item.status === 'failed' ? "border-rose-500/30 text-rose-400" : "border-white/10"
                                  )}>{item.status}</Badge>
@@ -656,7 +611,7 @@ export default function BulkIngestionPipeline() {
                                   <Progress value={item.progress} className="h-1 bg-white/5" />
                                 </div>
                               )}
-                              {item.error && <p className="text-[10px] text-rose-400 font-bold flex items-center gap-1.5"><BadgeInfo className="w-3 h-3" /> {item.error}</p>}
+                              {item.error && <p className="text-[10px] text-rose-400 font-bold flex items-center gap-1.5 mt-1"><BadgeInfo className="w-3 h-3" /> {item.error}</p>}
                            </div>
                         </div>
                       ))}
@@ -664,19 +619,19 @@ export default function BulkIngestionPipeline() {
                  )}
               </ScrollArea>
 
-              <div className="p-4 md:p-6 bg-white/[0.02] border-t border-white/5 space-y-4">
+              <div className="p-6 bg-white/[0.04] border-t border-white/5 space-y-5">
                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                        <Zap className="w-4 h-4 text-accent fill-accent" />
                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Intelligence Report</span>
                     </div>
-                    <span className="text-[10px] font-mono text-muted-foreground">Ready to Ingest</span>
+                    <span className="text-[10px] font-mono text-muted-foreground opacity-40">Ready to Ingest</span>
                  </div>
-                 <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20">
+                 <div className="p-5 rounded-[1.5rem] bg-indigo-500/10 border border-indigo-500/20 shadow-inner">
                     <p className="text-[11px] text-muted-foreground leading-relaxed italic">
                       "Batch consists of <span className="text-white font-bold">{queue.length} files</span>. 
-                      Targeting <span className="text-white font-bold">{exams?.find(e => e.id === batchConfig.examId)?.name || '...'}</span> Exam series. 
-                      Scoring set to <span className="text-emerald-400 font-bold">+{batchConfig.fullMarks}</span> / <span className="text-rose-400 font-bold">-{batchConfig.negativeMarks}</span>."
+                      Targeting <span className="text-white font-bold">{exams?.find(e => e.id === batchConfig.examId)?.name || 'the selected'}</span> series. 
+                      Scoring logic set to <span className="text-emerald-400 font-bold">+{batchConfig.marksPerQuestion}</span> / question."
                     </p>
                  </div>
               </div>
@@ -689,11 +644,11 @@ export default function BulkIngestionPipeline() {
 
 function Stat({ label, value, icon: Icon, color = "text-muted-foreground" }: any) {
   return (
-    <div className="flex items-center gap-3 bg-white/5 px-3 md:px-4 py-1.5 md:py-2 rounded-xl border border-white/10 shrink-0">
-       <Icon className={cn("w-3.5 h-3.5 md:w-4 md:h-4", color)} />
+    <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-2xl border border-white/10 shrink-0 shadow-lg">
+       <Icon className={cn("w-4 h-4", color)} />
        <div className="flex flex-col">
-          <span className="text-xs md:text-sm font-bold leading-none">{value}</span>
-          <span className="text-[8px] uppercase font-bold opacity-40 mt-0.5">{label}</span>
+          <span className="text-sm font-bold leading-none">{value}</span>
+          <span className="text-[8px] uppercase font-bold opacity-40 mt-1 tracking-tighter">{label}</span>
        </div>
     </div>
   );
@@ -703,9 +658,9 @@ function UploadBtn({ label, icon: Icon, onClick }: any) {
   return (
     <button 
       onClick={onClick} 
-      className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 hover:border-primary/40 hover:bg-white/[0.08] transition-all text-left group"
+      className="flex items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/10 hover:border-primary/40 hover:bg-white/[0.08] transition-all text-left group shadow-sm"
     >
-       <Icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+       <Icon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
        <span className="text-xs font-bold whitespace-nowrap">{label}</span>
     </button>
   );
