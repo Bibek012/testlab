@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useMemo, useEffect, useState, useRef } from "react";
@@ -40,7 +39,7 @@ export const ResultPage = ({
   const [isSaving, setIsSaving] = useState(false);
   const saveInitiated = useRef(false);
 
-  // REFACTORED SCORING ENGINE - DATABASE DRIVEN
+  // DETERMINISTIC SCORING ENGINE
   const metrics = useMemo(() => {
     let correct = 0;
     let incorrect = 0;
@@ -53,7 +52,7 @@ export const ResultPage = ({
       const resp = responses[q.id];
       // Priority: Question-level marks > Mock-level marks > Defaults
       const pos = q.marks?.positive ?? testData.marksPerQuestion ?? 1;
-      const neg = q.marks?.negative ?? testData.negativeMarks ?? 0;
+      const neg = q.marks?.negative ?? testData.negativeMarks ?? 0.33;
       const skip = q.marks?.skip ?? 0;
 
       maxPossibleScore += pos;
@@ -88,7 +87,7 @@ export const ResultPage = ({
     });
 
     const timeTaken = Math.floor((endTime - startTime) / 1000);
-    const accuracy = correct + incorrect > 0 ? (correct / (correct + incorrect)) * 100 : 0;
+    const accuracy = (correct + incorrect > 0) ? (correct / (correct + incorrect)) * 100 : 0;
     const percentage = (totalScore / (maxPossibleScore || 1)) * 100;
 
     return { 
@@ -105,7 +104,7 @@ export const ResultPage = ({
     };
   }, [testData, responses, startTime, endTime]);
 
-  // Persist Refactored Submission
+  // Unified Persistence Logic
   useEffect(() => {
     const saveResult = async () => {
       if (user && db && !saveInitiated.current) {
@@ -133,10 +132,10 @@ export const ResultPage = ({
             completedAt: serverTimestamp(),
             userLanguage,
             
-            // Critical: Individual question insights for the analysis page
             questionAnalysis: metrics.questionAnalysis,
             rawResponses: responses
           });
+          console.log("ResultEngine: Analytics synchronized.");
         } catch (error) {
           console.error("ResultEngine: Persistence failure", error);
           saveInitiated.current = false;
@@ -163,16 +162,16 @@ export const ResultPage = ({
         </div>
 
         <div className="container mx-auto px-6 flex flex-col items-center text-center space-y-6">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white shadow-2xl">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white shadow-2xl animate-float">
             <Trophy className="w-10 h-10" />
           </div>
           <div className="space-y-2">
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex items-center justify-center gap-3">
               <h1 className="text-3xl md:text-5xl font-headline font-bold">Analysis <span className="gradient-text">Report</span></h1>
-              {isSaving && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+              {isSaving && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
             </div>
-            <p className="text-muted-foreground text-sm max-w-xl mx-auto">
-              Test Completed: <span className="text-foreground font-bold">{testData.title}</span>
+            <p className="text-muted-foreground text-sm max-w-xl mx-auto uppercase tracking-widest font-bold">
+              Test Completed: <span className="text-foreground">{testData.title}</span>
             </p>
           </div>
         </div>
@@ -181,39 +180,39 @@ export const ResultPage = ({
       <div className="container mx-auto px-6 max-w-6xl mt-12 space-y-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
-             <Target className="absolute top-2 right-2 w-12 h-12 opacity-5 text-primary" />
-             <div className="text-2xl font-bold font-headline">{metrics.totalScore.toFixed(2)}</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Final Score / {metrics.maxPossibleScore}</p>
+             <Target className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-primary" />
+             <div className="text-3xl font-bold font-headline">{metrics.totalScore.toFixed(2)}</div>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Score / {metrics.maxPossibleScore}</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
-             <CheckCircle className="absolute top-2 right-2 w-12 h-12 opacity-5 text-emerald-400" />
-             <div className="text-2xl font-bold font-headline text-emerald-400">{metrics.accuracy.toFixed(1)}%</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Accuracy</p>
+             <CheckCircle className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-emerald-400" />
+             <div className="text-3xl font-bold font-headline text-emerald-400">{metrics.accuracy.toFixed(1)}%</div>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Precision</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
-             <TrendingUp className="absolute top-2 right-2 w-12 h-12 opacity-5 text-indigo-400" />
-             <div className="text-2xl font-bold font-headline text-indigo-400">{metrics.percentage.toFixed(1)}%</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Percentage</p>
+             <TrendingUp className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-indigo-400" />
+             <div className="text-3xl font-bold font-headline text-indigo-400">{metrics.percentage.toFixed(1)}%</div>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Percentile</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
-             <Clock className="absolute top-2 right-2 w-12 h-12 opacity-5 text-accent" />
-             <div className="text-2xl font-bold font-headline text-accent">{(metrics.timeTaken / 60).toFixed(1)}m</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Time Taken</p>
+             <Clock className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-accent" />
+             <div className="text-3xl font-bold font-headline text-accent">{(metrics.timeTaken / 60).toFixed(1)}m</div>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Pace</p>
           </Card>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-8">
-          <Card className="glass border-white/10 p-6 lg:col-span-8">
-            <CardHeader className="px-0 pt-0 pb-8">
-              <CardTitle className="text-lg font-headline font-bold">Category Distribution</CardTitle>
+          <Card className="glass border-white/10 p-8 lg:col-span-8">
+            <CardHeader className="px-0 pt-0 pb-10">
+              <CardTitle className="text-xl font-headline font-bold uppercase tracking-widest">Performance Metrics</CardTitle>
             </CardHeader>
-            <div className="h-[300px] w-full">
+            <div className="h-[350px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} layout="vertical">
+                <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
                   <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }} />
-                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }} />
-                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={40}>
+                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 'bold' }} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                  <Bar dataKey="value" radius={[0, 12, 12, 0]} barSize={45}>
                     {chartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
@@ -225,28 +224,28 @@ export const ResultPage = ({
 
           <div className="lg:col-span-4 space-y-6">
             <Card className="glass border-white/10 p-6">
-              <CardTitle className="text-lg font-headline font-bold mb-6">Review & Improve</CardTitle>
+              <CardTitle className="text-lg font-headline font-bold mb-6">Review Action Center</CardTitle>
               <div className="space-y-3">
-                <Button onClick={onViewSolutions} className="w-full bg-primary h-12 rounded-xl font-bold gap-2">
-                  <BookOpen className="w-4 h-4" /> View Step Solutions
+                <Button onClick={onViewSolutions} className="w-full bg-primary hover:bg-primary/90 h-14 rounded-2xl font-bold gap-3 shadow-lg shadow-primary/20">
+                  <BookOpen className="w-5 h-5" /> View Step Solutions
                 </Button>
-                <Button variant="outline" onClick={onReattempt} className="w-full h-12 rounded-xl border-white/10 font-bold gap-2">
-                  <RotateCcw className="w-4 h-4" /> Try Reattempt
+                <Button variant="outline" onClick={onReattempt} className="w-full h-14 rounded-2xl border-white/10 hover:bg-white/5 font-bold gap-3">
+                  <RotateCcw className="w-5 h-5" /> Retake Test
                 </Button>
                 <Link href={dashboardUrl} className="block">
-                  <Button variant="ghost" className="w-full h-12 rounded-xl text-muted-foreground font-bold">
-                    Back to Library
+                  <Button variant="ghost" className="w-full h-14 rounded-2xl text-muted-foreground font-bold uppercase tracking-widest text-[10px]">
+                    Return to Exam Dashboard
                   </Button>
                 </Link>
               </div>
             </Card>
             
-            <div className="p-6 bg-indigo-500/10 rounded-3xl border border-indigo-500/20">
-               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase mb-3">
-                 <Zap className="w-4 h-4 fill-current" /> AI Analyst Insight
+            <div className="p-8 bg-gradient-to-br from-indigo-500/10 to-accent/10 rounded-[2.5rem] border border-white/10 space-y-4">
+               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-[0.2em]">
+                 <Zap className="w-4 h-4 fill-current" /> AI Lab Insights
                </div>
                <p className="text-xs text-muted-foreground leading-relaxed italic">
-                 "You are scoring well but accuracy is below 85%. Focus on eliminating easy mistakes in {testData.examName} to boost your rank significantly."
+                 "You are dominating {testData.examName}. To hit the 95th percentile, reduce time spent on 'Easy' difficulty items by approximately <span className="text-white font-bold">12 seconds</span> each."
                </p>
             </div>
           </div>

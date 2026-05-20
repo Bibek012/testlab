@@ -1,7 +1,6 @@
-
 "use client";
 
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { 
   UploadCloud, 
   FileJson, 
@@ -13,15 +12,9 @@ import {
   FileArchive,
   Trash2,
   Play,
-  Settings2,
   PlusCircle,
   History,
-  FileSearch,
-  CheckCircle,
-  Globe,
-  Lock,
   Layers,
-  BadgeInfo,
   Target
 } from "lucide-react";
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
@@ -36,7 +29,7 @@ import {
   addDoc
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -88,9 +81,6 @@ export default function BulkIngestionPipeline() {
     language: "en",
     difficulty: "Intermediate",
     status: "Published",
-    attemptLimit: 0,
-    instructions: "",
-    tags: "",
   });
 
   const [isAddingType, setIsAddingType] = useState(false);
@@ -213,7 +203,7 @@ export default function BulkIngestionPipeline() {
         updateItem(item.id, { status: 'validating', progress: 30 });
         const questions = normalizeQuestions(json, batchConfig.marksPerQuestion, batchConfig.negativeMarks);
 
-        if (questions.length === 0) throw new Error("No questions found.");
+        if (questions.length === 0) throw new Error("No questions successfully parsed.");
 
         updateItem(item.id, { status: 'syncing', progress: 50 });
         const exam = exams?.find(e => e.id === batchConfig.examId);
@@ -247,7 +237,7 @@ export default function BulkIngestionPipeline() {
 
         await setDoc(mockRef, mockData, { merge: true });
 
-        // Chunked Sync
+        // Batch Question Sync
         const CHUNK_SIZE = 50;
         for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
           const chunk = questions.slice(i, i + CHUNK_SIZE);
@@ -268,7 +258,7 @@ export default function BulkIngestionPipeline() {
       }
     }
     setIsProcessing(false);
-    toast({ title: "Processing Finalized" });
+    toast({ title: "Ingestion Batch Finalized" });
   };
 
   const normalizeQuestions = (json: any, defPos: number, defNeg: number) => {
@@ -280,6 +270,11 @@ export default function BulkIngestionPipeline() {
     return raw.map((q, i) => {
       const base = q.question || q;
       const sol = q.explanation || q.solution || {};
+      
+      // Extract marks from JSON if available, else use batch config
+      const positive = q.marks?.positive ?? defPos;
+      const negative = q.marks?.negative ?? defNeg;
+
       return {
         id: q.id || q.questionId || `q-${i}`,
         en: base.en || base.text || "",
@@ -295,8 +290,8 @@ export default function BulkIngestionPipeline() {
         })),
         answer: q.answer || q.correctAnswer || "",
         marks: {
-          positive: q.marks?.positive ?? defPos,
-          negative: q.marks?.negative ?? defNeg,
+          positive: parseFloat(positive),
+          negative: parseFloat(negative),
           skip: 0
         },
         explanation: {
@@ -314,14 +309,14 @@ export default function BulkIngestionPipeline() {
     <div className="space-y-6 md:space-y-8 pb-20 px-4">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-headline font-bold">Bulk Ingestion <span className="text-accent">Center</span></h1>
-          <p className="text-muted-foreground text-xs mt-1">Sync standardized examination content to global registry.</p>
+          <h1 className="text-2xl font-headline font-bold">Bulk Ingestion <span className="text-accent">Pipeline</span></h1>
+          <p className="text-muted-foreground text-xs mt-1">High-yield content synchronization to the global exam registry.</p>
         </div>
         <div className="flex items-center gap-3">
-           <Badge variant="outline" className="h-8 gap-2">Queue: {stats.total} | Success: {stats.completed}</Badge>
-           <Button disabled={stats.total === 0 || isProcessing} onClick={processQueue} className="bg-primary h-10 px-8 font-bold gap-2">
+           <Badge variant="outline" className="h-8 gap-2 bg-white/5">Queue: {stats.total} | Success: {stats.completed}</Badge>
+           <Button disabled={stats.total === 0 || isProcessing} onClick={processQueue} className="bg-primary h-10 px-8 font-bold gap-2 shadow-lg shadow-primary/20">
              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-             Start Batch
+             Initiate Batch
            </Button>
         </div>
       </div>
@@ -330,9 +325,9 @@ export default function BulkIngestionPipeline() {
         <div className="lg:col-span-7 space-y-6">
            <Card className="glass border-white/10 p-6 space-y-8">
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase"><Layers className="w-4 h-4" /> Series Configuration</div>
+                <div className="flex items-center gap-2 text-[10px] font-bold text-primary uppercase tracking-widest"><Layers className="w-4 h-4" /> Series Configuration</div>
                 <div className="space-y-1.5">
-                  <Label className="text-[10px] uppercase font-bold opacity-60">Target Exam</Label>
+                  <Label className="text-[10px] uppercase font-bold opacity-60">Target Examination</Label>
                   <Select value={batchConfig.examId} onValueChange={(v) => setBatchConfig({ ...batchConfig, examId: v, typeId: "", subTypeId: "" })}>
                     <SelectTrigger className="bg-white/5 border-white/10 h-12 rounded-xl"><SelectValue placeholder="Choose Exam" /></SelectTrigger>
                     <SelectContent className="glass">
@@ -342,23 +337,23 @@ export default function BulkIngestionPipeline() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase opacity-60">Category</Label>
+                    <Label className="text-[10px] uppercase font-bold opacity-60">Category</Label>
                     {isAddingType ? (
                       <div className="flex gap-2"><Input className="h-12 bg-white/10" value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} /><Button onClick={handleAddType} className="bg-primary h-12 px-3"><PlusCircle /></Button></div>
                     ) : (
                       <Select value={batchConfig.typeId} onValueChange={(v) => setBatchConfig({ ...batchConfig, typeId: v, subTypeId: "" })} disabled={!batchConfig.examId}>
-                        <SelectTrigger className="bg-white/5 h-12"><SelectValue placeholder="Select Type" /></SelectTrigger>
+                        <SelectTrigger className="bg-white/5 h-12 rounded-xl"><SelectValue placeholder="Select Type" /></SelectTrigger>
                         <SelectContent className="glass">{mockTypes?.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}</SelectContent>
                       </Select>
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase opacity-60">Subject</Label>
+                    <Label className="text-[10px] uppercase font-bold opacity-60">Subject</Label>
                     {isAddingSubType ? (
                       <div className="flex gap-2"><Input className="h-12 bg-white/10" value={newSubTypeName} onChange={(e) => setNewSubTypeName(e.target.value)} /><Button onClick={handleAddSubType} className="bg-primary h-12 px-3"><PlusCircle /></Button></div>
                     ) : (
                       <Select value={batchConfig.subTypeId} onValueChange={(v) => setBatchConfig({ ...batchConfig, subTypeId: v })} disabled={!batchConfig.typeId}>
-                        <SelectTrigger className="bg-white/5 h-12"><SelectValue placeholder="Select Subject" /></SelectTrigger>
+                        <SelectTrigger className="bg-white/5 h-12 rounded-xl"><SelectValue placeholder="Select Subject" /></SelectTrigger>
                         <SelectContent className="glass">{subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}</SelectContent>
                       </Select>
                     )}
@@ -367,28 +362,21 @@ export default function BulkIngestionPipeline() {
               </div>
 
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400 uppercase"><Target className="w-4 h-4" /> Scoring Engine</div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                   <div className="space-y-1"><Label className="text-[10px] uppercase opacity-60">Marks / Q</Label><Input type="number" step="0.5" className="h-12 bg-white/5" value={batchConfig.marksPerQuestion} onChange={(e) => setBatchConfig({ ...batchConfig, marksPerQuestion: e.target.value })} /></div>
-                   <div className="space-y-1"><Label className="text-[10px] uppercase opacity-60">Penalty</Label><Input type="number" step="0.01" className="h-12 bg-white/5" value={batchConfig.negativeMarks} onChange={(e) => setBatchConfig({ ...batchConfig, negativeMarks: e.target.value })} /></div>
-                   <div className="space-y-1"><Label className="text-[10px] uppercase opacity-60">Duration (m)</Label><Input type="number" className="h-12 bg-white/5" value={batchConfig.durationMinutes} onChange={(e) => setBatchConfig({ ...batchConfig, durationMinutes: e.target.value })} /></div>
-                   <div className="space-y-1"><Label className="text-[10px] uppercase opacity-60">Pass %</Label><Input type="number" className="h-12 bg-white/5" value={batchConfig.passingMarks} onChange={(e) => setBatchConfig({ ...batchConfig, passingMarks: e.target.value })} /></div>
+                <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400 uppercase tracking-widest"><Target className="w-4 h-4" /> Global Rules</div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                   <div className="space-y-1"><Label className="text-[10px] uppercase font-bold opacity-60">Marks / Q</Label><Input type="number" step="0.5" className="h-12 bg-white/5 rounded-xl" value={batchConfig.marksPerQuestion} onChange={(e) => setBatchConfig({ ...batchConfig, marksPerQuestion: e.target.value })} /></div>
+                   <div className="space-y-1"><Label className="text-[10px] uppercase font-bold opacity-60">Penalty / Q</Label><Input type="number" step="0.01" className="h-12 bg-white/5 rounded-xl" value={batchConfig.negativeMarks} onChange={(e) => setBatchConfig({ ...batchConfig, negativeMarks: e.target.value })} /></div>
+                   <div className="space-y-1"><Label className="text-[10px] uppercase font-bold opacity-60">Duration (m)</Label><Input type="number" className="h-12 bg-white/5 rounded-xl" value={batchConfig.durationMinutes} onChange={(e) => setBatchConfig({ ...batchConfig, durationMinutes: e.target.value })} /></div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="space-y-1"><Label className="text-[10px] uppercase opacity-60">Difficulty</Label><Select value={batchConfig.difficulty} onValueChange={(v) => setBatchConfig({ ...batchConfig, difficulty: v })}><SelectTrigger className="bg-white/5 h-12"><SelectValue /></SelectTrigger><SelectContent className="glass"><SelectItem value="Easy">Easy</SelectItem><SelectItem value="Intermediate">Intermediate</SelectItem><SelectItem value="Hard">Hard</SelectItem></SelectContent></Select></div>
-                <div className="space-y-1"><Label className="text-[10px] uppercase opacity-60">Language</Label><Select value={batchConfig.language} onValueChange={(v) => setBatchConfig({ ...batchConfig, language: v })}><SelectTrigger className="bg-white/5 h-12"><SelectValue /></SelectTrigger><SelectContent className="glass"><SelectItem value="en">English</SelectItem><SelectItem value="hn">Hindi</SelectItem><SelectItem value="bilingual">Bilingual</SelectItem></SelectContent></Select></div>
-                <div className="space-y-1"><Label className="text-[10px] uppercase opacity-60">Status</Label><Select value={batchConfig.status} onValueChange={(v) => setBatchConfig({ ...batchConfig, status: v })}><SelectTrigger className="bg-white/5 h-12"><SelectValue /></SelectTrigger><SelectContent className="glass"><SelectItem value="Draft">Draft</SelectItem><SelectItem value="Published">Published</SelectItem></SelectContent></Select></div>
               </div>
            </Card>
 
            <Card className="glass border-white/10 p-6 space-y-4">
-              <div className="flex items-center gap-2 text-[10px] font-bold text-accent uppercase"><UploadCloud className="w-4 h-4" /> Data Inflow</div>
+              <div className="flex items-center gap-2 text-[10px] font-bold text-accent uppercase tracking-widest"><UploadCloud className="w-4 h-4" /> Data Sources</div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Button variant="outline" className="h-20 flex-col gap-2 rounded-2xl border-white/10" onClick={() => fileInputRef.current?.click()}><FileJson className="w-5 h-5 text-primary" /> Raw JSON</Button>
-                <Button variant="outline" className="h-20 flex-col gap-2 rounded-2xl border-white/10" onClick={() => folderInputRef.current?.click()}><FolderOpen className="w-5 h-5 text-accent" /> Folder</Button>
-                <Button variant="outline" className="h-20 flex-col gap-2 rounded-2xl border-white/10" onClick={() => zipInputRef.current?.click()}><FileArchive className="w-5 h-5 text-emerald-400" /> ZIP Pack</Button>
+                <Button variant="outline" className="h-20 flex-col gap-2 rounded-2xl border-white/10 hover:bg-white/5" onClick={() => fileInputRef.current?.click()}><FileJson className="w-5 h-5 text-primary" /> Raw JSON</Button>
+                <Button variant="outline" className="h-20 flex-col gap-2 rounded-2xl border-white/10 hover:bg-white/5" onClick={() => folderInputRef.current?.click()}><FolderOpen className="w-5 h-5 text-accent" /> Folder</Button>
+                <Button variant="outline" className="h-20 flex-col gap-2 rounded-2xl border-white/10 hover:bg-white/5" onClick={() => zipInputRef.current?.click()}><FileArchive className="w-5 h-5 text-emerald-400" /> ZIP Pack</Button>
               </div>
               <input type="file" ref={fileInputRef} className="hidden" multiple accept=".json" onChange={e => addToQueue(e.target.files || [])} />
               <input type="file" ref={folderInputRef} className="hidden" multiple {...({ webkitdirectory: "", directory: "" } as any)} onChange={e => addToQueue(e.target.files || [])} />
@@ -397,26 +385,26 @@ export default function BulkIngestionPipeline() {
         </div>
 
         <div className="lg:col-span-5">
-           <Card className="glass border-white/10 flex flex-col h-[700px] overflow-hidden">
+           <Card className="glass border-white/10 flex flex-col h-[600px] overflow-hidden">
               <div className="p-5 border-b border-white/5 flex items-center justify-between shrink-0 bg-white/[0.02]">
-                 <div className="font-bold text-sm">Parser Queue ({queue.length})</div>
-                 {queue.length > 0 && !isProcessing && <Button variant="ghost" size="sm" onClick={() => setQueue([])} className="text-rose-400"><Trash2 className="w-4 h-4 mr-1" /> Clear</Button>}
+                 <div className="font-bold text-sm">Ingestion Queue ({queue.length})</div>
+                 {queue.length > 0 && !isProcessing && <Button variant="ghost" size="sm" onClick={() => setQueue([])} className="text-rose-400 hover:bg-rose-500/10"><Trash2 className="w-4 h-4 mr-1" /> Purge</Button>}
               </div>
               
               <ScrollArea className="flex-1">
                  {queue.length === 0 ? (
-                   <div className="h-[400px] flex flex-col items-center justify-center opacity-20 text-center p-10"><History className="w-12 h-12 mb-4" /><p className="text-xs font-bold uppercase tracking-widest">Staging Area Empty</p></div>
+                   <div className="h-[400px] flex flex-col items-center justify-center opacity-20 text-center p-10"><History className="w-12 h-12 mb-4" /><p className="text-xs font-bold uppercase tracking-widest">Awaiting Stage Area</p></div>
                  ) : (
                    <div className="divide-y divide-white/5">
                       {queue.map((item) => (
-                        <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02]">
-                           <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center border", item.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : item.status === 'failed' ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-white/5 border-white/10 text-muted-foreground")}>
+                        <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors">
+                           <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center border shrink-0", item.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : item.status === 'failed' ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-white/5 border-white/10 text-muted-foreground")}>
                               {item.status === 'success' ? <CheckCircle2 className="w-5 h-5" /> : item.status === 'failed' ? <AlertCircle className="w-5 h-5" /> : <FileJson className="w-5 h-5" />}
                            </div>
                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold truncate">{item.name}</span><Badge className="text-[8px] h-4 uppercase">{item.status}</Badge></div>
+                              <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold truncate">{item.name}</span><Badge className="text-[8px] h-4 uppercase bg-white/5">{item.status}</Badge></div>
                               {item.status !== 'pending' && item.status !== 'success' && item.status !== 'failed' && <Progress value={item.progress} className="h-1 mt-2" />}
-                              {item.error && <p className="text-[9px] text-rose-400 mt-1 truncate">{item.error}</p>}
+                              {item.error && <p className="text-[9px] text-rose-400 mt-1 truncate font-medium">{item.error}</p>}
                            </div>
                         </div>
                       ))}

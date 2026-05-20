@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
@@ -12,11 +11,11 @@ import {
   List,
   Copy,
   Loader2,
-  Layers,
   ChevronRight,
   PlusCircle,
   FolderPlus,
-  AlertCircle,
+  MoreVertical,
+  Send,
   Eye
 } from "lucide-react";
 
@@ -35,9 +34,7 @@ import {
   updateDoc,
   query,
   orderBy,
-  serverTimestamp,
-  getDocs,
-  where
+  serverTimestamp
 } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
@@ -66,22 +63,21 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuPortal
+} from "@/components/ui/dropdown-menu";
 
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { logAction } from "@/services/audit";
 
 export default function MockTestManagementPage() {
   const db = useFirestore();
   const { user } = useUser();
-  const router = useRouter();
   const { toast } = useToast();
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -91,13 +87,11 @@ export default function MockTestManagementPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
 
-  // Fetch Exams
   const examsQuery = useMemoFirebase(() =>
     db ? query(collection(db, "exams"), orderBy("name", "asc")) : null,
     [db]);
   const { data: exams } = useCollection<any>(examsQuery);
 
-  // Fetch All Mock Tests
   const mockTestsQuery = useMemoFirebase(() =>
     db ? query(collection(db, "mockTests"), orderBy("createdAt", "desc")) : null,
     [db]);
@@ -114,7 +108,7 @@ export default function MockTestManagementPage() {
 
   const handleDeleteMock = async (id: string, title: string) => {
     if (!db || !user) return;
-    if (!window.confirm(`Confirm permanent deletion of "${title}"?`)) return;
+    if (!confirm(`Delete "${title}" permanently?`)) return;
 
     setDeletingId(id);
     try {
@@ -135,7 +129,6 @@ export default function MockTestManagementPage() {
       const docRef = await addDoc(collection(db, "mockTests"), {
         ...data,
         title: `${data.title} (Copy)`,
-        slug: `${data.slug}-copy`,
         status: "Draft",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -148,121 +141,92 @@ export default function MockTestManagementPage() {
   };
 
   return (
-    <div className="space-y-4 md:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12 px-2 md:px-4">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-headline font-bold tracking-tight">Mock Test <span className="text-accent">Manager</span></h1>
-          <p className="text-muted-foreground text-xs mt-0.5">Orchestrate exam-specific mock series with hierarchical mapping.</p>
+          <h1 className="text-2xl font-headline font-bold">Mock Test <span className="text-accent">Manager</span></h1>
+          <p className="text-muted-foreground text-sm mt-1">Manage exam-specific series and scoring rules.</p>
         </div>
-        <div className="flex items-center gap-2 self-end sm:self-auto w-full sm:w-auto">
-          <Link href="/admin/upload-json" className="flex-1 sm:flex-none">
-            <Button variant="outline" size="sm" className="w-full rounded-lg border-white/10 h-9 text-xs">
-              <UploadCloud className="w-3.5 h-3.5 mr-1.5" /> Ingest Content
+        <div className="flex items-center gap-3">
+          <Link href="/admin/upload-json">
+            <Button variant="outline" className="rounded-xl border-white/10 gap-2 h-11">
+              <UploadCloud className="w-4 h-4" /> Ingest
             </Button>
           </Link>
-          <Button onClick={() => { setEditingItem(null); setIsModalOpen(true); }} size="sm" className="flex-1 sm:flex-none bg-primary text-white rounded-lg shadow-md shadow-primary/10 h-9 text-xs font-semibold">
-            <Plus className="w-3.5 h-3.5 mr-1.5" /> New Mock Series
+          <Button onClick={() => { setEditingItem(null); setIsModalOpen(true); }} className="bg-primary text-white rounded-xl gap-2 h-11 shadow-lg shadow-primary/20">
+            <Plus className="w-4 h-4" /> New Mock
           </Button>
         </div>
       </div>
 
-      <Card className="glass border-white/5 shadow-md overflow-hidden">
-        <CardContent className="p-2 md:p-3 flex flex-col md:flex-row gap-3 items-center">
+      <Card className="glass border-white/10 overflow-hidden">
+        <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-center">
           <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full md:w-auto">
-            <TabsList className="bg-white/5 border-white/5 h-9 p-0.5">
-              <TabsTrigger value="all" className="px-3 text-[10px] uppercase font-bold tracking-wider h-8">All</TabsTrigger>
-              <TabsTrigger value="Draft" className="px-3 text-[10px] uppercase font-bold tracking-wider h-8">Draft</TabsTrigger>
-              <TabsTrigger value="Published" className="px-3 text-[10px] uppercase font-bold tracking-wider h-8">Live</TabsTrigger>
+            <TabsList className="bg-white/5 border-white/5 h-10">
+              <TabsTrigger value="all" className="px-6 text-xs font-bold uppercase">All</TabsTrigger>
+              <TabsTrigger value="Draft" className="px-6 text-xs font-bold uppercase">Draft</TabsTrigger>
+              <TabsTrigger value="Published" className="px-6 text-xs font-bold uppercase">Live</TabsTrigger>
             </TabsList>
           </Tabs>
 
           <div className="relative flex-1 w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/70" />
-            <Input className="pl-9 bg-white/5 border-white/5 rounded-lg h-9 text-xs focus-visible:ring-primary/30" placeholder="Search tests by title..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input className="pl-10 bg-white/5 border-white/5 rounded-xl h-10 text-sm" placeholder="Search by title..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           </div>
 
-          <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/5 shrink-0 ml-auto md:ml-0 self-end md:self-auto">
-            <Button variant="ghost" size="icon" className={cn("h-8 w-8 rounded-md transition-all", viewMode === "table" ? "bg-white/10 text-white shadow" : "text-muted-foreground")} onClick={() => setViewMode("table")}><List className="w-3.5 h-3.5" /></Button>
-            <Button variant="ghost" size="icon" className={cn("h-8 w-8 rounded-md transition-all", viewMode === "grid" ? "bg-white/10 text-white shadow" : "text-muted-foreground")} onClick={() => setViewMode("grid")}><LayoutGrid className="w-3.5 h-3.5" /></Button>
+          <div className="flex bg-white/5 p-1 rounded-xl border border-white/10">
+            <Button variant="ghost" size="icon" className={cn("h-8 w-8 rounded-lg", viewMode === "table" ? "bg-white/10 text-primary" : "text-muted-foreground")} onClick={() => setViewMode("table")}><List className="w-4 h-4" /></Button>
+            <Button variant="ghost" size="icon" className={cn("h-8 w-8 rounded-lg", viewMode === "grid" ? "bg-white/10 text-primary" : "text-muted-foreground")} onClick={() => setViewMode("grid")}><LayoutGrid className="w-4 h-4" /></Button>
           </div>
         </CardContent>
       </Card>
 
       {mocksLoading ? (
-        <div className="h-48 flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-[9px] font-bold uppercase tracking-widest animate-pulse text-muted-foreground/80">Syncing Library Hierarchy...</p>
-        </div>
+        <div className="h-48 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary opacity-20" /></div>
       ) : viewMode === "table" ? (
-        <Card className="glass border-white/5 overflow-hidden shadow-lg rounded-xl">
-          <div className="overflow-x-auto w-full custom-scrollbar">
-            <table className="w-full text-left text-xs border-collapse">
+        <Card className="glass border-white/10 overflow-hidden">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-white/5 bg-white/[0.01]">
-                  <th className="py-3 px-4 font-semibold text-muted-foreground/80 uppercase tracking-wider text-[9px] w-[40%]">Test Title & Exam</th>
-                  <th className="py-3 px-4 font-semibold text-muted-foreground/80 uppercase tracking-wider text-[9px] w-[20%]">Mapping</th>
-                  <th className="py-3 px-4 font-semibold text-muted-foreground/80 uppercase tracking-wider text-[9px] text-center w-[15%]">Scoring</th>
-                  <th className="py-3 px-4 font-semibold text-muted-foreground/80 uppercase tracking-wider text-[9px] w-[10%]">Lifecycle</th>
-                  <th className="py-3 px-4 font-semibold text-muted-foreground/80 uppercase tracking-wider text-[9px] text-right w-[15%]">Quick Actions</th>
+                  <th className="py-4 px-6 font-semibold text-muted-foreground">Test Details</th>
+                  <th className="py-4 px-6 font-semibold text-muted-foreground text-center">Marks per Q</th>
+                  <th className="py-4 px-6 font-semibold text-muted-foreground text-center">Total Score</th>
+                  <th className="py-4 px-6 font-semibold text-muted-foreground">Status</th>
+                  <th className="py-4 px-6 font-semibold text-muted-foreground text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {filteredMocks.map((mock: any) => (
                   <tr key={mock.id} className="hover:bg-white/[0.01] transition-colors group">
-                    <td className="py-3 px-4">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-semibold text-foreground text-sm tracking-tight leading-snug group-hover:text-primary transition-colors line-clamp-1">{mock.title}</span>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                           <span className="text-[9px] text-zinc-500 font-mono">ID: {mock.id?.slice(0, 8)}</span>
-                           <span className="text-[10px] text-primary/80 font-medium tracking-wide uppercase">{mock.examName || 'Generic'}</span>
-                        </div>
+                    <td className="py-4 px-6">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-foreground text-base">{mock.title}</span>
+                        <span className="text-[10px] text-primary font-bold uppercase tracking-widest">{mock.examName || 'Unmapped'}</span>
                       </div>
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1">
-                        <Badge variant="secondary" className="bg-white/5 text-zinc-300 border-white/5 text-[9px] px-1.5 font-medium">{mock.typeName || 'Full Test'}</Badge>
-                        {mock.subTypeName && <ChevronRight className="w-3 h-3 text-muted-foreground/40" />}
-                        {mock.subTypeName && <Badge variant="outline" className="bg-accent/5 text-accent border-accent/10 text-[9px] px-1.5 font-medium">{mock.subTypeName}</Badge>}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                       <div className="inline-flex flex-col items-center">
-                          <span className="text-xs font-semibold text-foreground">{mock.fullMarks || 0} Marks</span>
-                          <span className="text-[9px] text-muted-foreground/70">{mock.totalQuestions} Qs • {mock.marksPerQuestion || 1} ea</span>
-                       </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge variant="outline" className={cn(
-                        "h-5 font-semibold text-[9px] px-2 gap-1 rounded-md", 
-                        mock.status === 'Published' ? "bg-emerald-500/5 text-emerald-400 border-emerald-500/20" : "bg-amber-500/5 text-amber-400 border-amber-500/20"
-                      )}>
-                        {mock.status === 'Published' ? 'Live' : mock.status}
+                    <td className="py-4 px-6 text-center font-mono">{mock.marksPerQuestion || 1}</td>
+                    <td className="py-4 px-6 text-center font-bold text-accent">{mock.fullMarks || 0}</td>
+                    <td className="py-4 px-6">
+                      <Badge className={cn("h-6", mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20")}>
+                        {mock.status}
                       </Badge>
                     </td>
-                    <td className="py-3 px-4 text-right">
-                       <div className="flex items-center justify-end gap-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/5" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /></Button>
-                              </TooltipTrigger>
-                              <TooltipContent><p>Edit Configuration</p></TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/5" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /></Button>
-                              </TooltipTrigger>
-                              <TooltipContent><p>Duplicate</p></TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock.id, mock.title)} disabled={deletingId === mock.id}>
-                                  {deletingId === mock.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent><p>Delete Forever</p></TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                    <td className="py-4 px-6 text-right">
+                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                               <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10"><MoreVertical className="w-4 h-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuPortal>
+                              <DropdownMenuContent align="end" className="glass border-white/10 w-48">
+                                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
+                                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => window.open(`/exams/${mock.categoryId}/${mock.examId}/mock/${mock.id}`, '_blank')}><Eye className="w-3.5 h-3.5" /> Preview</DropdownMenuItem>
+                                <DropdownMenuItem className="text-destructive gap-2 cursor-pointer focus:bg-rose-500/10" onClick={() => handleDeleteMock(mock.id, mock.title)}><Trash2 className="w-3.5 h-3.5" /> Delete Forever</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenuPortal>
+                          </DropdownMenu>
                        </div>
                     </td>
                   </tr>
@@ -272,27 +236,28 @@ export default function MockTestManagementPage() {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredMocks.map((mock: any) => (
-            <Card key={mock.id} className="glass border-white/5 p-4 flex flex-col gap-4 group hover:border-primary/30 transition-all duration-300 shadow-md relative overflow-hidden rounded-xl">
-              <div className="flex justify-between items-center">
-                <Badge className="bg-white/5 text-zinc-300 text-[9px] px-1.5 h-5">{mock.typeName || "Full Test"}</Badge>
-                <Badge className={cn("h-5 text-[9px] px-1.5 rounded-md", mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400")}>{mock.status}</Badge>
-              </div>
-              
-              <div className="space-y-0.5">
-                <h3 className="font-semibold text-sm leading-snug group-hover:text-primary transition-colors line-clamp-2 min-h-[2.5rem]">{mock.title}</h3>
-                <p className="text-[9px] text-primary/80 font-medium tracking-wide uppercase">{mock.examName}</p>
+            <Card key={mock.id} className="glass border-white/10 p-6 flex flex-col gap-4 group hover:border-primary/40 transition-all duration-300 shadow-xl">
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <h3 className="font-bold text-lg leading-tight group-hover:text-primary transition-colors line-clamp-1">{mock.title}</h3>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{mock.examName}</p>
+                </div>
+                <Badge className={cn("h-6", mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400")}>{mock.status}</Badge>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 py-2 border-y border-white/5 text-xs">
-                <div className="space-y-0.5"><p className="text-[9px] text-muted-foreground uppercase">Max Marks</p><p className="text-base font-bold">{mock.fullMarks}</p></div>
-                <div className="space-y-0.5 border-l border-white/5 pl-3"><p className="text-[9px] text-muted-foreground uppercase">Duration</p><p className="text-base font-bold">{mock.durationMinutes} m</p></div>
+              <div className="grid grid-cols-2 gap-4 py-3 border-y border-white/5">
+                <div className="space-y-1"><p className="text-[10px] text-muted-foreground uppercase font-bold">Max Score</p><p className="text-xl font-bold">{mock.fullMarks}</p></div>
+                <div className="space-y-1 border-l border-white/5 pl-4"><p className="text-[10px] text-muted-foreground uppercase font-bold">Time (m)</p><p className="text-xl font-bold">{mock.durationMinutes}</p></div>
               </div>
 
-              <div className="flex justify-end gap-1.5 mt-auto pt-1">
-                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md hover:bg-white/5" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-3.5 h-3.5" /></Button>
-                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock.id, mock.title)} disabled={deletingId === mock.id}><Trash2 className="w-3.5 h-3.5" /></Button>
+              <div className="flex justify-between items-center mt-auto pt-2">
+                 <div className="text-[10px] font-bold text-muted-foreground uppercase">{mock.totalQuestions} Questions</div>
+                 <div className="flex gap-2">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock.id, mock.title)}><Trash2 className="w-4 h-4" /></Button>
+                 </div>
               </div>
             </Card>
           ))}
@@ -423,7 +388,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       const selectedType = mockTypes?.find((t: any) => t.id === formData.typeId);
       const selectedSubType = subTypes?.find((s: any) => s.id === formData.subTypeId);
 
-      // Auto-calculate full marks for standardized schema
+      // CRITICAL: Calculate standardized marks
       const fullMarks = (formData.totalQuestions || 0) * (formData.marksPerQuestion || 1);
 
       const data = {
@@ -445,7 +410,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         await logAction(db, user, "create_mock", "new", "mock_test", `Created: ${formData.title}`);
       }
       onClose();
-      toast({ title: "Synchronized Successfully" });
+      toast({ title: "Mock Saved Successfully" });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally { setIsSaving(false); }
@@ -453,42 +418,42 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg glass border-white/10 max-h-[90vh] overflow-y-auto p-5">
+      <DialogContent className="max-w-lg glass border-white/10 max-h-[90vh] overflow-y-auto pointer-events-auto">
         <DialogHeader>
-          <DialogTitle className="text-lg font-bold">
-             {editingItem ? "Edit Configuration" : "New Mock Series"}
+          <DialogTitle className="text-xl font-headline font-bold">
+             {editingItem ? "Edit Mock Series" : "New Mock Series"}
           </DialogTitle>
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 border-y border-white/5 mt-4">
-          <div className="md:col-span-2 space-y-1">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground/80">Series Title</Label>
-            <Input className="bg-white/5 border-white/10 h-10" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
+          <div className="md:col-span-2 space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Series Title</Label>
+            <Input className="bg-white/5 border-white/10 h-11" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
           </div>
 
-          <div className="space-y-1">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground/80">Examination</Label>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Target Exam</Label>
             <Select value={formData.examId} onValueChange={(v) => setFormData({ ...formData, examId: v, typeId: "", subTypeId: "" })}>
-              <SelectTrigger className="bg-white/5 border-white/10 h-10"><SelectValue placeholder="Select Exam" /></SelectTrigger>
+              <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Choose Exam" /></SelectTrigger>
               <SelectContent className="glass">
                 {exams?.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground/80">Mock Category</Label>
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Mock Category</Label>
               <button onClick={() => setIsAddingType(true)} className="text-[10px] text-primary hover:underline">+ New</button>
             </div>
             {isAddingType ? (
               <div className="flex gap-1">
-                <Input size="sm" className="h-10 text-xs bg-white/10" value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Type name..." />
-                <Button size="sm" onClick={handleAddType} className="h-10 w-10 p-0"><PlusCircle className="w-4 h-4" /></Button>
+                <Input size="sm" className="h-11 text-xs bg-white/10" value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Name..." />
+                <Button size="sm" onClick={handleAddType} className="h-11 w-11 p-0"><PlusCircle className="w-4 h-4" /></Button>
               </div>
             ) : (
               <Select value={formData.typeId} onValueChange={(v) => setFormData({ ...formData, typeId: v, subTypeId: "" })} disabled={!formData.examId}>
-                <SelectTrigger className="bg-white/5 border-white/10 h-10"><SelectValue placeholder="Select Type" /></SelectTrigger>
+                <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Select Type" /></SelectTrigger>
                 <SelectContent className="glass">
                   {mockTypes?.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>)}
                 </SelectContent>
@@ -496,64 +461,40 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
             )}
           </div>
 
-          {formData.typeId && (
-            <div className="md:col-span-2 space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground/80">Subject Focus</Label>
-                <button onClick={() => setIsAddingSubType(true)} className="text-[10px] text-primary hover:underline">+ New</button>
-              </div>
-              {isAddingSubType ? (
-                <div className="flex gap-1">
-                  <Input size="sm" className="h-10 text-xs bg-white/10" value={newSubTypeName} onChange={(e) => setNewSubTypeName(e.target.value)} placeholder="Subject..." />
-                  <Button size="sm" onClick={handleAddSubType} className="h-10 w-10 p-0"><FolderPlus className="w-4 h-4" /></Button>
-                </div>
-              ) : (
-                <Select value={formData.subTypeId} onValueChange={(v) => setFormData({ ...formData, subTypeId: v })}>
-                  <SelectTrigger className="bg-white/5 border-white/10 h-10"><SelectValue placeholder="All Subjects" /></SelectTrigger>
-                  <SelectContent className="glass">
-                    {subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 md:col-span-2 gap-3">
-            <div className="space-y-1">
-               <Label className="text-[10px] uppercase font-bold text-muted-foreground/80">Marks per Q</Label>
-               <Input type="number" step="0.5" className="bg-white/5 border-white/10 h-10" value={formData.marksPerQuestion} onChange={(e) => setFormData({ ...formData, marksPerQuestion: parseFloat(e.target.value) || 1 })} />
-            </div>
-            <div className="space-y-1">
-               <Label className="text-[10px] uppercase font-bold text-muted-foreground/80">Negative Marks</Label>
-               <Input type="number" step="0.01" className="bg-white/5 border-white/10 h-10" value={formData.negativeMarks} onChange={(e) => setFormData({ ...formData, negativeMarks: parseFloat(e.target.value) || 0 })} />
-            </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Marks per Q</Label>
+            <Input type="number" step="0.1" className="bg-white/5 border-white/10 h-11" value={formData.marksPerQuestion} onChange={(e) => setFormData({ ...formData, marksPerQuestion: parseFloat(e.target.value) || 0 })} />
           </div>
 
-          <div className="grid grid-cols-2 md:col-span-2 gap-3">
-            <div className="space-y-1">
-               <Label className="text-[10px] uppercase font-bold text-muted-foreground/80">Total Questions</Label>
-               <Input type="number" className="bg-white/5 border-white/10 h-10" value={formData.totalQuestions} onChange={(e) => setFormData({ ...formData, totalQuestions: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div className="space-y-1">
-               <Label className="text-[10px] uppercase font-bold text-muted-foreground/80">Duration (m)</Label>
-               <Input type="number" className="bg-white/5 border-white/10 h-10" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 0 })} />
-            </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Negative per Q</Label>
+            <Input type="number" step="0.01" className="bg-white/5 border-white/10 h-11" value={formData.negativeMarks} onChange={(e) => setFormData({ ...formData, negativeMarks: parseFloat(e.target.value) || 0 })} />
           </div>
 
-          <div className="md:col-span-2 flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Questions Count</Label>
+            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.totalQuestions} onChange={(e) => setFormData({ ...formData, totalQuestions: parseInt(e.target.value) || 0 })} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Duration (min)</Label>
+            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 0 })} />
+          </div>
+
+          <div className="md:col-span-2 flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
             <div className="space-y-0.5">
-              <Label className="text-xs font-semibold">Free Test</Label>
-              <p className="text-[10px] text-muted-foreground">Accessible without premium plan</p>
+              <Label className="text-sm font-bold">Standard Release</Label>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-tighter">Set to Live immediately upon saving</p>
             </div>
-            <Switch checked={formData.isFree} onCheckedChange={(v) => setFormData({ ...formData, isFree: v })} />
+            <Switch checked={formData.status === 'Published'} onCheckedChange={(v) => setFormData({ ...formData, status: v ? 'Published' : 'Draft' })} />
           </div>
         </div>
 
         <DialogFooter className="gap-2 pt-4">
-          <Button variant="outline" onClick={onClose} disabled={isSaving} className="border-white/5 flex-1">Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving} className="bg-primary hover:bg-primary/90 text-white flex-[2]">
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Sync Metadata
+          <Button variant="outline" onClick={onClose} disabled={isSaving} className="border-white/10 h-12 flex-1">Cancel</Button>
+          <Button onClick={handleSave} disabled={isSaving} className="bg-primary hover:bg-primary/90 text-white font-bold h-12 flex-[2] shadow-lg shadow-primary/20">
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+            Sync Mock Test
           </Button>
         </DialogFooter>
       </DialogContent>
