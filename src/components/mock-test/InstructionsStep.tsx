@@ -13,6 +13,12 @@ interface Props {
 }
 
 export const InstructionsStep = ({ testData, onNext }: Props) => {
+  const totalMarks = (testData.questions || []).reduce(
+    (acc: number, q: any) =>
+      acc + Number(q?.positiveMarks ?? q?.marks?.positive ?? 1),
+    0
+  );
+
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
       <Card className="glass border-white/10 shadow-2xl overflow-hidden rounded-[2rem]">
@@ -48,14 +54,14 @@ export const InstructionsStep = ({ testData, onNext }: Props) => {
               <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Max Marks</p>
               <div className="flex items-center gap-2 text-xl font-bold">
                 <Target className="w-5 h-5 text-emerald-400" />
-                {testData.questions.reduce((sum, q) => sum + q.marks, 0)}
+                {totalMarks}
               </div>
             </div>
             <div className="space-y-1">
               <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Negative Marks</p>
               <div className="flex items-center gap-2 text-xl font-bold text-rose-400">
                 <AlertTriangle className="w-5 h-5" />
-                0.33
+                {testData.negativeMarks || 0.33}
               </div>
             </div>
           </div>
@@ -79,7 +85,7 @@ export const InstructionsStep = ({ testData, onNext }: Props) => {
                 <div className="w-5 h-5 rounded bg-indigo-500"></div> You have NOT answered the question, but have marked the question for review.
               </li>
               <li>Navigating to a Question: To answer a question, you can click on the question number in the Question Palette at the right of your screen.</li>
-              <li>Correct answer gives +1 marks, Incorrect answer gives -0.33 marks.</li>
+              <li>Marks per correct answer: +{testData.marksPerQuestion || 1}, Incorrect answer penalty: -{testData.negativeMarks || 0.33}.</li>
               <li>Do not refresh the page or close the window during the test.</li>
             </ul>
           </div>

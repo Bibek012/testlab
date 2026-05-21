@@ -1,13 +1,13 @@
+
 "use client";
 
 import React, { useMemo, useEffect, useState, useRef } from "react";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Trophy, CheckCircle, Clock, Target, RotateCcw, BookOpen, Zap, TrendingUp, Loader2 } from "lucide-react";
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
 import Link from "next/link";
 import { useUser, useFirestore } from "@/firebase";
@@ -48,17 +48,21 @@ export const ResultPage = ({
     let maxPossibleScore = 0;
     const analysis: any[] = [];
 
-    testData.questions.forEach(q => {
+    (testData.questions || []).forEach(q => {
       const resp = responses[q.id];
-      // Priority: Question-level marks > Mock-level marks > Defaults
-      const pos = q.marks?.positive ?? testData.marksPerQuestion ?? 1;
-      const neg = q.marks?.negative ?? testData.negativeMarks ?? 0.33;
-      const skip = q.marks?.skip ?? 0;
+      const selectedOption = resp?.selectedOptionId;
+      const correctOption = q.raw_answer_id ?? q.answer;
+
+      const pos = Number(q?.marks?.positive ?? q?.positiveMarks ?? testData.marksPerQuestion ?? 1);
+      const neg = Number(q?.marks?.negative ?? q?.negativeMarks ?? testData.negativeMarks ?? 0);
+      const skip = Number(q?.marks?.skip ?? 0);
 
       maxPossibleScore += pos;
 
-      const isCorrect = resp?.selectedOptionId === q.answer;
-      const isWrong = resp?.selectedOptionId !== null && !isCorrect;
+      const isSkipped = selectedOption === null || selectedOption === undefined;
+      const isCorrect = !isSkipped && Number(selectedOption) === Number(correctOption);
+      const isWrong = !isSkipped && !isCorrect;
+      
       let marksAwarded = 0;
 
       if (isCorrect) {
@@ -77,8 +81,8 @@ export const ResultPage = ({
 
       analysis.push({
         questionId: q.id,
-        selectedAnswer: resp?.selectedOptionId || null,
-        correctAnswer: q.answer,
+        selectedAnswer: selectedOption || null,
+        correctAnswer: correctOption,
         isCorrect,
         isWrong,
         marksAwarded,
@@ -88,7 +92,7 @@ export const ResultPage = ({
 
     const timeTaken = Math.floor((endTime - startTime) / 1000);
     const accuracy = (correct + incorrect > 0) ? (correct / (correct + incorrect)) * 100 : 0;
-    const percentage = (totalScore / (maxPossibleScore || 1)) * 100;
+    const percentage = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
 
     return { 
       correct, 
@@ -98,13 +102,13 @@ export const ResultPage = ({
       maxPossibleScore,
       timeTaken, 
       accuracy, 
-      percentage,
+      percentage: percentage.toFixed(2),
       totalQuestions: testData.questions.length,
       questionAnalysis: analysis
     };
   }, [testData, responses, startTime, endTime]);
 
-  // Unified Persistence Logic
+  // Persistence Logic
   useEffect(() => {
     const saveResult = async () => {
       if (user && db && !saveInitiated.current) {
@@ -145,7 +149,7 @@ export const ResultPage = ({
       }
     };
     saveResult();
-  }, [user, db, testData.id, metrics, responses]);
+  }, [user, db, testData.id, metrics, responses, userLanguage]);
 
   const chartData = [
     { name: 'Correct', value: metrics.correct, color: '#10b981' },
@@ -191,7 +195,7 @@ export const ResultPage = ({
           </Card>
           <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
              <TrendingUp className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-indigo-400" />
-             <div className="text-3xl font-bold font-headline text-indigo-400">{metrics.percentage.toFixed(1)}%</div>
+             <div className="text-3xl font-bold font-headline text-indigo-400">{metrics.percentage}%</div>
              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Percentile</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">

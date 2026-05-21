@@ -14,7 +14,7 @@ import { ResultPage } from "@/components/mock-test/ResultPage";
 import { SolutionInterface } from "@/components/mock-test/SolutionInterface";
 import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
-import { doc, setDoc, getDoc, deleteDoc, serverTimestamp, collection, query, orderBy } from "firebase/firestore";
+import { doc, setDoc, getDoc, deleteDoc, serverTimestamp, collection, query } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 
 export type TestStep = 'instructions' | 'config' | 'test' | 'result' | 'solution';
@@ -54,28 +54,40 @@ export default function MockTestEnginePage() {
       examId: mockMetadata.examId,
       examName: mockMetadata.examName || mockMetadata.examId,
       durationMinutes: mockMetadata.durationMinutes || 90,
-      marksPerQuestion: mockMetadata.marksPerQuestion || 1,
-      negativeMarks: mockMetadata.negativeMarks || 0,
-      fullMarks: mockMetadata.fullMarks || 0,
+      marksPerQuestion: Number(mockMetadata.marksPerQuestion || 1),
+      negativeMarks: Number(mockMetadata.negativeMarks || 0),
+      fullMarks:
+        Number(mockMetadata.fullMarks) ||
+        (questions || []).reduce(
+          (acc: number, q: any) =>
+            acc +
+            Number(
+              q?.marks?.positive ??
+              q?.positiveMarks ??
+              mockMetadata?.marksPerQuestion ??
+              1
+            ),
+          0
+        ),
       // Normalize sections
-      sections: (sections && sections.length > 0) ? sections.map((section: any, index: number) => ({
+      sections: (sections && sections.length > 0) ? (sections || []).map((section: any, index: number) => ({
         ...section,
         id: section.id || `section_${index}`,
         title: section.title || { en: `Section ${index + 1}`, hn: `अनुभाग ${index + 1}` },
+        questionCount: section.questionCount || 0,
       })) : [
         { id: 'default', title: { en: 'General', hn: 'सामान्य' } }
       ],
       // Normalize questions with robust mapping for Testbook-style JSON
       questions: (questions || [])
+        .filter((q: any) => q && (q.question || q.en || q.en_html))
         .map((q: any, index: number) => {
-          // FLATTENING LOGIC: Extract question text from nested 'question' object if present
           const base = q.question || q;
           const sol = q.explanation || q.solution || { en: "", hn: "" };
           
           return {
             ...q,
             id: q.id || q.questionId || `question_${index}`,
-            // Root-level fields expected by the UI
             en: base.en || q.en || "",
             hn: base.hn || q.hn || "",
             en_html: base.en_html || q.en_html || "",
@@ -83,11 +95,40 @@ export default function MockTestEnginePage() {
             order: q.order || index + 1,
             sectionId: q.sectionId || "default",
             options: Array.isArray(q.options) ? q.options : [],
-            marks: q.marks || {
-              positive: q.positiveMarks || mockMetadata.marksPerQuestion || 1,
-              negative: q.negativeMarks || mockMetadata.negativeMarks || 0,
-              skip: 0,
+            marks: {
+              positive:
+                Number(
+                  q?.marks?.positive ??
+                  q?.positiveMarks ??
+                  mockMetadata?.marksPerQuestion ??
+                  1
+                ),
+              negative:
+                Number(
+                  q?.marks?.negative ??
+                  q?.negativeMarks ??
+                  mockMetadata?.negativeMarks ??
+                  0
+                ),
+              skip:
+                Number(
+                  q?.marks?.skip ?? 0
+                ),
             },
+            positiveMarks:
+              Number(
+                q?.marks?.positive ??
+                q?.positiveMarks ??
+                mockMetadata?.marksPerQuestion ??
+                1
+              ),
+            negativeMarks:
+              Number(
+                q?.marks?.negative ??
+                q?.negativeMarks ??
+                mockMetadata?.negativeMarks ??
+                0
+              ),
             explanation: typeof sol === 'object' ? {
               en: sol.en || "",
               hn: sol.hn || "",
@@ -112,7 +153,7 @@ export default function MockTestEnginePage() {
         const initialResponses: Record<string, UserResponse> = {};
         (testData.questions || []).forEach((q: any) => {
           initialResponses[q.id] = {
-            questionId: q.id,
+            questionId: q.id || q.questionId || crypto.randomUUID(),
             selectedOptionId: null,
             status: 'not-visited',
             timeSpentSeconds: 0
