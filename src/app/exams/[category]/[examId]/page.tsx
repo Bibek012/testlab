@@ -19,30 +19,22 @@ import { collection, query, where, limit } from "firebase/firestore";
 
 export default function ExamDashboardPage() {
   const params = useParams();
-  const categorySlug = params.category as string;
   const examSlug = params.examId as string;
   const db = useFirestore();
 
-  // 1. Fetch Category by Slug
-  const catQuery = useMemoFirebase(() => 
-    db ? query(collection(db, "examCategories"), where("slug", "==", categorySlug), limit(1)) : null,
-  [db, categorySlug]);
-  const { data: categories, loading: catLoading } = useCollection<any>(catQuery);
-  const category = categories?.[0];
-
-  // 2. Fetch Exam by Slug within Category
+  // Find Exam by Slug globally - No category dependency to fix mock count issues
   const examQuery = useMemoFirebase(() => 
-    db && category ? query(
+    db ? query(
       collection(db, "exams"), 
-      where("categoryId", "==", category.id), 
       where("slug", "==", examSlug), 
       limit(1)
     ) : null,
-  [db, category, examSlug]);
+  [db, examSlug]);
+  
   const { data: exams, loading: examLoading } = useCollection<any>(examQuery);
   const exam = exams?.[0];
 
-  if (catLoading || (category && examLoading)) {
+  if (examLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
@@ -51,12 +43,8 @@ export default function ExamDashboardPage() {
     );
   }
 
-  if (!category) {
-    return <ResourceNotFound type="Category" backUrl="/#exams" />;
-  }
-
   if (!exam) {
-    return <ResourceNotFound type="Exam" message={`The exam series '${examSlug}' could not be found.`} backUrl={`/exams/${categorySlug}`} />;
+    return <ResourceNotFound type="Exam" message={`The exam series '${examSlug}' could not be found in our global registry.`} backUrl="/exams/all" />;
   }
 
   return (
@@ -69,7 +57,7 @@ export default function ExamDashboardPage() {
 
         <div className="container mx-auto px-4 md:px-6">
           <Breadcrumbs items={[
-            { label: category.title, href: `/exams/${category.slug}` },
+            { label: "All Exams", href: "/exams/all" },
             { label: exam.name }
           ]} />
 
@@ -89,21 +77,21 @@ export default function ExamDashboardPage() {
                 </div>
               </div>
               <p className="text-sm md:text-lg text-muted-foreground leading-relaxed max-w-2xl">
-                {exam.description}
+                {exam.description || `Master the ${exam.name} with AI-powered insights and comprehensive mock series.`}
               </p>
               
               <div className="flex flex-wrap gap-4 md:gap-6 pt-2">
                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
                     <BookOpen className="w-4 h-4 text-primary" />
-                    <span>{exam.testsCount || 0} Mocks</span>
+                    <span>{exam.mockCount || exam.testsCount || 0} Mocks Available</span>
                  </div>
                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
                     <Sparkles className="w-4 h-4 text-accent" />
-                    <span>{exam.questionsCount || 0} Questions</span>
+                    <span>{exam.questionCount || exam.questionsCount || 0} Questions</span>
                  </div>
                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
                     <Users className="w-4 h-4 text-emerald-400" />
-                    <span>Live Aspirants</span>
+                    <span>Verified Content</span>
                  </div>
               </div>
             </div>
@@ -111,7 +99,7 @@ export default function ExamDashboardPage() {
             <div className="lg:col-span-4 flex justify-start lg:justify-end">
                <Button size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white rounded-2xl h-14 md:h-16 px-8 md:px-10 font-bold text-base md:text-lg gap-3 shadow-xl shadow-primary/20 group">
                   <Play className="w-5 h-5 fill-current" />
-                  Attempt Mock
+                  Explore Mocks
                   <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                </Button>
             </div>
@@ -128,7 +116,7 @@ export default function ExamDashboardPage() {
               </section>
 
               <section className="pt-4 md:pt-8">
-                <MockTestList examId={exam.id} categorySlug={categorySlug} />
+                <MockTestList examId={exam.id} categorySlug={exam.categorySlug || 'general'} />
               </section>
             </div>
 

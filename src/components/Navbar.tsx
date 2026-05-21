@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Menu, X, Rocket, Search, LogOut, User, LayoutDashboard, Bookmark } from "lucide-react";
+import { Menu, X, Rocket, Search, LogOut, User, LayoutDashboard, Bookmark, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useUser, useAuth } from "@/firebase";
@@ -49,9 +49,9 @@ export const Navbar = () => {
 
   const navLinks = [
     { name: "Home", href: "/" },
-    { name: "Exams", href: "/#exams" },
-    { name: "Mock Tests", href: "/#exams" },
+    { name: "All Exams", href: "/exams/all" },
     { name: "State Exams", href: "/exams/state" },
+    { name: "Saved", href: "/bookmarks" },
   ];
 
   return (
@@ -206,15 +206,6 @@ export const Navbar = () => {
                 {link.name}
               </Link>
             ))}
-            {user && (
-              <Link
-                href="/bookmarks"
-                className="text-lg font-medium py-3 hover:text-primary transition-colors border-b border-white/5"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                Saved Questions
-              </Link>
-            )}
             <div className="flex flex-col gap-3 pt-4">
               {user ? (
                 <>
