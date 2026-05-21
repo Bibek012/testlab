@@ -109,16 +109,16 @@ export default function MockTestManagementPage() {
     });
   }, [mockTests, searchQuery, activeTab]);
 
-  const handleDeleteMock = async (id: string, title: string) => {
+  const handleDeleteMock = async (mock: any) => {
     if (!db || !user) return;
 
-    if (!confirm(`Delete "${title}" permanently?`)) return;
+    if (!confirm(`Delete "${mock.title}" permanently?`)) return;
 
-    setDeletingId(id);
+    setDeletingId(mock.id);
 
     try {
       // Delete questions subcollection first
-      const questionsRef = collection(db, "mockTests", id, "questions");
+      const questionsRef = collection(db, "mockTests", mock.id, "questions");
       const questionsSnapshot = await getDocs(questionsRef);
 
       const batch = writeBatch(db);
@@ -128,22 +128,43 @@ export default function MockTestManagementPage() {
       });
 
       // Delete parent mock document
-      batch.delete(doc(db, "mockTests", id));
+      batch.delete(doc(db, "mockTests", mock.id));
 
       await batch.commit();
+
+      // Recalculate exam stats
+      try {
+        const allMocksSnapshot = await getDocs(query(collection(db, "mockTests")));
+        const remainingMocks = allMocksSnapshot.docs.filter(
+          (d) => d.data()?.examId === mock.examId
+        );
+
+        let totalQuestions = 0;
+        remainingMocks.forEach((mockDoc) => {
+          totalQuestions += mockDoc.data()?.totalQuestions || 0;
+        });
+
+        await updateDoc(doc(db, "exams", mock.examId), {
+          testsCount: remainingMocks.length,
+          questionsCount: totalQuestions,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (counterError) {
+        console.error("Counter update failed", counterError);
+      }
 
       await logAction(
         db,
         user,
         "delete_mock",
-        id,
+        mock.id,
         "mock_test",
-        `Deleted: ${title}`
+        `Deleted: ${mock.title}`
       );
 
       toast({
         title: "Deleted Successfully",
-        description: `"${title}" removed completely.`,
+        description: `"${mock.title}" removed completely.`,
       });
 
     } catch (error: any) {
@@ -260,7 +281,7 @@ export default function MockTestManagementPage() {
                             <DropdownMenuContent align="end" className="glass border-white/10 w-48">
                               <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
                               <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => window.open(`/exams/${mock.categoryId}/${mock.examId}/mock/${mock.id}`, '_blank')}><Eye className="w-3.5 h-3.5" /> Preview</DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive gap-2 cursor-pointer focus:bg-rose-500/10" onClick={() => handleDeleteMock(mock.id, mock.title)}><Trash2 className="w-3.5 h-3.5" /> Delete Forever</DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive gap-2 cursor-pointer focus:bg-rose-500/10" onClick={() => handleDeleteMock(mock)}><Trash2 className="w-3.5 h-3.5" /> Delete Forever</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenuPortal>
                         </DropdownMenu>
@@ -293,7 +314,7 @@ export default function MockTestManagementPage() {
                 <div className="text-[10px] font-bold text-muted-foreground uppercase">{mock.totalQuestions} Questions</div>
                 <div className="flex gap-2">
                   <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock.id, mock.title)}><Trash2 className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock)}><Trash2 className="w-4 h-4" /></Button>
                 </div>
               </div>
             </Card>
@@ -583,6 +604,27 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         );
 
         await batch.commit();
+      }
+
+      // Recalculate exam stats
+      try {
+        const allMocksSnapshot = await getDocs(query(collection(db, "mockTests")));
+        const relatedMocks = allMocksSnapshot.docs.filter(
+          (d) => d.data()?.examId === formData.examId
+        );
+
+        let totalQuestionsCount = 0;
+        relatedMocks.forEach((mockDoc) => {
+          totalQuestionsCount += mockDoc.data()?.totalQuestions || 0;
+        });
+
+        await updateDoc(doc(db, "exams", formData.examId), {
+          testsCount: relatedMocks.length,
+          questionsCount: totalQuestionsCount,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (statsError) {
+        console.error("Failed to update exam counters", statsError);
       }
 
       await logAction(
