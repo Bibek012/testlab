@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -21,7 +22,6 @@ export type TestStep = 'instructions' | 'config' | 'test' | 'result' | 'solution
 export default function MockTestEnginePage() {
   const params = useParams();
   const router = useRouter();
-  const category = params.category as string;
   const examId = params.examId as string;
   const mockId = params.mockId as string;
   
@@ -36,7 +36,7 @@ export default function MockTestEnginePage() {
   const [hasResumeData, setHasResumeData] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // REAL DATA FETCHING - Removed ID ordering as it's unreliable for uploaded JSON
+  // REAL DATA FETCHING
   const mockRef = useMemoFirebase(() => db ? doc(db, "mockTests", mockId) : null, [db, mockId]);
   const { data: mockMetadata, loading: mockLoading } = useDoc<any>(mockRef);
 
@@ -47,39 +47,60 @@ export default function MockTestEnginePage() {
   const { data: questions, loading: questionsLoading } = useCollection<any>(questionsQuery);
 
   const testData = useMemo<MockTestData | null>(() => {
-    if (!mockMetadata || !sections || !questions) return null;
+    if (!mockMetadata || !questions) return null;
     return {
       id: mockMetadata.id,
       title: mockMetadata.title,
-      examName: mockMetadata.examId,
+      examId: mockMetadata.examId,
+      examName: mockMetadata.examName || mockMetadata.examId,
       durationMinutes: mockMetadata.durationMinutes || 90,
+      marksPerQuestion: mockMetadata.marksPerQuestion || 1,
+      negativeMarks: mockMetadata.negativeMarks || 0,
+      fullMarks: mockMetadata.fullMarks || 0,
       // Normalize sections
-      sections: (sections || []).map((section: any, index: number) => ({
+      sections: (sections && sections.length > 0) ? sections.map((section: any, index: number) => ({
         ...section,
         id: section.id || `section_${index}`,
-        title: section.title || `Section ${index + 1}`,
-        questionCount: section.questionCount || 0,
-      })),
+        title: section.title || { en: `Section ${index + 1}`, hn: `अनुभाग ${index + 1}` },
+      })) : [
+        { id: 'default', title: { en: 'General', hn: 'सामान्य' } }
+      ],
       // Normalize questions with robust mapping for Testbook-style JSON
       questions: (questions || [])
-        .filter((q: any) => q && q.question)
-        .map((q: any, index: number) => ({
-          ...q,
-          id: q.id || q.questionId || `question_${index}`,
-          order: q.order || index + 1,
-          sectionId: q.sectionId || "default",
-          options: Array.isArray(q.options) ? q.options : [],
-          marks: q.marks || {
-            positive: 1,
-            negative: 0,
-            skip: 0,
-          },
-        }))
+        .map((q: any, index: number) => {
+          // FLATTENING LOGIC: Extract question text from nested 'question' object if present
+          const base = q.question || q;
+          const sol = q.explanation || q.solution || { en: "", hn: "" };
+          
+          return {
+            ...q,
+            id: q.id || q.questionId || `question_${index}`,
+            // Root-level fields expected by the UI
+            en: base.en || q.en || "",
+            hn: base.hn || q.hn || "",
+            en_html: base.en_html || q.en_html || "",
+            hn_html: base.hn_html || q.hn_html || "",
+            order: q.order || index + 1,
+            sectionId: q.sectionId || "default",
+            options: Array.isArray(q.options) ? q.options : [],
+            marks: q.marks || {
+              positive: q.positiveMarks || mockMetadata.marksPerQuestion || 1,
+              negative: q.negativeMarks || mockMetadata.negativeMarks || 0,
+              skip: 0,
+            },
+            explanation: typeof sol === 'object' ? {
+              en: sol.en || "",
+              hn: sol.hn || "",
+              en_html: sol.en_html || "",
+              hn_html: sol.hn_html || ""
+            } : { en: sol, hn: "" }
+          };
+        })
         .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
     };
   }, [mockMetadata, sections, questions]);
 
-  const dashboardUrl = `/exams/${category}/${examId}`;
+  const dashboardUrl = `/exams/${examId}`;
 
   // Check for resume data and initialize responses
   useEffect(() => {
@@ -91,7 +112,7 @@ export default function MockTestEnginePage() {
         const initialResponses: Record<string, UserResponse> = {};
         (testData.questions || []).forEach((q: any) => {
           initialResponses[q.id] = {
-            questionId: q.id || q.questionId || crypto.randomUUID(),
+            questionId: q.id,
             selectedOptionId: null,
             status: 'not-visited',
             timeSpentSeconds: 0
