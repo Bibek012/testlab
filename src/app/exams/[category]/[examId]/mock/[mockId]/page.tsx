@@ -36,14 +36,14 @@ export default function MockTestEnginePage() {
   const [hasResumeData, setHasResumeData] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // REAL DATA FETCHING
+  // REAL DATA FETCHING - Removed ID ordering as it's unreliable for uploaded JSON
   const mockRef = useMemoFirebase(() => db ? doc(db, "mockTests", mockId) : null, [db, mockId]);
   const { data: mockMetadata, loading: mockLoading } = useDoc<any>(mockRef);
 
-  const sectionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "sections"), orderBy("id", "asc")) : null, [db, mockId]);
+  const sectionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "sections")) : null, [db, mockId]);
   const { data: sections, loading: sectionsLoading } = useCollection<any>(sectionsQuery);
 
-  const questionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "questions"), orderBy("id", "asc")) : null, [db, mockId]);
+  const questionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "questions")) : null, [db, mockId]);
   const { data: questions, loading: questionsLoading } = useCollection<any>(questionsQuery);
 
   const testData = useMemo<MockTestData | null>(() => {
@@ -53,8 +53,29 @@ export default function MockTestEnginePage() {
       title: mockMetadata.title,
       examName: mockMetadata.examId,
       durationMinutes: mockMetadata.durationMinutes || 90,
-      sections: sections,
-      questions: questions
+      // Normalize sections
+      sections: (sections || []).map((section: any, index: number) => ({
+        ...section,
+        id: section.id || `section_${index}`,
+        title: section.title || `Section ${index + 1}`,
+        questionCount: section.questionCount || 0,
+      })),
+      // Normalize questions with robust mapping for Testbook-style JSON
+      questions: (questions || [])
+        .filter((q: any) => q && q.question)
+        .map((q: any, index: number) => ({
+          ...q,
+          id: q.id || q.questionId || `question_${index}`,
+          order: q.order || index + 1,
+          sectionId: q.sectionId || "default",
+          options: Array.isArray(q.options) ? q.options : [],
+          marks: q.marks || {
+            positive: 1,
+            negative: 0,
+            skip: 0,
+          },
+        }))
+        .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
     };
   }, [mockMetadata, sections, questions]);
 
@@ -68,9 +89,9 @@ export default function MockTestEnginePage() {
       // Initialize default empty responses if not already set
       if (Object.keys(responses).length === 0) {
         const initialResponses: Record<string, UserResponse> = {};
-        testData.questions.forEach(q => {
+        (testData.questions || []).forEach((q: any) => {
           initialResponses[q.id] = {
-            questionId: q.id,
+            questionId: q.id || q.questionId || crypto.randomUUID(),
             selectedOptionId: null,
             status: 'not-visited',
             timeSpentSeconds: 0
@@ -182,12 +203,16 @@ export default function MockTestEnginePage() {
     );
   }
 
-  if (!testData) {
+  // PREVENT EMPTY TEST CRASH
+  if (!testData || !testData.questions || testData.questions.length === 0) {
     return (
-      <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center p-6 text-center space-y-4">
+      <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4 p-6 text-center">
         <AlertCircle className="w-12 h-12 text-destructive" />
-        <h2 className="text-xl font-bold">Mock Test Not Found</h2>
-        <p className="text-muted-foreground">The test might have been unpublished or removed by admins.</p>
+        <h2 className="text-2xl font-bold">No Questions Found</h2>
+        <p className="text-muted-foreground max-w-md">
+          This mock test exists but no valid questions were loaded.
+          The uploaded content may be malformed or incomplete.
+        </p>
         <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
       </div>
     );
