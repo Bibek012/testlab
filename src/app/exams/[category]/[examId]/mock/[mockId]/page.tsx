@@ -23,6 +23,7 @@ export default function MockTestEnginePage() {
   const router = useRouter();
   const examId = params.examId as string;
   const mockId = params.mockId as string;
+  const category = params.category as string;
   
   const { user, loading: userLoading } = useUser();
   const db = useFirestore();
@@ -58,74 +59,76 @@ export default function MockTestEnginePage() {
       negativeMarks: Number(mockMetadata.negativeMarks || 0),
       fullMarks: Number(mockMetadata.fullMarks) || (questions.length * Number(mockMetadata.marksPerQuestion || 1)),
       
-      sections: (sections && sections.length > 0) ? sections.map((s: any, i: number) => ({
-        ...s,
-        id: s.id || `section_${i}`,
-        title: s.title || { en: `Section ${i + 1}`, hn: `अनुभाग ${i + 1}` },
+      sections: (sections && sections.length > 0) ? (sections || []).map((section: any, index: number) => ({
+        ...section,
+        id: section.id || `section_${index}`,
+        title: section.title || { en: `Section ${index + 1}`, hn: `अनुभाग ${index + 1}` },
+        questionCount: section.questionCount || 0,
       })) : [{ id: 'default', title: { en: 'General', hn: 'सामान्य' } }],
 
-      questions: questions.map((q: any, index: number) => {
-        const base = q.question || q;
-        const sol = q.explanation || q.solution || { en: "", hn: "" };
-        
-        // 1. Normalize Options: Ensure every option has a numeric ID
-        const options = (Array.isArray(q.options) ? q.options : []).map((opt: any, optIndex: number) => ({
-          ...opt,
-          id: opt.id !== undefined ? Number(opt.id) : optIndex + 1,
-        }));
+      questions: (questions || [])
+        .filter((q: any) => q && (q.question || q.en || q.en_html))
+        .map((q: any, index: number) => {
+          const base = q.question || q;
+          const sol = q.explanation || q.solution || { en: "", hn: "" };
+          
+          // 1. Normalize Options: Ensure every option has a numeric ID
+          const options = (Array.isArray(q.options) ? q.options : []).map((opt: any, optIndex: number) => ({
+            ...opt,
+            id: opt.id !== undefined ? Number(opt.id) : optIndex + 1,
+          }));
 
-        // 2. Resolve Correct Answer ID: STRATEGIC LOOKUP
-        let resolvedCorrectId = 0;
-        const rawId = q.raw_answer_id;
-        const rawAns = q.answer;
+          // 2. Resolve Correct Answer ID: STRATEGIC LOOKUP
+          let resolvedCorrectId = 0;
+          const rawId = q.raw_answer_id;
+          const rawAns = q.answer;
 
-        if (rawId !== undefined && rawId !== null && !isNaN(Number(rawId))) {
-          // Priority 1: raw_answer_id (Numeric ID)
-          resolvedCorrectId = Number(rawId);
-        } else if (rawAns !== undefined && rawAns !== null) {
-          // Priority 2: Match answer text to option text to find ID
-          const answerText = String(rawAns).trim().toLowerCase();
-          const match = options.find(o => 
-            String(o.en || "").trim().toLowerCase() === answerText || 
-            String(o.hn || "").trim().toLowerCase() === answerText ||
-            String(o.text || "").trim().toLowerCase() === answerText
-          );
-          if (match) {
-            resolvedCorrectId = Number(match.id);
-          } else if (!isNaN(Number(rawAns))) {
-            // Fallback: If text is actually a number, use it as ID
-            resolvedCorrectId = Number(rawAns);
+          if (rawId !== undefined && rawId !== null && !isNaN(Number(rawId))) {
+            resolvedCorrectId = Number(rawId);
+          } else if (rawAns !== undefined && rawAns !== null) {
+            const answerText = String(rawAns).trim().toLowerCase();
+            const match = options.find(o => 
+              String(o.en || "").trim().toLowerCase() === answerText || 
+              String(o.hn || "").trim().toLowerCase() === answerText ||
+              String(o.text || "").trim().toLowerCase() === answerText
+            );
+            if (match) {
+              resolvedCorrectId = Number(match.id);
+            } else if (!isNaN(Number(rawAns))) {
+              resolvedCorrectId = Number(rawAns);
+            }
           }
-        }
 
-        return {
-          ...q,
-          id: q.id,
-          en: base.en || q.en || "",
-          hn: base.hn || q.hn || "",
-          en_html: base.en_html || q.en_html || "",
-          hn_html: base.hn_html || q.hn_html || "",
-          order: q.order || index + 1,
-          sectionId: q.sectionId || "default",
-          options,
-          correctOptionId: resolvedCorrectId,
-          marks: {
-            positive: Number(q?.marks?.positive ?? mockMetadata?.marksPerQuestion ?? 1),
-            negative: Number(q?.marks?.negative ?? mockMetadata?.negativeMarks ?? 0),
-            skip: Number(q?.marks?.skip ?? 0),
-          },
-          explanation: typeof sol === 'object' ? {
-            en: sol.en || "",
-            hn: sol.hn || "",
-            en_html: sol.en_html || "",
-            hn_html: sol.hn_html || ""
-          } : { en: sol, hn: "" }
-        };
-      }).sort((a, b) => a.order - b.order)
+          return {
+            ...q,
+            id: q.id || q.questionId || `question_${index}`,
+            en: base.en || q.en || "",
+            hn: base.hn || q.hn || "",
+            en_html: base.en_html || q.en_html || "",
+            hn_html: base.hn_html || q.hn_html || "",
+            order: q.order || index + 1,
+            sectionId: q.sectionId || "default",
+            options,
+            correctOptionId: resolvedCorrectId,
+            marks: {
+              positive: Number(q?.marks?.positive ?? q?.positiveMarks ?? mockMetadata?.marksPerQuestion ?? 1),
+              negative: Number(q?.marks?.negative ?? q?.negativeMarks ?? mockMetadata?.negativeMarks ?? 0),
+              skip: Number(q?.marks?.skip ?? 0),
+            },
+            explanation: typeof sol === 'object' ? {
+              en: sol.en || "",
+              hn: sol.hn || "",
+              en_html: sol.en_html || "",
+              hn_html: sol.hn_html || ""
+            } : { en: sol, hn: "" },
+            positiveMarks: Number(q?.marks?.positive ?? q?.positiveMarks ?? mockMetadata?.marksPerQuestion ?? 1),
+            negativeMarks: Number(q?.marks?.negative ?? q?.negativeMarks ?? mockMetadata?.negativeMarks ?? 0),
+          };
+        }).sort((a, b) => (a.order || 0) - (b.order || 0))
     };
   }, [mockMetadata, sections, questions]);
 
-  const dashboardUrl = `/exams/all/${mockMetadata?.slug || ''}`;
+  const dashboardUrl = `/exams/${category || 'all'}/${examId}`;
 
   // INITIALIZE RESPONSES
   useEffect(() => {
@@ -133,9 +136,9 @@ export default function MockTestEnginePage() {
     
     if (Object.keys(responses).length === 0) {
       const initial: Record<string, UserResponse> = {};
-      testData.questions.forEach(q => {
+      (testData.questions || []).forEach((q: any) => {
         initial[q.id] = {
-          questionId: q.id,
+          questionId: q.id || q.questionId || crypto.randomUUID(),
           selectedOptionId: null,
           status: 'not-visited',
           timeSpentSeconds: 0
@@ -197,13 +200,15 @@ export default function MockTestEnginePage() {
     );
   }
 
-  if (!testData || testData.questions.length === 0) {
+  if (!testData || !testData.questions || testData.questions.length === 0) {
     return (
       <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4 p-6 text-center">
         <AlertCircle className="w-12 h-12 text-destructive" />
-        <h2 className="text-2xl font-bold">Incomplete Data</h2>
-        <p className="text-muted-foreground">The test questions could not be resolved correctly.</p>
-        <Button onClick={() => router.push('/exams/all')}>Return Home</Button>
+        <h2 className="text-2xl font-bold">No Questions Found</h2>
+        <p className="text-muted-foreground max-w-md">
+          This mock test exists but no valid questions were loaded. The uploaded JSON may be malformed or incomplete.
+        </p>
+        <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
       </div>
     );
   }
