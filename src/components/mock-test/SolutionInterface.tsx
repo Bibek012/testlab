@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -55,9 +54,10 @@ export const SolutionInterface = ({
 
   const currentQuestion = testData.questions[currentIndex];
   const response = responses[currentQuestion.id];
-  const correctOptionId = currentQuestion.raw_answer_id ?? currentQuestion.answer;
-  const isCorrect = response.selectedOptionId !== null && Number(response.selectedOptionId) === Number(correctOptionId);
-  const isSkipped = response.selectedOptionId === null;
+  const correctOptionId = Number(currentQuestion.correctOptionId ?? currentQuestion.raw_answer_id ?? currentQuestion.answer);
+  const selectedOptionId = response.selectedOptionId !== null ? Number(response.selectedOptionId) : null;
+  const isCorrect = selectedOptionId !== null && selectedOptionId === correctOptionId;
+  const isSkipped = selectedOptionId === null;
 
   const isBookmarked = useMemo(() => {
     return bookmarks?.some(b => b.questionId === currentQuestion.id);
@@ -192,8 +192,8 @@ export const SolutionInterface = ({
             {/* Options Mode */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {currentQuestion.options.map((option) => {
-                const isUserSelected = Number(response.selectedOptionId) === Number(option.id);
-                const isCorrectOption = Number(correctOptionId) === Number(option.id);
+                const isUserSelected = selectedOptionId === Number(option.id);
+                const isCorrectOption = correctOptionId === Number(option.id);
                 
                 let cardStyle = "bg-white/5 border-white/5";
                 let badgeStyle = "bg-white/10 text-muted-foreground border-white/10";

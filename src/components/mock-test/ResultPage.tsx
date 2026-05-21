@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useMemo, useEffect, useState, useRef } from "react";
@@ -39,7 +38,7 @@ export const ResultPage = ({
   const [isSaving, setIsSaving] = useState(false);
   const saveInitiated = useRef(false);
 
-  // DETERMINISTIC SCORING ENGINE
+  // DETERMINISTIC SCORING ENGINE - FIXED FOR NUMERIC IDS
   const metrics = useMemo(() => {
     let correct = 0;
     let incorrect = 0;
@@ -50,8 +49,8 @@ export const ResultPage = ({
 
     (testData.questions || []).forEach(q => {
       const resp = responses[q.id];
-      const selectedOption = resp?.selectedOptionId;
-      const correctOption = q.raw_answer_id ?? q.answer;
+      const selectedOptionId = resp?.selectedOptionId !== null ? Number(resp?.selectedOptionId) : null;
+      const correctOptionId = Number(q.correctOptionId ?? q.raw_answer_id ?? q.answer);
 
       const pos = Number(q?.marks?.positive ?? q?.positiveMarks ?? testData.marksPerQuestion ?? 1);
       const neg = Number(q?.marks?.negative ?? q?.negativeMarks ?? testData.negativeMarks ?? 0);
@@ -59,8 +58,8 @@ export const ResultPage = ({
 
       maxPossibleScore += pos;
 
-      const isSkipped = selectedOption === null || selectedOption === undefined;
-      const isCorrect = !isSkipped && Number(selectedOption) === Number(correctOption);
+      const isSkipped = selectedOptionId === null || Number.isNaN(selectedOptionId);
+      const isCorrect = !isSkipped && selectedOptionId === correctOptionId;
       const isWrong = !isSkipped && !isCorrect;
       
       let marksAwarded = 0;
@@ -81,8 +80,8 @@ export const ResultPage = ({
 
       analysis.push({
         questionId: q.id,
-        selectedAnswer: selectedOption || null,
-        correctAnswer: correctOption,
+        selectedAnswer: selectedOptionId,
+        correctAnswer: correctOptionId,
         isCorrect,
         isWrong,
         marksAwarded,
@@ -115,6 +114,17 @@ export const ResultPage = ({
         saveInitiated.current = true;
         setIsSaving(true);
         try {
+          // Normalize responses for storage to ensure consistency
+          const normalizedResponses = Object.fromEntries(
+            Object.entries(responses || {}).map(([key, value]: any) => [
+              key,
+              {
+                ...value,
+                selectedOptionId: value?.selectedOptionId !== null ? Number(value?.selectedOptionId).toString() : null,
+              }
+            ])
+          );
+
           await addDoc(collection(db, 'attempts'), {
             uid: user.uid,
             mockId: testData.id,
@@ -137,7 +147,7 @@ export const ResultPage = ({
             userLanguage,
             
             questionAnalysis: metrics.questionAnalysis,
-            rawResponses: responses
+            rawResponses: normalizedResponses
           });
           console.log("ResultEngine: Analytics synchronized.");
         } catch (error) {

@@ -149,12 +149,13 @@ export const TestInterface = ({
     });
   }, [currentQuestion.id, setResponses]);
 
-  const handleOptionSelect = useCallback((optionId: string) => {
+  const handleOptionSelect = useCallback((optionId: string | number) => {
+    const numericOptionId = Number(optionId);
     setResponses(prev => ({
       ...prev,
       [currentQuestion.id]: { 
         ...prev[currentQuestion.id], 
-        selectedOptionId: optionId,
+        selectedOptionId: numericOptionId.toString(),
         status: prev[currentQuestion.id].status === 'marked-review' ? 'answered-marked-review' : prev[currentQuestion.id].status
       }
     }));
@@ -345,14 +346,14 @@ export const TestInterface = ({
                   onClick={() => handleOptionSelect(option.id)}
                   className={cn(
                     "flex items-start gap-4 p-5 rounded-2xl border text-left transition-all group",
-                    responses[currentQuestion.id]?.selectedOptionId === option.id
+                    Number(responses[currentQuestion.id]?.selectedOptionId) === Number(option.id)
                       ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]"
                       : "bg-white/5 border-white/5 hover:border-white/20"
                   )}
                 >
                   <div className={cn(
                     "w-6 h-6 rounded-full border flex items-center justify-center shrink-0 text-[10px] font-bold",
-                    responses[currentQuestion.id]?.selectedOptionId === option.id
+                    Number(responses[currentQuestion.id]?.selectedOptionId) === Number(option.id)
                       ? "bg-primary border-primary text-white"
                       : "border-white/20 text-muted-foreground"
                   )}>

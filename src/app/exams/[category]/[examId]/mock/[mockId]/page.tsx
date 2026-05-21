@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
@@ -94,7 +93,12 @@ export default function MockTestEnginePage() {
             hn_html: base.hn_html || q.hn_html || "",
             order: q.order || index + 1,
             sectionId: q.sectionId || "default",
-            options: Array.isArray(q.options) ? q.options : [],
+            options: (Array.isArray(q.options) ? q.options : []).map((option: any, optIndex: number) => ({
+              ...option,
+              id: Number(option.id) || optIndex + 1,
+            })),
+            answer: q.raw_answer_id ?? q.answer ?? null,
+            correctOptionId: Number(q.raw_answer_id ?? q.answer ?? 0),
             marks: {
               positive:
                 Number(
