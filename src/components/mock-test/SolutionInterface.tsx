@@ -54,12 +54,15 @@ export const SolutionInterface = ({
 
   const currentQuestion = testData.questions[currentIndex];
   const response = responses[currentQuestion.id];
-  const correctOptionId = Number(currentQuestion.correctOptionId ?? currentQuestion.raw_answer_id ?? currentQuestion.answer);
+  
+  // STRATEGIC NUMERIC COMPARISON
+  const correctOptionId = Number(currentQuestion.correctOptionId);
   const selectedOptionId = (response?.selectedOptionId !== null && response?.selectedOptionId !== undefined) 
     ? Number(response.selectedOptionId) 
     : null;
+    
   const isCorrect = selectedOptionId !== null && selectedOptionId === correctOptionId;
-  const isSkipped = selectedOptionId === null || isNaN(selectedOptionId as number);
+  const isSkipped = selectedOptionId === null || isNaN(selectedOptionId);
 
   const isBookmarked = useMemo(() => {
     return bookmarks?.some(b => b.questionId === currentQuestion.id);
@@ -67,9 +70,7 @@ export const SolutionInterface = ({
 
   const toggleBookmark = async () => {
     if (!user || !db) return;
-    const bookmarkId = currentQuestion.id;
-    const ref = doc(db, 'users', user.uid, 'bookmarks', bookmarkId);
-
+    const ref = doc(db, 'users', user.uid, 'bookmarks', currentQuestion.id);
     if (isBookmarked) {
       await deleteDoc(ref);
     } else {
@@ -95,12 +96,12 @@ export const SolutionInterface = ({
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
       <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-4 md:px-6 shrink-0 z-50">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground hover:text-white h-9">
+          <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground hover:text-white">
             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Result
           </Button>
           <div className="h-4 w-px bg-white/10 mx-2" />
-          <h1 className="font-headline font-bold text-xs uppercase text-accent hidden sm:block">
-            Solution Mode: {testData.examName}
+          <h1 className="font-headline font-bold text-xs uppercase text-accent hidden sm:block truncate max-w-xs">
+            {testData.title}
           </h1>
         </div>
 
@@ -122,17 +123,7 @@ export const SolutionInterface = ({
                </Button>
              </SheetTrigger>
              <SheetContent side="right" className="p-0 bg-[#0f172a] border-white/5 w-[85%] sm:w-[350px]">
-                <SheetHeader className="p-4 border-b border-white/5 text-left">
-                  <SheetTitle className="text-sm font-bold">Review Palette</SheetTitle>
-                </SheetHeader>
-                <div className="h-full flex flex-col">
-                  <QuestionPalette 
-                    questions={testData.questions} 
-                    responses={responses} 
-                    currentIndex={currentIndex}
-                    onNavigate={(index) => setCurrentIndex(index)}
-                  />
-                </div>
+                <QuestionPalette questions={testData.questions} responses={responses} currentIndex={currentIndex} onNavigate={setCurrentIndex} />
              </SheetContent>
            </Sheet>
         </div>
@@ -144,46 +135,39 @@ export const SolutionInterface = ({
             <div className="flex items-center justify-between p-4 rounded-2xl border border-white/5 bg-white/5">
               <div className="flex items-center gap-4">
                 {isSkipped ? (
-                  <Badge className="bg-slate-500/10 text-slate-400 gap-2 h-8 px-4"><HelpCircle className="w-4 h-4" /> Not Attempted</Badge>
+                  <Badge className="bg-slate-500/10 text-slate-400 h-8 px-4">Not Attempted</Badge>
                 ) : isCorrect ? (
-                  <Badge className="bg-emerald-500/10 text-emerald-400 gap-2 h-8 px-4"><CheckCircle2 className="w-4 h-4" /> Correct Answer</Badge>
+                  <Badge className="bg-emerald-500/10 text-emerald-400 h-8 px-4">Correct</Badge>
                 ) : (
-                  <Badge className="bg-rose-500/10 text-rose-400 gap-2 h-8 px-4"><XCircle className="w-4 h-4" /> Incorrect Answer</Badge>
+                  <Badge className="bg-rose-500/10 text-rose-400 h-8 px-4">Incorrect</Badge>
                 )}
                 <Button 
                     variant="ghost" 
                     size="sm" 
                     onClick={toggleBookmark}
-                    className={cn(
-                      "h-8 w-8 p-0 rounded-full",
-                      isBookmarked ? "text-accent bg-accent/10" : "text-muted-foreground hover:bg-white/5"
-                    )}
+                    className={cn("h-8 w-8 p-0 rounded-full", isBookmarked ? "text-accent bg-accent/10" : "text-muted-foreground")}
                  >
                     {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
                  </Button>
                 <div className="text-xs font-medium text-muted-foreground flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5" /> Time Spent: {formatTime(response?.timeSpentSeconds || 0)}
+                  <Clock className="w-3.5 h-3.5" /> {formatTime(response?.timeSpentSeconds || 0)}
                 </div>
               </div>
               <div className="text-sm font-bold">
-                Result: <span className={isCorrect ? "text-emerald-400" : isSkipped ? "text-slate-400" : "text-rose-400"}>
-                  {isCorrect ? `+${currentQuestion.marks?.positive || 1}` : isSkipped ? "0.00" : `-${currentQuestion.marks?.negative || 0.33}`}
+                <span className={isCorrect ? "text-emerald-400" : isSkipped ? "text-slate-400" : "text-rose-400"}>
+                  {isCorrect ? `+${currentQuestion.marks?.positive}` : isSkipped ? "0.00" : `-${currentQuestion.marks?.negative}`}
                 </span>
               </div>
             </div>
 
             <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                 <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg">Question {currentIndex + 1}</Badge>
-              </div>
-              
+              <Badge className="bg-primary/20 text-primary border-primary/20">Question {currentIndex + 1}</Badge>
               <RichTextRenderer 
                 content={(currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string}
                 className="text-lg md:text-xl font-medium text-slate-100"
               />
-
               {currentQuestion.dom_images?.map((img, i) => (
-                <QuestionImage key={i} src={img} alt={`Solution Figure ${i+1}`} />
+                <QuestionImage key={i} src={img} alt={`Figure ${i+1}`} />
               ))}
             </div>
 
@@ -198,10 +182,10 @@ export const SolutionInterface = ({
 
                 if (isCorrectOption) {
                   cardStyle = "bg-emerald-500/10 border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.1)]";
-                  badgeStyle = "bg-emerald-500 border-emerald-500 text-white";
+                  badgeStyle = "bg-emerald-500 text-white";
                 } else if (isUserSelected && !isCorrect) {
                   cardStyle = "bg-rose-500/10 border-rose-500/40";
-                  badgeStyle = "bg-rose-500 border-rose-500 text-white";
+                  badgeStyle = "bg-rose-500 text-white";
                 }
 
                 return (
@@ -237,34 +221,15 @@ export const SolutionInterface = ({
         </div>
 
         <aside className="hidden lg:flex w-72 xl:w-80 bg-[#0f172a] border-l border-white/5 flex-col overflow-hidden">
-          <QuestionPalette 
-            questions={testData.questions} 
-            responses={responses} 
-            currentIndex={currentIndex}
-            onNavigate={(index) => setCurrentIndex(index)}
-          />
+          <QuestionPalette questions={testData.questions} responses={responses} currentIndex={currentIndex} onNavigate={setCurrentIndex} />
         </aside>
       </div>
 
       <footer className="h-16 border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex items-center justify-between px-6 shrink-0 z-50">
-        <Button 
-          variant="outline" 
-          disabled={currentIndex === 0}
-          onClick={() => setCurrentIndex(prev => prev - 1)}
-          className="rounded-xl border-white/10 h-10 px-6 font-bold"
-        >
+        <Button variant="outline" disabled={currentIndex === 0} onClick={() => setCurrentIndex(prev => prev - 1)} className="rounded-xl border-white/10 h-10 px-6 font-bold">
           <ChevronLeft className="w-4 h-4 mr-2" /> Previous
         </Button>
-        <Button 
-          onClick={() => {
-            if (currentIndex < testData.questions.length - 1) {
-              setCurrentIndex(prev => prev + 1);
-            } else {
-              onBack();
-            }
-          }}
-          className="bg-primary hover:bg-primary/90 rounded-xl h-10 px-8 font-bold"
-        >
+        <Button onClick={() => currentIndex < testData.questions.length - 1 ? setCurrentIndex(prev => prev + 1) : onBack()} className="bg-primary hover:bg-primary/90 rounded-xl h-10 px-8 font-bold">
           {currentIndex === testData.questions.length - 1 ? "Finish Review" : "Next Question"}
           {currentIndex < testData.questions.length - 1 && <ChevronRight className="w-4 h-4 ml-2" />}
         </Button>

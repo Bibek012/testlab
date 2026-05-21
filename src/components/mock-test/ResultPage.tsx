@@ -38,7 +38,7 @@ export const ResultPage = ({
   const [isSaving, setIsSaving] = useState(false);
   const saveInitiated = useRef(false);
 
-  // DETERMINISTIC SCORING ENGINE - ENSURING ID COERCION
+  // CRITICAL: UNIFIED SCORING ENGINE
   const metrics = useMemo(() => {
     let correct = 0;
     let incorrect = 0;
@@ -49,45 +49,44 @@ export const ResultPage = ({
 
     (testData.questions || []).forEach(q => {
       const resp = responses[q.id];
-      const selectedOptionId = (resp?.selectedOptionId !== null && resp?.selectedOptionId !== undefined) 
+      const selectedId = (resp?.selectedOptionId !== null && resp?.selectedOptionId !== undefined) 
         ? Number(resp.selectedOptionId) 
         : null;
       
-      const correctId = Number(q.correctOptionId ?? q.raw_answer_id ?? q.answer);
+      const correctId = Number(q.correctOptionId);
       
-      const pos = Number(q.marks?.positive ?? q.positiveMarks ?? testData.marksPerQuestion ?? 1);
-      const neg = Number(q.marks?.negative ?? q.negativeMarks ?? testData.negativeMarks ?? 0);
-      const skipMarks = Number(q.marks?.skip ?? 0);
+      const pos = Number(q.marks?.positive ?? 1);
+      const neg = Number(q.marks?.negative ?? 0);
+      const skipPenalty = Number(q.marks?.skip ?? 0);
 
       maxPossibleScore += pos;
 
-      const isSkipped = selectedOptionId === null || isNaN(selectedOptionId);
-      const isCorrect = !isSkipped && selectedOptionId === correctId;
+      const isSkipped = selectedId === null || isNaN(selectedId);
+      const isCorrect = !isSkipped && selectedId === correctId;
       const isWrong = !isSkipped && !isCorrect;
       
-      let marksAwarded = 0;
-
+      let awarded = 0;
       if (isCorrect) {
         correct++;
         totalScore += pos;
-        marksAwarded = pos;
+        awarded = pos;
       } else if (isWrong) {
         incorrect++;
         totalScore -= neg;
-        marksAwarded = -neg;
+        awarded = -neg;
       } else {
         unattempted++;
-        totalScore += skipMarks;
-        marksAwarded = skipMarks;
+        totalScore += skipPenalty;
+        awarded = skipPenalty;
       }
 
       analysis.push({
         questionId: q.id,
-        selectedAnswer: selectedOptionId,
+        selectedAnswer: selectedId,
         correctAnswer: correctId,
         isCorrect,
         isWrong,
-        marksAwarded,
+        marksAwarded: awarded,
         timeTaken: resp?.timeSpentSeconds || 0
       });
     });
@@ -110,23 +109,17 @@ export const ResultPage = ({
     };
   }, [testData, responses, startTime, endTime]);
 
-  // Persistence Logic
+  // PERSISTENCE LOGIC
   useEffect(() => {
     const saveResult = async () => {
       if (user && db && !saveInitiated.current) {
         saveInitiated.current = true;
         setIsSaving(true);
         try {
-          // Normalize responses for storage to ensure consistency
           const normalizedResponses = Object.fromEntries(
-            Object.entries(responses || {}).map(([key, value]: any) => [
-              key,
-              {
-                ...value,
-                selectedOptionId: (value?.selectedOptionId !== null && value?.selectedOptionId !== undefined) 
-                  ? Number(value.selectedOptionId).toString() 
-                  : null,
-              }
+            Object.entries(responses || {}).map(([k, v]: any) => [
+              k,
+              { ...v, selectedOptionId: v.selectedOptionId ? String(v.selectedOptionId) : null }
             ])
           );
 
@@ -135,22 +128,18 @@ export const ResultPage = ({
             mockId: testData.id,
             examId: testData.examId || 'unmapped',
             examName: testData.examName || 'Mock Test',
-            
             totalQuestions: metrics.totalQuestions,
             attempted: metrics.correct + metrics.incorrect,
             correct: metrics.correct,
             wrong: metrics.incorrect,
             unattempted: metrics.unattempted,
-            
             score: metrics.totalScore,
             totalMarks: metrics.maxPossibleScore,
             accuracy: metrics.accuracy,
             percentage: metrics.percentage,
-            
             timeTakenSeconds: metrics.timeTaken,
             completedAt: serverTimestamp(),
             userLanguage,
-            
             questionAnalysis: metrics.questionAnalysis,
             rawResponses: normalizedResponses
           });
@@ -167,7 +156,7 @@ export const ResultPage = ({
 
   const chartData = [
     { name: 'Correct', value: metrics.correct, color: '#10b981' },
-    { name: 'Incorrect', value: metrics.incorrect, color: '#f43f5e' },
+    { name: 'Wrong', value: metrics.incorrect, color: '#f43f5e' },
     { name: 'Skipped', value: metrics.unattempted, color: '#64748b' },
   ];
 
@@ -180,7 +169,7 @@ export const ResultPage = ({
         </div>
 
         <div className="container mx-auto px-6 flex flex-col items-center text-center space-y-6">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white shadow-2xl animate-float">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white shadow-2xl">
             <Trophy className="w-10 h-10" />
           </div>
           <div className="space-y-2">
@@ -188,8 +177,8 @@ export const ResultPage = ({
               <h1 className="text-3xl md:text-5xl font-headline font-bold">Analysis <span className="gradient-text">Report</span></h1>
               {isSaving && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
             </div>
-            <p className="text-muted-foreground text-sm max-w-xl mx-auto uppercase tracking-widest font-bold">
-              Test Completed: <span className="text-foreground">{testData.title}</span>
+            <p className="text-muted-foreground text-sm uppercase tracking-widest font-bold">
+              {testData.title}
             </p>
           </div>
         </div>
@@ -197,43 +186,37 @@ export const ResultPage = ({
 
       <div className="container mx-auto px-6 max-w-6xl mt-12 space-y-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
-             <Target className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-primary" />
+          <Card className="glass border-white/10 p-6 space-y-2">
              <div className="text-3xl font-bold font-headline">{metrics.totalScore.toFixed(2)}</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Score / {metrics.maxPossibleScore}</p>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Score Obtained</p>
           </Card>
-          <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
-             <CheckCircle className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-emerald-400" />
+          <Card className="glass border-white/10 p-6 space-y-2">
              <div className="text-3xl font-bold font-headline text-emerald-400">{metrics.accuracy.toFixed(1)}%</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Precision</p>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Accuracy</p>
           </Card>
-          <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
-             <TrendingUp className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-indigo-400" />
+          <Card className="glass border-white/10 p-6 space-y-2">
              <div className="text-3xl font-bold font-headline text-indigo-400">{metrics.percentage}%</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Percentile</p>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Performance</p>
           </Card>
-          <Card className="glass border-white/10 p-6 space-y-3 relative overflow-hidden">
-             <Clock className="absolute -top-1 -right-1 w-16 h-16 opacity-5 text-accent" />
+          <Card className="glass border-white/10 p-6 space-y-2">
              <div className="text-3xl font-bold font-headline text-accent">{(metrics.timeTaken / 60).toFixed(1)}m</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Pace</p>
+             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Time Taken</p>
           </Card>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-8">
           <Card className="glass border-white/10 p-8 lg:col-span-8">
             <CardHeader className="px-0 pt-0 pb-10">
-              <CardTitle className="text-xl font-headline font-bold uppercase tracking-widest">Performance Metrics</CardTitle>
+              <CardTitle className="text-xl font-headline font-bold uppercase tracking-widest">Score Distribution</CardTitle>
             </CardHeader>
-            <div className="h-[350px] w-full">
+            <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
+                <BarChart data={chartData} layout="vertical">
                   <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 'bold' }} />
-                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
-                  <Bar dataKey="value" radius={[0, 12, 12, 0]} barSize={45}>
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
+                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }} />
+                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={40}>
+                    {chartData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -242,28 +225,28 @@ export const ResultPage = ({
 
           <div className="lg:col-span-4 space-y-6">
             <Card className="glass border-white/10 p-6">
-              <CardTitle className="text-lg font-headline font-bold mb-6">Review Action Center</CardTitle>
+              <CardTitle className="text-lg font-headline font-bold mb-6">Next Steps</CardTitle>
               <div className="space-y-3">
-                <Button onClick={onViewSolutions} className="w-full bg-primary hover:bg-primary/90 h-14 rounded-2xl font-bold gap-3 shadow-lg shadow-primary/20">
-                  <BookOpen className="w-5 h-5" /> View Step Solutions
+                <Button onClick={onViewSolutions} className="w-full bg-primary h-14 rounded-2xl font-bold gap-3">
+                  <BookOpen className="w-5 h-5" /> View Solutions
                 </Button>
-                <Button variant="outline" onClick={onReattempt} className="w-full h-14 rounded-2xl border-white/10 hover:bg-white/5 font-bold gap-3">
-                  <RotateCcw className="w-5 h-5" /> Retake Test
+                <Button variant="outline" onClick={onReattempt} className="w-full h-14 rounded-2xl border-white/10">
+                  <RotateCcw className="w-5 h-5 mr-2" /> Retake Test
                 </Button>
                 <Link href={dashboardUrl} className="block">
-                  <Button variant="ghost" className="w-full h-14 rounded-2xl text-muted-foreground font-bold uppercase tracking-widest text-[10px]">
-                    Return to Exam Dashboard
+                  <Button variant="ghost" className="w-full h-14 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+                    Back to Dashboard
                   </Button>
                 </Link>
               </div>
             </Card>
             
-            <div className="p-8 bg-gradient-to-br from-indigo-500/10 to-accent/10 rounded-[2.5rem] border border-white/10 space-y-4">
-               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-[0.2em]">
+            <div className="p-8 bg-indigo-500/10 rounded-[2.5rem] border border-indigo-500/20 space-y-4">
+               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-widest">
                  <Zap className="w-4 h-4 fill-current" /> AI Lab Insights
                </div>
-               <p className="text-xs text-muted-foreground leading-relaxed italic">
-                 "You are dominating {testData.examName}. To hit the 95th percentile, reduce time spent on 'Easy' difficulty items by approximately <span className="text-white font-bold">12 seconds</span> each."
+               <p className="text-xs text-muted-foreground italic">
+                 "Based on your accuracy, focus on improving speed in {testData.examName} to boost your percentile rank."
                </p>
             </div>
           </div>
