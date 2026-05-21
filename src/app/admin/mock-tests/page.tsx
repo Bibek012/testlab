@@ -675,7 +675,15 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
           <div className="space-y-1.5">
             <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Questions Count</Label>
-            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.totalQuestions} onChange={(e) => setFormData({ ...formData, totalQuestions: parseInt(e.target.value) || 0 })} />
+            <Input
+              type="number"
+              readOnly
+              className="bg-white/5 border-white/10 h-11 opacity-80 cursor-not-allowed"
+              value={formData.totalQuestions}
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Auto-generated from uploaded JSON file
+            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -699,10 +707,38 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
                 type="file"
                 accept=".json"
                 className="hidden"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0];
-                  if (file) {
-                    setJsonFile(file);
+
+                  if (!file) return;
+
+                  setJsonFile(file);
+
+                  try {
+                    const text = await file.text();
+
+                    const parsed = JSON.parse(text);
+
+                    const questions =
+                      parsed?.sections?.flatMap(
+                        (section: any) =>
+                          section.questions || []
+                      ) || [];
+
+                    setFormData((prev: any) => ({
+                      ...prev,
+                      totalQuestions: questions.length,
+                    }));
+
+                  } catch (error) {
+                    console.error(error);
+
+                    toast({
+                      variant: "destructive",
+                      title: "Invalid JSON",
+                      description:
+                        "Unable to read question count from file.",
+                    });
                   }
                 }}
               />
