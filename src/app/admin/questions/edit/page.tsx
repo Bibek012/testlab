@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
@@ -163,7 +162,7 @@ function QuestionEditorContent() {
                       <div key={opt.id} className="flex flex-col sm:flex-row gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/5 relative group">
                          <div className="flex items-center justify-between sm:flex-col sm:justify-start gap-2">
                             <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary border border-primary/20 shrink-0">
-                               {opt.id.split('-').pop()?.toUpperCase()}
+                               {String(opt.id).split('-').pop()?.toUpperCase() || ''}
                             </div>
                             <input 
                               type="radio" 
@@ -217,7 +216,7 @@ function QuestionEditorContent() {
                          <div className={cn(
                            "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
                            formData.answer === opt.id ? "bg-emerald-500 text-white" : "bg-white/10 text-muted-foreground"
-                         )}>{opt.id.split('-').pop()?.toUpperCase()}</div>
+                         )}>{String(opt.id).split('-').pop()?.toUpperCase() || ''}</div>
                          <div className="flex-1 overflow-hidden min-w-0">
                            <RichTextRenderer content={opt[`${activeLang}_html`] || opt[activeLang]} className="text-sm font-medium" />
                          </div>

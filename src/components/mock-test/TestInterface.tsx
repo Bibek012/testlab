@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -357,7 +356,7 @@ export const TestInterface = ({
                       ? "bg-primary border-primary text-white"
                       : "border-white/20 text-muted-foreground"
                   )}>
-                    {option.id.split('-').pop()?.toUpperCase() || ''}
+                    {String(option.id).split('-').pop()?.toUpperCase() || ''}
                   </div>
                   <div className="flex-1 overflow-hidden">
                     <RichTextRenderer 

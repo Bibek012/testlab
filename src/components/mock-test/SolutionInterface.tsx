@@ -166,7 +166,7 @@ export const SolutionInterface = ({
               </div>
               <div className="text-sm font-bold">
                 Result: <span className={isCorrect ? "text-emerald-400" : isSkipped ? "text-slate-400" : "text-rose-400"}>
-                  {isCorrect ? `+${currentQuestion.marks}` : isSkipped ? "0.00" : `-${currentQuestion.negativeMarks}`}
+                  {isCorrect ? `+${currentQuestion.marks?.positive || 1}` : isSkipped ? "0.00" : `-${currentQuestion.marks?.negative || 0.33}`}
                 </span>
               </div>
             </div>
@@ -207,7 +207,7 @@ export const SolutionInterface = ({
                 return (
                   <div key={option.id} className={cn("p-5 rounded-2xl border flex gap-4 transition-all", cardStyle)}>
                     <div className={cn("w-6 h-6 rounded-full border flex items-center justify-center text-[10px] font-bold shrink-0", badgeStyle)}>
-                      {option.id.split('-').pop()?.toUpperCase()}
+                      {String(option.id).split('-').pop()?.toUpperCase() || ''}
                     </div>
                     <div className="flex-1 overflow-hidden">
                       <RichTextRenderer 
