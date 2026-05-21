@@ -16,7 +16,8 @@ import {
   FolderPlus,
   MoreVertical,
   Send,
-  Eye
+  Eye,
+  FileJson
 } from "lucide-react";
 
 import {
@@ -34,7 +35,9 @@ import {
   updateDoc,
   query,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  writeBatch,
+  getDocs,
 } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
@@ -108,15 +111,49 @@ export default function MockTestManagementPage() {
 
   const handleDeleteMock = async (id: string, title: string) => {
     if (!db || !user) return;
+
     if (!confirm(`Delete "${title}" permanently?`)) return;
 
     setDeletingId(id);
+
     try {
-      await deleteDoc(doc(db, "mockTests", id));
-      await logAction(db, user, "delete_mock", id, "mock_test", `Deleted: ${title}`);
-      toast({ title: "Deleted Successfully" });
+      // Delete questions subcollection first
+      const questionsRef = collection(db, "mockTests", id, "questions");
+      const questionsSnapshot = await getDocs(questionsRef);
+
+      const batch = writeBatch(db);
+
+      questionsSnapshot.forEach((docItem) => {
+        batch.delete(docItem.ref);
+      });
+
+      // Delete parent mock document
+      batch.delete(doc(db, "mockTests", id));
+
+      await batch.commit();
+
+      await logAction(
+        db,
+        user,
+        "delete_mock",
+        id,
+        "mock_test",
+        `Deleted: ${title}`
+      );
+
+      toast({
+        title: "Deleted Successfully",
+        description: `"${title}" removed completely.`,
+      });
+
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Delete Failed", description: error?.message });
+      console.error(error);
+
+      toast({
+        variant: "destructive",
+        title: "Delete Failed",
+        description: error?.message || "Unknown error",
+      });
     } finally {
       setDeletingId(null);
     }
@@ -213,21 +250,21 @@ export default function MockTestManagementPage() {
                       </Badge>
                     </td>
                     <td className="py-4 px-6 text-right">
-                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                               <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10"><MoreVertical className="w-4 h-4" /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuPortal>
-                              <DropdownMenuContent align="end" className="glass border-white/10 w-48">
-                                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
-                                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => window.open(`/exams/${mock.categoryId}/${mock.examId}/mock/${mock.id}`, '_blank')}><Eye className="w-3.5 h-3.5" /> Preview</DropdownMenuItem>
-                                <DropdownMenuItem className="text-destructive gap-2 cursor-pointer focus:bg-rose-500/10" onClick={() => handleDeleteMock(mock.id, mock.title)}><Trash2 className="w-3.5 h-3.5" /> Delete Forever</DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenuPortal>
-                          </DropdownMenu>
-                       </div>
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10"><MoreVertical className="w-4 h-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuPortal>
+                            <DropdownMenuContent align="end" className="glass border-white/10 w-48">
+                              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
+                              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => window.open(`/exams/${mock.categoryId}/${mock.examId}/mock/${mock.id}`, '_blank')}><Eye className="w-3.5 h-3.5" /> Preview</DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive gap-2 cursor-pointer focus:bg-rose-500/10" onClick={() => handleDeleteMock(mock.id, mock.title)}><Trash2 className="w-3.5 h-3.5" /> Delete Forever</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenuPortal>
+                        </DropdownMenu>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -253,22 +290,22 @@ export default function MockTestManagementPage() {
               </div>
 
               <div className="flex justify-between items-center mt-auto pt-2">
-                 <div className="text-[10px] font-bold text-muted-foreground uppercase">{mock.totalQuestions} Questions</div>
-                 <div className="flex gap-2">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock.id, mock.title)}><Trash2 className="w-4 h-4" /></Button>
-                 </div>
+                <div className="text-[10px] font-bold text-muted-foreground uppercase">{mock.totalQuestions} Questions</div>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock.id, mock.title)}><Trash2 className="w-4 h-4" /></Button>
+                </div>
               </div>
             </Card>
           ))}
         </div>
       )}
 
-      <MockTestModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        editingItem={editingItem} 
-        exams={exams || []} 
+      <MockTestModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        editingItem={editingItem}
+        exams={exams || []}
       />
     </div>
   );
@@ -279,7 +316,9 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
   const { user } = useUser();
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
-  
+  const [jsonFile, setJsonFile] = useState<File | null>(null);
+  const [isUploadingJson, setIsUploadingJson] = useState(false);
+
   const [formData, setFormData] = useState<any>({
     title: "",
     examId: "",
@@ -301,21 +340,21 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
   const [isAddingSubType, setIsAddingSubType] = useState(false);
   const [newSubTypeName, setNewSubTypeName] = useState("");
 
-  const mockTypesQuery = useMemoFirebase(() => 
+  const mockTypesQuery = useMemoFirebase(() =>
     db && formData.examId ? query(collection(db, "exams", formData.examId, "mockTypes"), orderBy("order", "asc")) : null,
-  [db, formData.examId]);
+    [db, formData.examId]);
   const { data: mockTypes } = useCollection<any>(mockTypesQuery);
 
-  const subTypesQuery = useMemoFirebase(() => 
-    db && formData.examId && formData.typeId 
-      ? query(collection(db, "exams", formData.examId, "mockTypes", formData.typeId, "subTypes"), orderBy("order", "asc")) 
+  const subTypesQuery = useMemoFirebase(() =>
+    db && formData.examId && formData.typeId
+      ? query(collection(db, "exams", formData.examId, "mockTypes", formData.typeId, "subTypes"), orderBy("order", "asc"))
       : null,
-  [db, formData.examId, formData.typeId]);
+    [db, formData.examId, formData.typeId]);
   const { data: subTypes } = useCollection<any>(subTypesQuery);
 
   useEffect(() => {
     if (editingItem) {
-      setFormData({ 
+      setFormData({
         title: editingItem.title || "",
         examId: editingItem.examId || "",
         examName: editingItem.examName || "",
@@ -335,6 +374,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
     }
     setIsAddingType(false);
     setIsAddingSubType(false);
+    setJsonFile(null);
   }, [editingItem, isOpen]);
 
   const handleAddType = async () => {
@@ -378,42 +418,204 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
   const handleSave = async () => {
     if (!db || !user || !formData.title.trim() || !formData.examId) {
-      toast({ variant: "destructive", title: "Missing Fields", description: "Title and Exam are required." });
+      toast({
+        variant: "destructive",
+        title: "Missing Fields",
+        description: "Title and Exam are required.",
+      });
       return;
     }
-    
-    setIsSaving(true);
-    try {
-      const selectedExam = exams.find((e: any) => e.id === formData.examId);
-      const selectedType = mockTypes?.find((t: any) => t.id === formData.typeId);
-      const selectedSubType = subTypes?.find((s: any) => s.id === formData.subTypeId);
 
-      // CRITICAL: Calculate standardized marks
-      const fullMarks = (formData.totalQuestions || 0) * (formData.marksPerQuestion || 1);
+    setIsSaving(true);
+
+    try {
+      const selectedExam = exams.find(
+        (e: any) => e.id === formData.examId
+      );
+
+      const selectedType = mockTypes?.find(
+        (t: any) => t.id === formData.typeId
+      );
+
+      const selectedSubType = subTypes?.find(
+        (s: any) => s.id === formData.subTypeId
+      );
+
+      const fullMarks =
+        (formData.totalQuestions || 0) *
+        (formData.marksPerQuestion || 1);
 
       const data = {
         ...formData,
+
         examName: selectedExam?.name || "",
+
         typeName: selectedType?.title || "",
+
         subTypeName: selectedSubType?.title || "",
+
         fullMarks,
-        hierarchyPath: `${selectedExam?.name} > ${selectedType?.title || 'General'}${selectedSubType ? ` > ${selectedSubType.title}` : ''}`,
-        slug: formData.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
+
+        hierarchyPath: `${selectedExam?.name} > ${
+          selectedType?.title || "General"
+        }${
+          selectedSubType
+            ? ` > ${selectedSubType.title}`
+            : ""
+        }`,
+
+        slug: formData.title
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9-]/g, ""),
+
         updatedAt: serverTimestamp(),
       };
 
+      // UPDATE EXISTING MOCK
       if (editingItem) {
-        await updateDoc(doc(db, "mockTests", editingItem.id), data);
-        await logAction(db, user, "update_mock", editingItem.id, "mock_test", `Updated: ${formData.title}`);
-      } else {
-        await addDoc(collection(db, "mockTests"), { ...data, createdAt: serverTimestamp() });
-        await logAction(db, user, "create_mock", "new", "mock_test", `Created: ${formData.title}`);
+        await updateDoc(
+          doc(db, "mockTests", editingItem.id),
+          data
+        );
+
+        await logAction(
+          db,
+          user,
+          "update_mock",
+          editingItem.id,
+          "mock_test",
+          `Updated: ${formData.title}`
+        );
+
+        toast({
+          title: "Mock Updated Successfully",
+        });
+
+        onClose();
+        return;
       }
+
+      // CREATE NEW MOCK
+      const mockRef = await addDoc(
+        collection(db, "mockTests"),
+        {
+          ...data,
+          createdAt: serverTimestamp(),
+        }
+      );
+
+      // JSON INGEST
+      if (jsonFile) {
+        setIsUploadingJson(true);
+
+        const text = await jsonFile.text();
+
+        const parsed = JSON.parse(text);
+
+        const questions =
+          parsed?.sections?.flatMap(
+            (section: any) =>
+              section.questions || []
+          ) || [];
+
+        if (!questions.length) {
+          throw new Error(
+            "No questions found in uploaded JSON"
+          );
+        }
+
+        const batch = writeBatch(db);
+
+        questions.forEach(
+          (q: any, index: number) => {
+            const questionRef = doc(
+              collection(
+                db,
+                "mockTests",
+                mockRef.id,
+                "questions"
+              )
+            );
+
+            batch.set(questionRef, {
+              questionId:
+                q.id || `question_${index}`,
+
+              type: q.type || "mcq",
+
+              question: q.question || {},
+
+              options: q.options || [],
+
+              answer: q.answer || "",
+
+              rawAnswerId:
+                q.raw_answer_id || null,
+
+              solution: q.solution || {},
+
+              positiveMarks:
+                q?.marks?.positive ||
+                formData.marksPerQuestion,
+
+              negativeMarks:
+                q?.marks?.negative ||
+                formData.negativeMarks,
+
+              marks: q.marks || {
+                positive:
+                  formData.marksPerQuestion,
+
+                negative:
+                  formData.negativeMarks,
+
+                skip: 0,
+              },
+
+              status: "Verified",
+
+              createdAt: serverTimestamp(),
+
+              updatedAt: serverTimestamp(),
+            });
+          }
+        );
+
+        await batch.commit();
+      }
+
+      await logAction(
+        db,
+        user,
+        "create_mock",
+        mockRef.id,
+        "mock_test",
+        `Created: ${formData.title}`
+      );
+
+      toast({
+        title: "Mock Created Successfully",
+        description: jsonFile
+          ? "Questions uploaded successfully."
+          : "Mock created without questions.",
+      });
+
       onClose();
-      toast({ title: "Mock Saved Successfully" });
+
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
-    } finally { setIsSaving(false); }
+      console.error(error);
+
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description:
+          error?.message || "Something went wrong",
+      });
+    } finally {
+      setIsSaving(false);
+      setIsUploadingJson(false);
+    }
   };
 
   return (
@@ -421,7 +623,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       <DialogContent className="max-w-lg glass border-white/10 max-h-[90vh] overflow-y-auto pointer-events-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-headline font-bold">
-             {editingItem ? "Edit Mock Series" : "New Mock Series"}
+            {editingItem ? "Edit Mock Series" : "New Mock Series"}
           </DialogTitle>
         </DialogHeader>
 
@@ -481,6 +683,36 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
             <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 0 })} />
           </div>
 
+          <div className="md:col-span-2 space-y-2">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
+              Upload Questions JSON
+            </Label>
+
+            <label className="flex items-center justify-center gap-3 border border-dashed border-primary/30 rounded-2xl p-6 cursor-pointer bg-white/5 hover:bg-white/10 transition-colors">
+              <FileJson className="w-5 h-5 text-primary" />
+
+              <div className="text-sm truncate max-w-[220px]">
+                {jsonFile ? jsonFile.name : "Choose JSON File"}
+              </div>
+
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setJsonFile(file);
+                  }
+                }}
+              />
+            </label>
+
+            <p className="text-[10px] text-muted-foreground">
+              Upload a single mock test JSON file with questions.
+            </p>
+          </div>
+
           <div className="md:col-span-2 flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
             <div className="space-y-0.5">
               <Label className="text-sm font-bold">Standard Release</Label>
@@ -491,9 +723,9 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         </div>
 
         <DialogFooter className="gap-2 pt-4">
-          <Button variant="outline" onClick={onClose} disabled={isSaving} className="border-white/10 h-12 flex-1">Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving} className="bg-primary hover:bg-primary/90 text-white font-bold h-12 flex-[2] shadow-lg shadow-primary/20">
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+          <Button variant="outline" onClick={onClose} disabled={isSaving || isUploadingJson} className="border-white/10 h-12 flex-1">Cancel</Button>
+          <Button onClick={handleSave} disabled={isSaving || isUploadingJson} className="bg-primary hover:bg-primary/90 text-white font-bold h-12 flex-[2] shadow-lg shadow-primary/20">
+            {isSaving || isUploadingJson ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
             Sync Mock Test
           </Button>
         </DialogFooter>
