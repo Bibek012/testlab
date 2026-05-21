@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,27 +9,36 @@ import {
   Search, 
   Play, 
   FileText, 
-  Loader2
+  Loader2,
+  Clock,
+  Target,
+  ChevronRight,
+  Zap,
+  CheckCircle2,
+  History,
+  TrendingUp,
+  LayoutGrid
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, where, orderBy } from "firebase/firestore";
+import { collection, query, where, orderBy, limit } from "firebase/firestore";
 
 interface MockTestListProps {
   examId: string;
   examSlug: string;
   categorySlug: string;
-  stateSlug?: string;
 }
 
-export const MockTestList = ({ examId, examSlug, categorySlug, stateSlug }: MockTestListProps) => {
+export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListProps) => {
+  const { user } = useUser();
   const db = useFirestore();
 
   const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
   const [selectedSubTypeId, setSelectedSubTypeId] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // FETCH METADATA HIERARCHY
   const typesQuery = useMemoFirebase(() => 
     db ? query(collection(db, "exams", examId, "mockTypes"), orderBy("order", "asc")) : null,
   [db, examId]);
@@ -40,9 +49,9 @@ export const MockTestList = ({ examId, examSlug, categorySlug, stateSlug }: Mock
       ? query(collection(db, "exams", examId, "mockTypes", selectedTypeId, "subTypes"), orderBy("order", "asc")) 
       : null,
   [db, examId, selectedTypeId]);
-  const { data: subTypes } = useCollection<any>(subTypesQuery);
+  const { data: subTypes, loading: subTypesLoading } = useCollection<any>(subTypesQuery);
 
-  // Filter by Exam ID and Published status
+  // FETCH PUBLISHED MOCKS
   const mocksQuery = useMemoFirebase(() => 
     db ? query(
       collection(db, "mockTests"), 
@@ -52,6 +61,12 @@ export const MockTestList = ({ examId, examSlug, categorySlug, stateSlug }: Mock
   [db, examId]);
   const { data: tests, loading: testsLoading } = useCollection<any>(mocksQuery);
 
+  // FETCH USER ATTEMPTS FOR STATUS MAPPING
+  const attemptsQuery = useMemoFirebase(() => 
+    user && db ? query(collection(db, "attempts"), where("uid", "==", user.uid), where("examId", "==", examId)) : null,
+  [user?.uid, db, examId]);
+  const { data: attempts } = useCollection<any>(attemptsQuery);
+
   const filteredTests = useMemo(() => {
     if (!tests) return [];
     return tests.filter(test => {
@@ -60,133 +75,204 @@ export const MockTestList = ({ examId, examSlug, categorySlug, stateSlug }: Mock
       const matchesSearch = test.title.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesType && matchesSubType && matchesSearch;
     });
-  }, [tests, selectedTypeId, selectedSubTypeId, searchQuery]);
+  }, [tests, selectedTypeId, setSelectedSubTypeId, searchQuery]);
 
+  // Loading Skeleton
   if (typesLoading && !mockTypes) {
-    return <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary opacity-20" /></div>;
+    return <TestLibrarySkeleton />;
   }
 
   return (
-    <div className="space-y-8 w-full overflow-hidden">
-      <div className="flex flex-col xl:flex-row gap-6 items-start xl:items-center justify-between">
-        <div className="space-y-4 w-full">
-          <h2 className="text-xl md:text-3xl font-headline font-bold">Mock Test <span className="text-accent">Library</span></h2>
-          
-          <div className="flex overflow-x-auto hide-scrollbar -mx-6 px-6 sm:mx-0 sm:px-0 gap-2 pb-2">
-            <button
-              onClick={() => { setSelectedTypeId("all"); setSelectedSubTypeId("all"); }}
-              className={cn(
-                "whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold transition-all border",
-                selectedTypeId === "all" ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white/5 border-white/10 text-muted-foreground'
-              )}
-            >
-              All Series
-            </button>
-            {mockTypes?.map((type) => (
-              <button
-                key={type.id}
-                onClick={() => { setSelectedTypeId(type.id); setSelectedSubTypeId("all"); }}
-                className={cn(
-                  "whitespace-nowrap px-5 py-2.5 rounded-xl text-xs font-bold transition-all border",
-                  selectedTypeId === type.id ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20' : 'bg-white/5 border-white/10 text-muted-foreground'
-                )}
-              >
-                {type.title}
-              </button>
-            ))}
-          </div>
-
-          <AnimatePresence>
-            {selectedTypeId !== "all" && subTypes && subTypes.length > 0 && (
-              <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 overflow-x-auto hide-scrollbar -mx-6 px-6 sm:mx-0 sm:px-0">
-                <button
-                  onClick={() => setSelectedSubTypeId("all")}
-                  className={cn(
-                    "whitespace-nowrap px-4 py-1.5 rounded-full text-[10px] font-bold border",
-                    selectedSubTypeId === "all" ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-white/5 border-white/5 text-muted-foreground'
-                  )}
-                >
-                  Entire {mockTypes?.find(t => t.id === selectedTypeId)?.title}
-                </button>
-                {subTypes.map((sub) => (
-                  <button
-                    key={sub.id}
-                    onClick={() => setSelectedSubTypeId(sub.id)}
-                    className={cn(
-                      "whitespace-nowrap px-4 py-1.5 rounded-full text-[10px] font-bold border",
-                      selectedSubTypeId === sub.id ? 'bg-accent/20 border-accent/40 text-accent' : 'bg-white/5 border-white/5 text-muted-foreground'
-                    )}
-                  >
-                    {sub.title}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <div className="relative w-full xl:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+    <div className="space-y-6 w-full animate-in fade-in duration-500">
+      {/* Search & Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <h2 className="text-xl font-headline font-bold flex items-center gap-2">
+          <LayoutGrid className="w-5 h-5 text-primary" /> Test Library
+        </h2>
+        <div className="relative w-full md:w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Deep search items..."
+            placeholder="Find specific module..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-2xl h-12 pl-10 pr-4 outline-none focus:border-primary/40 transition-colors text-sm"
+            className="w-full bg-white/5 border border-white/5 rounded-xl h-10 pl-9 pr-4 text-xs outline-none focus:border-primary/40 transition-all"
           />
         </div>
       </div>
 
-      {testsLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {[1, 2, 3].map(i => <div key={i} className="h-64 rounded-[2rem] bg-white/5 animate-pulse" />)}
-        </div>
-      ) : filteredTests.length === 0 ? (
-        <div className="py-24 text-center glass border-white/5 rounded-[3rem] space-y-4">
-           <FileText className="w-12 h-12 text-muted-foreground opacity-10 mx-auto" />
-           <p className="text-muted-foreground font-bold tracking-widest text-xs uppercase">No matches found</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8">
-          {filteredTests.map((test) => {
-            const finalExamSlug = examSlug || examId;
-            const mockUrl = stateSlug 
-              ? `/exams/state/${stateSlug}/${finalExamSlug}/mock/${test.id}`
-              : `/exams/${categorySlug}/${finalExamSlug}/mock/${test.id}`;
+      {/* COMPACT TABS - Test Types */}
+      <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 overflow-x-auto hide-scrollbar">
+        <button
+          onClick={() => { setSelectedTypeId("all"); setSelectedSubTypeId("all"); }}
+          className={cn(
+            "flex-1 px-4 py-2 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
+            selectedTypeId === "all" ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-white'
+          )}
+        >
+          All Mocks
+        </button>
+        {mockTypes?.map((type) => (
+          <button
+            key={type.id}
+            onClick={() => { setSelectedTypeId(type.id); setSelectedSubTypeId("all"); }}
+            className={cn(
+              "flex-1 px-4 py-2 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
+              selectedTypeId === type.id ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-white'
+            )}
+          >
+            {type.title}
+          </button>
+        ))}
+      </div>
 
-            return (
-              <motion.div layout key={test.id}
-                className="group glass border-white/10 rounded-[2.5rem] p-8 hover:border-primary/40 transition-all duration-500 flex flex-col h-full overflow-hidden shadow-2xl relative"
+      {/* CHIP SCROLLER - Subjects/SubTypes */}
+      <AnimatePresence mode="wait">
+        {selectedTypeId !== "all" && subTypes && subTypes.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -10 }}
+            className="flex items-center gap-2 overflow-x-auto hide-scrollbar py-1"
+          >
+            <button
+              onClick={() => setSelectedSubTypeId("all")}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all whitespace-nowrap",
+                selectedSubTypeId === "all" ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-white/5 border-white/5 text-muted-foreground'
+              )}
+            >
+              All Topics
+            </button>
+            {subTypes.map((sub) => (
+              <button
+                key={sub.id}
+                onClick={() => setSelectedSubTypeId(sub.id)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all whitespace-nowrap",
+                  selectedSubTypeId === sub.id ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-white/5 border-white/5 text-muted-foreground'
+                )}
               >
-                <div className="flex flex-col gap-4 mb-8">
-                  <div className="flex items-center gap-2">
-                     <Badge className="bg-primary/20 text-primary border-primary/20 text-[9px] uppercase tracking-widest px-3 h-6">{test.typeName || "Full Mock"}</Badge>
-                     {test.isFree && <Badge variant="outline" className="text-emerald-400 border-emerald-500/20 bg-emerald-500/5 text-[9px] px-3 h-6">Lead Asset</Badge>}
-                  </div>
-                  <h3 className="text-xl md:text-2xl font-headline font-bold leading-tight group-hover:text-primary transition-colors">{test.title}</h3>
-                </div>
+                {sub.title}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                <div className="grid grid-cols-2 gap-4 py-6 border-y border-white/5 mb-8">
-                  <div className="space-y-1">
-                    <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">Reward</div>
-                    <div className="text-xl font-bold">{test.fullMarks || 0} Pts</div>
-                  </div>
-                  <div className="space-y-1 border-l border-white/5 pl-4">
-                    <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest opacity-60">Complexity</div>
-                    <div className="text-xl font-bold">{test.totalQuestions || 0} Qs</div>
-                  </div>
-                </div>
-
-                <Link href={mockUrl} className="mt-auto block">
-                    <Button className="w-full rounded-2xl bg-white/5 hover:bg-primary text-foreground hover:text-white border border-white/10 h-14 text-sm font-bold gap-3 group/btn">
-                      <Play className="w-4 h-4 fill-current group-hover/btn:scale-110 transition-transform" /> Start Practice
-                    </Button>
-                </Link>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+      {/* MOCK TEST LIST */}
+      <div className="grid grid-cols-1 gap-3">
+        {testsLoading ? (
+          Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 rounded-xl bg-white/5 animate-pulse" />)
+        ) : filteredTests.length === 0 ? (
+          <div className="py-20 text-center border border-dashed border-white/10 rounded-2xl">
+             <FileText className="w-10 h-10 text-muted-foreground opacity-10 mx-auto mb-3" />
+             <p className="text-muted-foreground text-xs font-medium">No mocks available in this category yet.</p>
+          </div>
+        ) : (
+          filteredTests.map((test) => (
+            <TestListItem 
+              key={test.id} 
+              test={test} 
+              attempt={attempts?.find(a => a.mockId === test.id)}
+              url={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`} 
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 };
+
+// COMPACT PROFESSIONAL LIST CARD
+function TestListItem({ test, attempt, url }: any) {
+  const isAttempted = !!attempt;
+  
+  return (
+    <div className="group bg-card border border-white/5 rounded-xl p-4 md:p-5 hover:border-primary/30 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+      <div className="flex-1 space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 shrink-0">
+             {isAttempted ? (
+               <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">Attempted</Badge>
+             ) : test.isFree ? (
+               <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">Free</Badge>
+             ) : (
+               <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold">Live</Badge>
+             )}
+          </div>
+          <h3 className="text-sm md:text-base font-bold leading-tight line-clamp-1">{test.title}</h3>
+        </div>
+
+        <div className="flex items-center gap-4 text-[10px] md:text-xs text-muted-foreground">
+           <div className="flex items-center gap-1.5">
+             <FileText className="w-3 h-3 text-primary/60" />
+             <span>{test.totalQuestions} Questions</span>
+           </div>
+           <div className="h-1 w-1 rounded-full bg-white/10" />
+           <div className="flex items-center gap-1.5">
+             <Clock className="w-3 h-3 text-accent/60" />
+             <span>{test.durationMinutes} Mins</span>
+           </div>
+           <div className="h-1 w-1 rounded-full bg-white/10" />
+           <div className="flex items-center gap-1.5">
+             <Target className="w-3 h-3 text-emerald-400/60" />
+             <span>{test.fullMarks} Marks</span>
+           </div>
+        </div>
+
+        {isAttempted && (
+          <div className="pt-1">
+             <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Your Last Score: <span className="text-accent">{attempt.score?.toFixed(1)}</span></span>
+                <span className="text-[10px] text-muted-foreground">{attempt.accuracy?.toFixed(0)}% Accuracy</span>
+             </div>
+             <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                <div className="h-full bg-primary" style={{ width: `${attempt.percentage || 0}%` }} />
+             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 pt-3 md:pt-0 border-t md:border-0 border-white/5">
+        {isAttempted ? (
+          <>
+            <Link href={url} className="flex-1 md:flex-none">
+              <Button variant="outline" className="w-full border-white/10 h-10 rounded-xl text-xs font-bold gap-2">
+                <History className="w-3.5 h-3.5" /> Reattempt
+              </Button>
+            </Link>
+            <Link href={url} className="flex-1 md:flex-none">
+              <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white h-10 rounded-xl text-xs font-bold gap-2">
+                <TrendingUp className="w-3.5 h-3.5" /> Result
+              </Button>
+            </Link>
+          </>
+        ) : (
+          <Link href={url} className="w-full md:w-auto">
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2 shadow-lg shadow-primary/20">
+              <Play className="w-4 h-4 fill-current" /> Start Test
+            </Button>
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TestLibrarySkeleton() {
+  return (
+    <div className="space-y-6">
+       <div className="flex justify-between items-center">
+          <div className="h-6 w-32 bg-white/5 rounded animate-pulse" />
+          <div className="h-9 w-48 bg-white/5 rounded-xl animate-pulse" />
+       </div>
+       <div className="h-12 w-full bg-white/5 rounded-xl animate-pulse" />
+       <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-28 w-full bg-white/5 rounded-xl animate-pulse" />
+          ))}
+       </div>
+    </div>
+  );
+}
