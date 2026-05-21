@@ -38,7 +38,7 @@ export const ResultPage = ({
   const [isSaving, setIsSaving] = useState(false);
   const saveInitiated = useRef(false);
 
-  // DETERMINISTIC SCORING ENGINE - FIXED FOR NUMERIC IDS
+  // DETERMINISTIC SCORING ENGINE - ENSURING ID COERCION
   const metrics = useMemo(() => {
     let correct = 0;
     let incorrect = 0;
@@ -49,17 +49,20 @@ export const ResultPage = ({
 
     (testData.questions || []).forEach(q => {
       const resp = responses[q.id];
-      const selectedOptionId = resp?.selectedOptionId !== null ? Number(resp?.selectedOptionId) : null;
-      const correctOptionId = Number(q.correctOptionId ?? q.raw_answer_id ?? q.answer);
-
-      const pos = Number(q?.marks?.positive ?? q?.positiveMarks ?? testData.marksPerQuestion ?? 1);
-      const neg = Number(q?.marks?.negative ?? q?.negativeMarks ?? testData.negativeMarks ?? 0);
-      const skip = Number(q?.marks?.skip ?? 0);
+      const selectedOptionId = (resp?.selectedOptionId !== null && resp?.selectedOptionId !== undefined) 
+        ? Number(resp.selectedOptionId) 
+        : null;
+      
+      const correctId = Number(q.correctOptionId ?? q.raw_answer_id ?? q.answer);
+      
+      const pos = Number(q.marks?.positive ?? q.positiveMarks ?? testData.marksPerQuestion ?? 1);
+      const neg = Number(q.marks?.negative ?? q.negativeMarks ?? testData.negativeMarks ?? 0);
+      const skipMarks = Number(q.marks?.skip ?? 0);
 
       maxPossibleScore += pos;
 
-      const isSkipped = selectedOptionId === null || Number.isNaN(selectedOptionId);
-      const isCorrect = !isSkipped && selectedOptionId === correctOptionId;
+      const isSkipped = selectedOptionId === null || isNaN(selectedOptionId);
+      const isCorrect = !isSkipped && selectedOptionId === correctId;
       const isWrong = !isSkipped && !isCorrect;
       
       let marksAwarded = 0;
@@ -74,14 +77,14 @@ export const ResultPage = ({
         marksAwarded = -neg;
       } else {
         unattempted++;
-        totalScore += skip;
-        marksAwarded = skip;
+        totalScore += skipMarks;
+        marksAwarded = skipMarks;
       }
 
       analysis.push({
         questionId: q.id,
         selectedAnswer: selectedOptionId,
-        correctAnswer: correctOptionId,
+        correctAnswer: correctId,
         isCorrect,
         isWrong,
         marksAwarded,
@@ -120,7 +123,9 @@ export const ResultPage = ({
               key,
               {
                 ...value,
-                selectedOptionId: value?.selectedOptionId !== null ? Number(value?.selectedOptionId).toString() : null,
+                selectedOptionId: (value?.selectedOptionId !== null && value?.selectedOptionId !== undefined) 
+                  ? Number(value.selectedOptionId).toString() 
+                  : null,
               }
             ])
           );
@@ -149,7 +154,6 @@ export const ResultPage = ({
             questionAnalysis: metrics.questionAnalysis,
             rawResponses: normalizedResponses
           });
-          console.log("ResultEngine: Analytics synchronized.");
         } catch (error) {
           console.error("ResultEngine: Persistence failure", error);
           saveInitiated.current = false;
@@ -159,7 +163,7 @@ export const ResultPage = ({
       }
     };
     saveResult();
-  }, [user, db, testData.id, metrics, responses, userLanguage]);
+  }, [user, db, testData, metrics, responses, userLanguage]);
 
   const chartData = [
     { name: 'Correct', value: metrics.correct, color: '#10b981' },

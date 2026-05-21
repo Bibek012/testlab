@@ -55,9 +55,11 @@ export const SolutionInterface = ({
   const currentQuestion = testData.questions[currentIndex];
   const response = responses[currentQuestion.id];
   const correctOptionId = Number(currentQuestion.correctOptionId ?? currentQuestion.raw_answer_id ?? currentQuestion.answer);
-  const selectedOptionId = response.selectedOptionId !== null ? Number(response.selectedOptionId) : null;
+  const selectedOptionId = (response?.selectedOptionId !== null && response?.selectedOptionId !== undefined) 
+    ? Number(response.selectedOptionId) 
+    : null;
   const isCorrect = selectedOptionId !== null && selectedOptionId === correctOptionId;
-  const isSkipped = selectedOptionId === null;
+  const isSkipped = selectedOptionId === null || isNaN(selectedOptionId as number);
 
   const isBookmarked = useMemo(() => {
     return bookmarks?.some(b => b.questionId === currentQuestion.id);
@@ -91,7 +93,6 @@ export const SolutionInterface = ({
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
-      {/* Solution Header */}
       <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-4 md:px-6 shrink-0 z-50">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground hover:text-white h-9">
@@ -138,10 +139,8 @@ export const SolutionInterface = ({
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Solution Area */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-10">
           <div className="max-w-4xl mx-auto space-y-8 pb-32">
-            {/* Status Header */}
             <div className="flex items-center justify-between p-4 rounded-2xl border border-white/5 bg-white/5">
               <div className="flex items-center gap-4">
                 {isSkipped ? (
@@ -163,7 +162,7 @@ export const SolutionInterface = ({
                     {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
                  </Button>
                 <div className="text-xs font-medium text-muted-foreground flex items-center gap-2">
-                  <Clock className="w-3.5 h-3.5" /> Time Spent: {formatTime(response.timeSpentSeconds)}
+                  <Clock className="w-3.5 h-3.5" /> Time Spent: {formatTime(response?.timeSpentSeconds || 0)}
                 </div>
               </div>
               <div className="text-sm font-bold">
@@ -173,7 +172,6 @@ export const SolutionInterface = ({
               </div>
             </div>
 
-            {/* Question Card */}
             <div className="space-y-6">
               <div className="flex items-center gap-3">
                  <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg">Question {currentIndex + 1}</Badge>
@@ -189,11 +187,11 @@ export const SolutionInterface = ({
               ))}
             </div>
 
-            {/* Options Mode */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {currentQuestion.options.map((option) => {
-                const isUserSelected = selectedOptionId === Number(option.id);
-                const isCorrectOption = correctOptionId === Number(option.id);
+                const optId = Number(option.id);
+                const isUserSelected = selectedOptionId === optId;
+                const isCorrectOption = correctOptionId === optId;
                 
                 let cardStyle = "bg-white/5 border-white/5";
                 let badgeStyle = "bg-white/10 text-muted-foreground border-white/10";
@@ -224,7 +222,6 @@ export const SolutionInterface = ({
               })}
             </div>
 
-            {/* Explanation Section */}
             {currentQuestion.explanation && (
               <div className="space-y-4 p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-white/5 to-transparent">
                 <div className="flex items-center gap-2 text-primary font-bold uppercase tracking-widest text-xs">
@@ -239,7 +236,6 @@ export const SolutionInterface = ({
           </div>
         </div>
 
-        {/* Desktop Palette */}
         <aside className="hidden lg:flex w-72 xl:w-80 bg-[#0f172a] border-l border-white/5 flex-col overflow-hidden">
           <QuestionPalette 
             questions={testData.questions} 
@@ -250,7 +246,6 @@ export const SolutionInterface = ({
         </aside>
       </div>
 
-      {/* Navigation Footer */}
       <footer className="h-16 border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex items-center justify-between px-6 shrink-0 z-50">
         <Button 
           variant="outline" 

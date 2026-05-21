@@ -18,10 +18,7 @@ import {
   LayoutGrid,
   AlertCircle,
   Send,
-  Bookmark,
-  BookmarkCheck,
-  Loader2,
-  Languages
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
@@ -36,8 +33,7 @@ import {
   DialogFooter 
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useUser, useFirestore, useCollection } from "@/firebase";
-import { doc, setDoc, deleteDoc, serverTimestamp, collection } from "firebase/firestore";
+import { useUser } from "@/firebase";
 
 interface Props {
   testData: MockTestData;
@@ -47,7 +43,6 @@ interface Props {
   onSubmit: () => void;
 }
 
-// Sub-component to isolate timer re-renders from the main engine
 const TimerDisplay = React.memo(({ targetEndTime, onTimeout }: { targetEndTime: number, onTimeout: () => void }) => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -97,7 +92,6 @@ export const TestInterface = ({
   onSubmit 
 }: Props) => {
   const { user } = useUser();
-  const db = useFirestore();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentLang, setCurrentLang] = useState<'en' | 'hn'>(initialLang);
   const [isPaused, setIsPaused] = useState(false);
@@ -107,7 +101,6 @@ export const TestInterface = ({
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
 
-  // Initialize/Sync Timer once
   useEffect(() => {
     let savedEndTime = localStorage.getItem(`test_end_${testData.id}`);
     if (!savedEndTime) {
@@ -118,12 +111,12 @@ export const TestInterface = ({
     setTargetEndTime(parseInt(savedEndTime));
   }, [testData.id, testData.durationMinutes]);
 
-  // Per-Question Time Tracking
   useEffect(() => {
     if (isPaused || showSubmitConfirm) return;
     const qTimer = setInterval(() => {
       setResponses(prev => {
         const qId = currentQuestion.id;
+        if (!prev[qId]) return prev;
         return {
           ...prev,
           [qId]: {
@@ -136,13 +129,13 @@ export const TestInterface = ({
     return () => clearInterval(qTimer);
   }, [currentQuestion.id, isPaused, showSubmitConfirm, setResponses]);
 
-  // Mark current question as visited
   useEffect(() => {
     setResponses(prev => {
-      if (prev[currentQuestion.id]?.status === 'not-visited') {
+      const qId = currentQuestion.id;
+      if (prev[qId]?.status === 'not-visited') {
         return {
           ...prev,
-          [currentQuestion.id]: { ...prev[currentQuestion.id], status: 'not-answered' }
+          [qId]: { ...prev[qId], status: 'not-answered' }
         };
       }
       return prev;
@@ -151,23 +144,29 @@ export const TestInterface = ({
 
   const handleOptionSelect = useCallback((optionId: string | number) => {
     const numericOptionId = Number(optionId);
-    setResponses(prev => ({
-      ...prev,
-      [currentQuestion.id]: { 
-        ...prev[currentQuestion.id], 
-        selectedOptionId: numericOptionId.toString(),
-        status: prev[currentQuestion.id].status === 'marked-review' ? 'answered-marked-review' : prev[currentQuestion.id].status
-      }
-    }));
+    setResponses(prev => {
+      const qId = currentQuestion.id;
+      const currentResp = prev[qId] || { questionId: qId, timeSpentSeconds: 0 };
+      return {
+        ...prev,
+        [qId]: { 
+          ...currentResp, 
+          selectedOptionId: numericOptionId.toString(),
+          status: currentResp.status === 'marked-review' ? 'answered-marked-review' : 'answered'
+        }
+      };
+    });
   }, [currentQuestion.id, setResponses]);
 
   const handleSaveAndNext = () => {
     setResponses(prev => {
-      const resp = prev[currentQuestion.id];
+      const qId = currentQuestion.id;
+      const resp = prev[qId];
+      if (!resp) return prev;
       const newStatus: QuestionStatus = resp.selectedOptionId ? 'answered' : 'not-answered';
       return {
         ...prev,
-        [currentQuestion.id]: { ...resp, status: newStatus }
+        [qId]: { ...resp, status: newStatus }
       };
     });
     if (currentQuestionIndex < testData.questions.length - 1) {
@@ -179,11 +178,13 @@ export const TestInterface = ({
 
   const handleMarkForReview = () => {
     setResponses(prev => {
-      const resp = prev[currentQuestion.id];
+      const qId = currentQuestion.id;
+      const resp = prev[qId];
+      if (!resp) return prev;
       const newStatus: QuestionStatus = resp.selectedOptionId ? 'answered-marked-review' : 'marked-review';
       return {
         ...prev,
-        [currentQuestion.id]: { ...resp, status: newStatus }
+        [qId]: { ...resp, status: newStatus }
       };
     });
     if (currentQuestionIndex < testData.questions.length - 1) {
@@ -192,10 +193,13 @@ export const TestInterface = ({
   };
 
   const handleClearResponse = () => {
-    setResponses(prev => ({
-      ...prev,
-      [currentQuestion.id]: { ...prev[currentQuestion.id], selectedOptionId: null, status: 'not-answered' }
-    }));
+    setResponses(prev => {
+      const qId = currentQuestion.id;
+      return {
+        ...prev,
+        [qId]: { ...prev[qId], selectedOptionId: null, status: 'not-answered' }
+      };
+    });
   };
 
   const sectionProgress = useMemo(() => {
@@ -221,7 +225,6 @@ export const TestInterface = ({
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
-      {/* Top Bar */}
       <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-4 md:px-6 shrink-0 z-50">
         <div className="flex items-center gap-3 md:gap-6 overflow-hidden">
           <div className="hidden sm:flex items-center gap-2 shrink-0">
@@ -271,7 +274,6 @@ export const TestInterface = ({
         </div>
       </header>
 
-      {/* Section Selector */}
       <div className="bg-slate-900/30 border-b border-white/5 flex items-center justify-between px-4 md:px-6 py-2 shrink-0 z-40">
         <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {testData.sections.map((section) => (
@@ -298,7 +300,6 @@ export const TestInterface = ({
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 overflow-y-auto bg-slate-900/10 custom-scrollbar p-4 md:p-10">
           <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-32 md:pb-20">
@@ -319,7 +320,6 @@ export const TestInterface = ({
                       className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentLang === 'hn' ? "bg-accent text-white" : "text-muted-foreground")}
                     >HN</button>
                   </div>
-                  {/* Database-Driven Marks Display */}
                   <div className="text-[10px] font-bold bg-white/5 px-3 py-1 rounded-lg border border-white/5">
                     <span className="text-emerald-400">+{currentQuestion.marks?.positive || 1}</span>
                     <span className="text-white/20 mx-1">/</span>
@@ -371,7 +371,6 @@ export const TestInterface = ({
           </div>
         </div>
 
-        {/* Desktop Sidebar Palette */}
         <aside className="hidden lg:flex w-72 xl:w-80 bg-[#0f172a] border-l border-white/5 flex-col overflow-hidden">
           <QuestionPalette 
             questions={testData.questions} 
@@ -382,7 +381,6 @@ export const TestInterface = ({
         </aside>
       </div>
 
-      {/* Action Footer */}
       <footer className="h-auto border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between px-4 md:px-6 py-4 md:py-0 shrink-0 z-50 gap-4">
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto hide-scrollbar">
           <Button 
@@ -427,7 +425,6 @@ export const TestInterface = ({
         </div>
       </footer>
 
-      {/* Modals */}
       <Dialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
         <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="mb-6">

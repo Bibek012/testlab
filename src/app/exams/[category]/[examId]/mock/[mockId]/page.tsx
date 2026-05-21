@@ -84,21 +84,41 @@ export default function MockTestEnginePage() {
           const base = q.question || q;
           const sol = q.explanation || q.solution || { en: "", hn: "" };
           
+          // Map Options to ensure they have numeric IDs
+          const options = (Array.isArray(q.options) ? q.options : []).map((option: any, optIndex: number) => ({
+            ...option,
+            id: Number(option.id) || optIndex + 1,
+          }));
+
+          // Resolve correct answer ID from text or raw ID
+          const rawAns = q.raw_answer_id ?? q.answer;
+          let correctOptionId = 0;
+
+          if (rawAns !== undefined && rawAns !== null) {
+            if (!isNaN(Number(rawAns))) {
+              correctOptionId = Number(rawAns);
+            } else {
+              // Fallback: If answer is text, find matching option text
+              const match = options.find(o => 
+                (o.en && o.en.toLowerCase() === String(rawAns).toLowerCase()) || 
+                (o.hn && o.hn.toLowerCase() === String(rawAns).toLowerCase()) ||
+                (o.text && o.text.toLowerCase() === String(rawAns).toLowerCase())
+              );
+              if (match) correctOptionId = Number(match.id);
+            }
+          }
+          
           return {
             ...q,
-            id: q.id || q.questionId || `question_${index}`,
+            id: q.id, // Use Firestore Document ID
             en: base.en || q.en || "",
             hn: base.hn || q.hn || "",
             en_html: base.en_html || q.en_html || "",
             hn_html: base.hn_html || q.hn_html || "",
             order: q.order || index + 1,
             sectionId: q.sectionId || "default",
-            options: (Array.isArray(q.options) ? q.options : []).map((option: any, optIndex: number) => ({
-              ...option,
-              id: Number(option.id) || optIndex + 1,
-            })),
-            answer: q.raw_answer_id ?? q.answer ?? null,
-            correctOptionId: Number(q.raw_answer_id ?? q.answer ?? 0),
+            options,
+            correctOptionId,
             marks: {
               positive:
                 Number(
@@ -119,20 +139,6 @@ export default function MockTestEnginePage() {
                   q?.marks?.skip ?? 0
                 ),
             },
-            positiveMarks:
-              Number(
-                q?.marks?.positive ??
-                q?.positiveMarks ??
-                mockMetadata?.marksPerQuestion ??
-                1
-              ),
-            negativeMarks:
-              Number(
-                q?.marks?.negative ??
-                q?.negativeMarks ??
-                mockMetadata?.negativeMarks ??
-                0
-              ),
             explanation: typeof sol === 'object' ? {
               en: sol.en || "",
               hn: sol.hn || "",
@@ -145,7 +151,7 @@ export default function MockTestEnginePage() {
     };
   }, [mockMetadata, sections, questions]);
 
-  const dashboardUrl = `/exams/${examId}`;
+  const dashboardUrl = `/exams/all/${mockMetadata?.slug || ''}`;
 
   // Check for resume data and initialize responses
   useEffect(() => {
@@ -157,7 +163,7 @@ export default function MockTestEnginePage() {
         const initialResponses: Record<string, UserResponse> = {};
         (testData.questions || []).forEach((q: any) => {
           initialResponses[q.id] = {
-            questionId: q.id || q.questionId || crypto.randomUUID(),
+            questionId: q.id,
             selectedOptionId: null,
             status: 'not-visited',
             timeSpentSeconds: 0
@@ -279,7 +285,7 @@ export default function MockTestEnginePage() {
           This mock test exists but no valid questions were loaded.
           The uploaded content may be malformed or incomplete.
         </p>
-        <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
+        <Button onClick={() => router.push('/exams/all')}>Return to Dashboard</Button>
       </div>
     );
   }
