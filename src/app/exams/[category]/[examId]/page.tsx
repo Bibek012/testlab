@@ -14,27 +14,36 @@ import { Rocket, Sparkles, BookOpen, Users, Play, ChevronRight, Loader2 } from "
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResourceNotFound } from "@/components/ResourceNotFound";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, where, limit } from "firebase/firestore";
+import { useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
+import { collection, query, where, limit, doc } from "firebase/firestore";
 
 export default function ExamDashboardPage() {
   const params = useParams();
-  const examSlug = params.examId as string;
+  const examIdParam = params.examId as string;
   const db = useFirestore();
 
-  // Find Exam by Slug globally - No category dependency to fix mock count issues
-  const examQuery = useMemoFirebase(() => 
+  // Robust Resolver: Attempt to find exam by SLUG first
+  const examBySlugQuery = useMemoFirebase(() => 
     db ? query(
       collection(db, "exams"), 
-      where("slug", "==", examSlug), 
+      where("slug", "==", examIdParam), 
       limit(1)
     ) : null,
-  [db, examSlug]);
+  [db, examIdParam]);
   
-  const { data: exams, loading: examLoading } = useCollection<any>(examQuery);
-  const exam = exams?.[0];
+  const { data: examsBySlug, loading: slugLoading } = useCollection<any>(examBySlugQuery);
 
-  if (examLoading) {
+  // Fallback: Attempt to fetch by Document ID
+  const examByIdRef = useMemoFirebase(() => 
+    db ? doc(db, "exams", examIdParam) : null, 
+  [db, examIdParam]);
+  const { data: examById, loading: idLoading } = useDoc<any>(examByIdRef);
+
+  // Resolve the actual exam object
+  const exam = (examsBySlug && examsBySlug.length > 0) ? examsBySlug[0] : examById;
+  const loading = slugLoading && idLoading;
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
@@ -44,7 +53,7 @@ export default function ExamDashboardPage() {
   }
 
   if (!exam) {
-    return <ResourceNotFound type="Exam" message={`The exam series '${examSlug}' could not be found in our global registry.`} backUrl="/exams/all" />;
+    return <ResourceNotFound type="Exam" message={`The exam series '${examIdParam}' could not be found in our global registry.`} backUrl="/exams/all" />;
   }
 
   return (
@@ -116,7 +125,11 @@ export default function ExamDashboardPage() {
               </section>
 
               <section className="pt-4 md:pt-8">
-                <MockTestList examId={exam.id} categorySlug={exam.categorySlug || 'general'} />
+                <MockTestList 
+                  examId={exam.id} 
+                  examSlug={exam.slug || exam.id}
+                  categorySlug={exam.categorySlug || 'all'} 
+                />
               </section>
             </div>
 

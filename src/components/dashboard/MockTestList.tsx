@@ -18,11 +18,12 @@ import { collection, query, where, orderBy } from "firebase/firestore";
 
 interface MockTestListProps {
   examId: string;
+  examSlug: string;
   categorySlug: string;
   stateSlug?: string;
 }
 
-export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListProps) => {
+export const MockTestList = ({ examId, examSlug, categorySlug, stateSlug }: MockTestListProps) => {
   const db = useFirestore();
 
   const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
@@ -148,9 +149,10 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8">
           {filteredTests.map((test) => {
+            const finalExamSlug = examSlug || examId;
             const mockUrl = stateSlug 
-              ? `/exams/state/${stateSlug}/${examId}/mock/${test.id}`
-              : `/exams/${categorySlug}/${examId}/mock/${test.id}`;
+              ? `/exams/state/${stateSlug}/${finalExamSlug}/mock/${test.id}`
+              : `/exams/${categorySlug}/${finalExamSlug}/mock/${test.id}`;
 
             return (
               <motion.div layout key={test.id}
