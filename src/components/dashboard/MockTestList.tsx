@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -40,7 +41,7 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
   [db, examId, selectedTypeId]);
   const { data: subTypes } = useCollection<any>(subTypesQuery);
 
-  // CORRECTED: Filter by Exam ID and Published status
+  // Filter by Exam ID and Published status
   const mocksQuery = useMemoFirebase(() => 
     db ? query(
       collection(db, "mockTests"), 
@@ -157,7 +158,7 @@ export const MockTestList = ({ examId, categorySlug, stateSlug }: MockTestListPr
               >
                 <div className="flex flex-col gap-4 mb-8">
                   <div className="flex items-center gap-2">
-                     <Badge className="bg-primary/20 text-primary border-primary/10 text-[9px] uppercase tracking-widest px-3 h-6">{test.typeName || "Full Mock"}</Badge>
+                     <Badge className="bg-primary/20 text-primary border-primary/20 text-[9px] uppercase tracking-widest px-3 h-6">{test.typeName || "Full Mock"}</Badge>
                      {test.isFree && <Badge variant="outline" className="text-emerald-400 border-emerald-500/20 bg-emerald-500/5 text-[9px] px-3 h-6">Lead Asset</Badge>}
                   </div>
                   <h3 className="text-xl md:text-2xl font-headline font-bold leading-tight group-hover:text-primary transition-colors">{test.title}</h3>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
@@ -703,6 +704,27 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
                 </SelectContent>
               </Select>
             )}
+          </div>
+
+          <div className="md:col-span-2 space-y-1.5">
+             <div className="flex items-center justify-between">
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Subtype / Subject / Chapter</Label>
+                <button onClick={() => setIsAddingSubType(true)} className="text-[10px] text-accent hover:underline">+ New Subject</button>
+             </div>
+             {isAddingSubType ? (
+                <div className="flex gap-1">
+                   <Input size="sm" className="h-11 text-xs bg-white/10" value={newSubTypeName} onChange={(e) => setNewSubTypeName(e.target.value)} placeholder="Subject name..." />
+                   <Button size="sm" onClick={handleAddSubType} className="h-11 w-11 p-0 bg-accent hover:bg-accent/90"><PlusCircle className="w-4 h-4" /></Button>
+                </div>
+             ) : (
+                <Select value={formData.subTypeId} onValueChange={(v) => setFormData({ ...formData, subTypeId: v })} disabled={!formData.typeId}>
+                   <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="All Subjects / General" /></SelectTrigger>
+                   <SelectContent className="glass">
+                      <SelectItem value="none">No specific subject (General)</SelectItem>
+                      {subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
+                   </SelectContent>
+                </Select>
+             )}
           </div>
 
           <div className="space-y-1.5">
