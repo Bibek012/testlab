@@ -46,6 +46,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import JSZip from "jszip";
+import { validateAndNormalizeMockTest } from "@/lib/json-validator";
 
 type IngestionStatus = 'pending' | 'parsing' | 'validating' | 'syncing' | 'success' | 'failed';
 
@@ -58,6 +59,7 @@ interface QueueItem {
   status: IngestionStatus;
   progress: number;
   error?: string;
+  validatedData?: any;
 }
 
 export default function BulkIngestionPipeline() {
@@ -201,9 +203,14 @@ export default function BulkIngestionPipeline() {
         const json = JSON.parse(content);
 
         updateItem(item.id, { status: 'validating', progress: 30 });
-        const questions = normalizeQuestions(json, batchConfig.marksPerQuestion, batchConfig.negativeMarks);
+        const validation = validateAndNormalizeMockTest(json);
 
-        if (questions.length === 0) throw new Error("No questions successfully parsed.");
+        if (!validation.success) {
+          throw new Error(validation.error);
+        }
+
+        const normalized = validation.data;
+        const questions = normalized.sections.flatMap(s => s.questions);
 
         updateItem(item.id, { status: 'syncing', progress: 50 });
         const exam = exams?.find(e => e.id === batchConfig.examId);
@@ -213,20 +220,19 @@ export default function BulkIngestionPipeline() {
         const mockId = item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9]/g, '-');
         const mockRef = doc(db, "mockTests", mockId);
 
-        // Unified Schema Implementation
         const mockData = {
           id: mockId,
-          title: json.title || item.name.replace('.json', '').replace(/_/g, ' '),
+          title: normalized.title,
           examId: batchConfig.examId,
           examName: exam?.name || "Global",
           typeId: batchConfig.typeId || "general",
           typeName: type?.title || "Full Test",
           subTypeId: batchConfig.subTypeId || "",
           subTypeName: sub?.title || "",
-          totalQuestions: questions.length,
+          totalQuestions: normalized.totalQuestions,
           marksPerQuestion: parseFloat(batchConfig.marksPerQuestion),
           negativeMarks: parseFloat(batchConfig.negativeMarks),
-          fullMarks: questions.length * parseFloat(batchConfig.marksPerQuestion),
+          fullMarks: questions.reduce((acc, q) => acc + (q.marks?.positive || 1), 0),
           durationMinutes: parseInt(batchConfig.durationMinutes) || 90,
           status: batchConfig.status,
           isFree: batchConfig.isFree,
@@ -237,16 +243,28 @@ export default function BulkIngestionPipeline() {
 
         await setDoc(mockRef, mockData, { merge: true });
 
+        // Sync Sections
+        const sectionsBatch = writeBatch(db);
+        normalized.sections.forEach((sec) => {
+          const secRef = doc(db, "mockTests", mockId, "sections", sec.id);
+          sectionsBatch.set(secRef, { 
+            id: sec.id, 
+            title: sec.title, 
+            questionCount: sec.questions.length 
+          });
+        });
+        await sectionsBatch.commit();
+
         // Batch Question Sync
         const CHUNK_SIZE = 50;
         for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
           const chunk = questions.slice(i, i + CHUNK_SIZE);
-          const batch = writeBatch(db);
-          chunk.forEach((q, idx) => {
-            const qRef = doc(db, "mockTests", mockId, "questions", q.id || `q-${i + idx}`);
-            batch.set(qRef, { ...q, mockId, updatedAt: serverTimestamp() });
+          const qBatch = writeBatch(db);
+          chunk.forEach((q) => {
+            const qRef = doc(db, "mockTests", mockId, "questions", q.id);
+            qBatch.set(qRef, { ...q, mockId, updatedAt: serverTimestamp() });
           });
-          await batch.commit();
+          await qBatch.commit();
           updateItem(item.id, { progress: 50 + Math.floor((i / questions.length) * 40) });
         }
 
@@ -259,50 +277,6 @@ export default function BulkIngestionPipeline() {
     }
     setIsProcessing(false);
     toast({ title: "Ingestion Batch Finalized" });
-  };
-
-  const normalizeQuestions = (json: any, defPos: number, defNeg: number) => {
-    let raw: any[] = [];
-    if (Array.isArray(json)) raw = json;
-    else if (json.sections) raw = json.sections.flatMap((s: any) => s.questions || []);
-    else if (json.questions) raw = json.questions;
-
-    return raw.map((q, i) => {
-      const base = q.question || q;
-      const sol = q.explanation || q.solution || {};
-      
-      // Extract marks from JSON if available, else use batch config
-      const positive = q.marks?.positive ?? defPos;
-      const negative = q.marks?.negative ?? defNeg;
-
-      return {
-        id: q.id || q.questionId || `q-${i}`,
-        en: base.en || base.text || "",
-        hn: base.hn || "",
-        en_html: base.en_html || base.html || "",
-        hn_html: base.hn_html || "",
-        options: (q.options || []).map((o: any, oi: number) => ({
-          id: o.id || `opt-${oi}`,
-          en: o.en || o.text || "",
-          hn: o.hn || "",
-          en_html: o.en_html || o.html || "",
-          hn_html: o.hn_html || ""
-        })),
-        answer: q.answer || q.correctAnswer || "",
-        marks: {
-          positive: parseFloat(positive),
-          negative: parseFloat(negative),
-          skip: 0
-        },
-        explanation: {
-          en: sol.en || sol.text || "",
-          hn: sol.hn || "",
-          en_html: sol.en_html || sol.html || "",
-          hn_html: sol.hn_html || ""
-        },
-        dom_images: q.dom_images || []
-      };
-    }).filter(q => q.en || q.en_html);
   };
 
   return (

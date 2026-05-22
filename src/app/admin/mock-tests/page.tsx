@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
@@ -18,7 +17,8 @@ import {
   MoreVertical,
   Send,
   Eye,
-  FileJson
+  FileJson,
+  AlertCircle
 } from "lucide-react";
 
 import {
@@ -78,6 +78,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { logAction } from "@/services/audit";
+import { validateAndNormalizeMockTest } from "@/lib/json-validator";
 
 export default function MockTestManagementPage() {
   const db = useFirestore();
@@ -118,17 +119,15 @@ export default function MockTestManagementPage() {
     setDeletingId(mock.id);
 
     try {
-      // Delete questions subcollection first
+      // Delete questions and sections subcollections first
       const questionsRef = collection(db, "mockTests", mock.id, "questions");
-      const questionsSnapshot = await getDocs(questionsRef);
+      const qsSnap = await getDocs(questionsRef);
+      const sectionsRef = collection(db, "mockTests", mock.id, "sections");
+      const secSnap = await getDocs(sectionsRef);
 
       const batch = writeBatch(db);
-
-      questionsSnapshot.forEach((docItem) => {
-        batch.delete(docItem.ref);
-      });
-
-      // Delete parent mock document
+      qsSnap.forEach((docItem) => batch.delete(docItem.ref));
+      secSnap.forEach((docItem) => batch.delete(docItem.ref));
       batch.delete(doc(db, "mockTests", mock.id));
 
       await batch.commit();
@@ -140,28 +139,21 @@ export default function MockTestManagementPage() {
           (d) => d.data()?.examId === mock.examId
         );
 
-        let totalQuestions = 0;
+        let totalQuestionsCount = 0;
         remainingMocks.forEach((mockDoc) => {
-          totalQuestions += mockDoc.data()?.totalQuestions || 0;
+          totalQuestionsCount += mockDoc.data()?.totalQuestions || 0;
         });
 
         await updateDoc(doc(db, "exams", mock.examId), {
-          testsCount: remainingMocks.length,
-          questionsCount: totalQuestions,
+          mockCount: remainingMocks.length,
+          questionCount: totalQuestionsCount,
           updatedAt: serverTimestamp(),
         });
       } catch (counterError) {
         console.error("Counter update failed", counterError);
       }
 
-      await logAction(
-        db,
-        user,
-        "delete_mock",
-        mock.id,
-        "mock_test",
-        `Deleted: ${mock.title}`
-      );
+      await logAction(db, user, "delete_mock", mock.id, "mock_test", `Deleted: ${mock.title}`);
 
       toast({
         title: "Deleted Successfully",
@@ -170,12 +162,7 @@ export default function MockTestManagementPage() {
 
     } catch (error: any) {
       console.error(error);
-
-      toast({
-        variant: "destructive",
-        title: "Delete Failed",
-        description: error?.message || "Unknown error",
-      });
+      toast({ variant: "destructive", title: "Delete Failed", description: error?.message || "Unknown error" });
     } finally {
       setDeletingId(null);
     }
@@ -281,7 +268,7 @@ export default function MockTestManagementPage() {
                           <DropdownMenuPortal>
                             <DropdownMenuContent align="end" className="glass border-white/10 w-48">
                               <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
-                              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => window.open(`/exams/${mock.categoryId}/${mock.examId}/mock/${mock.id}`, '_blank')}><Eye className="w-3.5 h-3.5" /> Preview</DropdownMenuItem>
+                              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => window.open(`/exams/all/${mock.examId}`, '_blank')}><Eye className="w-3.5 h-3.5" /> Preview</DropdownMenuItem>
                               <DropdownMenuItem className="text-destructive gap-2 cursor-pointer focus:bg-rose-500/10" onClick={() => handleDeleteMock(mock)}><Trash2 className="w-3.5 h-3.5" /> Delete Forever</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenuPortal>
@@ -339,7 +326,8 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [jsonFile, setJsonFile] = useState<File | null>(null);
-  const [isUploadingJson, setIsUploadingJson] = useState(false);
+  const [validatedData, setValidatedData] = useState<any>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<any>({
     title: "",
@@ -350,7 +338,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
     subTypeId: "",
     subTypeName: "",
     durationMinutes: 90,
-    totalQuestions: 100,
+    totalQuestions: 0,
     marksPerQuestion: 1,
     negativeMarks: 0.33,
     isFree: true,
@@ -385,19 +373,50 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         subTypeId: editingItem.subTypeId || "",
         subTypeName: editingItem.subTypeName || "",
         durationMinutes: editingItem.durationMinutes || 90,
-        totalQuestions: editingItem.totalQuestions || 100,
+        totalQuestions: editingItem.totalQuestions || 0,
         marksPerQuestion: editingItem.marksPerQuestion || 1,
         negativeMarks: editingItem.negativeMarks || 0.33,
         isFree: editingItem.isFree ?? true,
         status: editingItem.status || "Draft"
       });
     } else {
-      setFormData({ title: "", examId: "", examName: "", typeId: "", typeName: "", subTypeId: "", subTypeName: "", durationMinutes: 90, totalQuestions: 100, marksPerQuestion: 1, negativeMarks: 0.33, isFree: true, status: "Draft" });
+      setFormData({ title: "", examId: "", examName: "", typeId: "", typeName: "", subTypeId: "", subTypeName: "", durationMinutes: 90, totalQuestions: 0, marksPerQuestion: 1, negativeMarks: 0.33, isFree: true, status: "Draft" });
     }
     setIsAddingType(false);
     setIsAddingSubType(false);
     setJsonFile(null);
+    setValidatedData(null);
+    setValidationError(null);
   }, [editingItem, isOpen]);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setJsonFile(file);
+    setValidationError(null);
+    setValidatedData(null);
+
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const validation = validateAndNormalizeMockTest(json);
+
+      if (validation.success) {
+        setValidatedData(validation.data);
+        setFormData(prev => ({
+          ...prev,
+          title: validation.data.title,
+          totalQuestions: validation.data.totalQuestions
+        }));
+      } else {
+        setValidationError(validation.error);
+        toast({ variant: "destructive", title: "Validation Failed", description: validation.error });
+      }
+    } catch (err: any) {
+      setValidationError("Invalid JSON file format.");
+    }
+  };
 
   const handleAddType = async () => {
     if (!db || !formData.examId || !newTypeName.trim()) return;
@@ -413,7 +432,6 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       setFormData((prev: any) => ({ ...prev, typeId: docRef.id, typeName: newTypeName }));
       setNewTypeName("");
       setIsAddingType(false);
-      toast({ title: "Type Added" });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Error", description: e.message });
     }
@@ -432,7 +450,6 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       setFormData((prev: any) => ({ ...prev, subTypeId: docRef.id, subTypeName: newSubTypeName }));
       setNewSubTypeName("");
       setIsAddingSubType(false);
-      toast({ title: "Subject Added" });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Error", description: e.message });
     }
@@ -440,230 +457,91 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
   const handleSave = async () => {
     if (!db || !user || !formData.title.trim() || !formData.examId) {
-      toast({
-        variant: "destructive",
-        title: "Missing Fields",
-        description: "Title and Exam are required.",
-      });
+      toast({ variant: "destructive", title: "Missing Fields", description: "Title and Exam are required." });
+      return;
+    }
+
+    if (jsonFile && !validatedData) {
+      toast({ variant: "destructive", title: "Invalid File", description: "Please fix JSON errors before saving." });
       return;
     }
 
     setIsSaving(true);
-
     try {
-      const selectedExam = exams.find(
-        (e: any) => e.id === formData.examId
-      );
+      const selectedExam = exams.find(e => e.id === formData.examId);
+      const selectedType = mockTypes?.find(t => t.id === formData.typeId);
+      const selectedSubType = subTypes?.find(s => s.id === formData.subTypeId);
 
-      const selectedType = mockTypes?.find(
-        (t: any) => t.id === formData.typeId
-      );
+      const fullMarks = validatedData 
+        ? validatedData.sections.flatMap(s => s.questions).reduce((acc, q) => acc + (q.marks?.positive || 1), 0)
+        : (formData.totalQuestions * formData.marksPerQuestion);
 
-      const selectedSubType = subTypes?.find(
-        (s: any) => s.id === formData.subTypeId
-      );
-
-      const fullMarks =
-        (formData.totalQuestions || 0) *
-        (formData.marksPerQuestion || 1);
-
-      const data = {
+      const mockData = {
         ...formData,
-
         examName: selectedExam?.name || "",
-
         typeName: selectedType?.title || "",
-
         subTypeName: selectedSubType?.title || "",
-
         fullMarks,
-
-        hierarchyPath: `${selectedExam?.name} > ${
-          selectedType?.title || "General"
-        }${
-          selectedSubType
-            ? ` > ${selectedSubType.title}`
-            : ""
-        }`,
-
-        slug: formData.title
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/[^a-z0-9-]/g, ""),
-
+        slug: formData.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
         updatedAt: serverTimestamp(),
       };
 
-      // UPDATE EXISTING MOCK
       if (editingItem) {
-        await updateDoc(
-          doc(db, "mockTests", editingItem.id),
-          data
-        );
+        await updateDoc(doc(db, "mockTests", editingItem.id), mockData);
+        await logAction(db, user, "update_mock", editingItem.id, "mock_test", `Updated: ${formData.title}`);
+      } else {
+        const mockRef = await addDoc(collection(db, "mockTests"), { ...mockData, createdAt: serverTimestamp() });
+        
+        if (validatedData) {
+          // Sync Sections
+          const secBatch = writeBatch(db);
+          validatedData.sections.forEach(sec => {
+            const secRef = doc(db, "mockTests", mockRef.id, "sections", sec.id);
+            secBatch.set(secRef, { id: sec.id, title: sec.title, questionCount: sec.questions.length });
+          });
+          await secBatch.commit();
 
-        await logAction(
-          db,
-          user,
-          "update_mock",
-          editingItem.id,
-          "mock_test",
-          `Updated: ${formData.title}`
-        );
-
-        toast({
-          title: "Mock Updated Successfully",
-        });
-
-        onClose();
-        return;
-      }
-
-      // CREATE NEW MOCK
-      const mockRef = await addDoc(
-        collection(db, "mockTests"),
-        {
-          ...data,
-          createdAt: serverTimestamp(),
-        }
-      );
-
-      // JSON INGEST
-      if (jsonFile) {
-        setIsUploadingJson(true);
-
-        const text = await jsonFile.text();
-
-        const parsed = JSON.parse(text);
-
-        const questions =
-          parsed?.sections?.flatMap(
-            (section: any) =>
-              section.questions || []
-          ) || [];
-
-        if (!questions.length) {
-          throw new Error(
-            "No questions found in uploaded JSON"
-          );
-        }
-
-        const batch = writeBatch(db);
-
-        questions.forEach(
-          (q: any, index: number) => {
-            const questionRef = doc(
-              collection(
-                db,
-                "mockTests",
-                mockRef.id,
-                "questions"
-              )
-            );
-
-            batch.set(questionRef, {
-              questionId:
-                q.id || `question_${index}`,
-
-              type: q.type || "mcq",
-
-              question: q.question || {},
-
-              options: q.options || [],
-
-              answer: q.answer || "",
-
-              rawAnswerId:
-                q.raw_answer_id || null,
-
-              solution: q.solution || {},
-
-              positiveMarks:
-                q?.marks?.positive ||
-                formData.marksPerQuestion,
-
-              negativeMarks:
-                q?.marks?.negative ||
-                formData.negativeMarks,
-
-              marks: q.marks || {
-                positive:
-                  formData.marksPerQuestion,
-
-                negative:
-                  formData.negativeMarks,
-
-                skip: 0,
-              },
-
-              status: "Verified",
-
-              createdAt: serverTimestamp(),
-
-              updatedAt: serverTimestamp(),
+          // Sync Questions
+          const questions = validatedData.sections.flatMap(s => s.questions);
+          const CHUNK_SIZE = 50;
+          for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
+            const chunk = questions.slice(i, i + CHUNK_SIZE);
+            const qBatch = writeBatch(db);
+            chunk.forEach(q => {
+              const qRef = doc(db, "mockTests", mockRef.id, "questions", q.id);
+              qBatch.set(qRef, { ...q, mockId: mockRef.id, updatedAt: serverTimestamp() });
             });
+            await qBatch.commit();
           }
-        );
+        }
 
-        await batch.commit();
-      }
-
-      // Recalculate exam stats
-      try {
-        const allMocksSnapshot = await getDocs(query(collection(db, "mockTests")));
-        const relatedMocks = allMocksSnapshot.docs.filter(
-          (d) => d.data()?.examId === formData.examId
-        );
-
-        let totalQuestionsCount = 0;
-        relatedMocks.forEach((mockDoc) => {
-          totalQuestionsCount += mockDoc.data()?.totalQuestions || 0;
-        });
+        // Update Exam Counters
+        const allMocks = await getDocs(query(collection(db, "mockTests")));
+        const related = allMocks.docs.filter(d => d.data()?.examId === formData.examId);
+        let totalQs = 0;
+        related.forEach(d => totalQs += d.data()?.totalQuestions || 0);
 
         await updateDoc(doc(db, "exams", formData.examId), {
-          testsCount: relatedMocks.length,
-          questionsCount: totalQuestionsCount,
-          updatedAt: serverTimestamp(),
+          mockCount: related.length,
+          questionCount: totalQs,
+          updatedAt: serverTimestamp()
         });
-      } catch (statsError) {
-        console.error("Failed to update exam counters", statsError);
+
+        await logAction(db, user, "create_mock", mockRef.id, "mock_test", `Created: ${formData.title}`);
       }
 
-      await logAction(
-        db,
-        user,
-        "create_mock",
-        mockRef.id,
-        "mock_test",
-        `Created: ${formData.title}`
-      );
-
-      toast({
-        title: "Mock Created Successfully",
-        description: jsonFile
-          ? "Questions uploaded successfully."
-          : "Mock created without questions.",
-      });
-
+      toast({ title: "Mock Test Synchronized" });
       onClose();
-
     } catch (error: any) {
-      console.error(error);
-
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description:
-          error?.message || "Something went wrong",
-      });
+      toast({ variant: "destructive", title: "Sync Error", description: error.message });
     } finally {
       setIsSaving(false);
-      setIsUploadingJson(false);
     }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg glass border-white/10 max-h-[90vh] overflow-y-auto pointer-events-auto">
+      <DialogContent className="max-w-lg glass border-white/10 max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-headline font-bold">
             {editingItem ? "Edit Mock Series" : "New Mock Series"}
@@ -672,12 +550,12 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4 border-y border-white/5 mt-4">
           <div className="md:col-span-2 space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Series Title</Label>
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Series Title</Label>
             <Input className="bg-white/5 border-white/10 h-11" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Target Exam</Label>
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Target Exam</Label>
             <Select value={formData.examId} onValueChange={(v) => setFormData({ ...formData, examId: v, typeId: "", subTypeId: "" })}>
               <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="Choose Exam" /></SelectTrigger>
               <SelectContent className="glass">
@@ -688,7 +566,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Mock Category</Label>
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Category</Label>
               <button onClick={() => setIsAddingType(true)} className="text-[10px] text-primary hover:underline">+ New</button>
             </div>
             {isAddingType ? (
@@ -708,7 +586,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
           <div className="md:col-span-2 space-y-1.5">
              <div className="flex items-center justify-between">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Subtype / Subject / Chapter</Label>
+                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Subject / Chapter</Label>
                 <button onClick={() => setIsAddingSubType(true)} className="text-[10px] text-accent hover:underline">+ New Subject</button>
              </div>
              {isAddingSubType ? (
@@ -720,113 +598,60 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
                 <Select value={formData.subTypeId} onValueChange={(v) => setFormData({ ...formData, subTypeId: v })} disabled={!formData.typeId}>
                    <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="All Subjects / General" /></SelectTrigger>
                    <SelectContent className="glass">
-                      <SelectItem value="none">No specific subject (General)</SelectItem>
+                      <SelectItem value="none">General</SelectItem>
                       {subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
                    </SelectContent>
                 </Select>
              )}
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Marks per Q</Label>
-            <Input type="number" step="0.1" className="bg-white/5 border-white/10 h-11" value={formData.marksPerQuestion} onChange={(e) => setFormData({ ...formData, marksPerQuestion: parseFloat(e.target.value) || 0 })} />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Negative per Q</Label>
-            <Input type="number" step="0.01" className="bg-white/5 border-white/10 h-11" value={formData.negativeMarks} onChange={(e) => setFormData({ ...formData, negativeMarks: parseFloat(e.target.value) || 0 })} />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Questions Count</Label>
-            <Input
-              type="number"
-              readOnly
-              className="bg-white/5 border-white/10 h-11 opacity-80 cursor-not-allowed"
-              value={formData.totalQuestions}
-            />
-            <p className="text-[10px] text-muted-foreground">
-              Auto-generated from uploaded JSON file
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Duration (min)</Label>
-            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 0 })} />
-          </div>
-
           <div className="md:col-span-2 space-y-2">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
-              Upload Questions JSON
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground">
+              Ingest Testbook JSON
             </Label>
-
-            <label className="flex items-center justify-center gap-3 border border-dashed border-primary/30 rounded-2xl p-6 cursor-pointer bg-white/5 hover:bg-white/10 transition-colors">
-              <FileJson className="w-5 h-5 text-primary" />
-
+            <label className={cn(
+              "flex items-center justify-center gap-3 border border-dashed rounded-2xl p-6 cursor-pointer transition-colors",
+              validationError ? "border-rose-500/50 bg-rose-500/5" : "border-primary/30 bg-white/5 hover:bg-white/10"
+            )}>
+              <FileJson className={cn("w-5 h-5", validationError ? "text-rose-400" : "text-primary")} />
               <div className="text-sm truncate max-w-[220px]">
                 {jsonFile ? jsonFile.name : "Choose JSON File"}
               </div>
-
-              <input
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-
-                  if (!file) return;
-
-                  setJsonFile(file);
-
-                  try {
-                    const text = await file.text();
-
-                    const parsed = JSON.parse(text);
-
-                    const questions =
-                      parsed?.sections?.flatMap(
-                        (section: any) =>
-                          section.questions || []
-                      ) || [];
-
-                    setFormData((prev: any) => ({
-                      ...prev,
-                      totalQuestions: questions.length,
-                    }));
-
-                  } catch (error) {
-                    console.error(error);
-
-                    toast({
-                      variant: "destructive",
-                      title: "Invalid JSON",
-                      description:
-                        "Unable to read question count from file.",
-                    });
-                  }
-                }}
-              />
+              <input type="file" accept=".json" className="hidden" onChange={handleFileSelect} />
             </label>
-
-            <p className="text-[10px] text-muted-foreground">
-              Upload a single mock test JSON file with questions.
-            </p>
+            
+            {validationError && (
+              <p className="text-[10px] text-rose-400 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> {validationError}
+              </p>
+            )}
+            
+            {!editingItem && !jsonFile && (
+              <p className="text-[10px] text-muted-foreground italic">
+                Upload a JSON file to automatically populate questions and sections.
+              </p>
+            )}
           </div>
 
-          <div className="md:col-span-2 flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-bold">Standard Release</Label>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-tighter">Set to Live immediately upon saving</p>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Duration (min)</Label>
+            <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 0 })} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Is Free Test</Label>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 h-11">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">Unlocked</span>
+              <Switch checked={formData.isFree} onCheckedChange={(v) => setFormData({ ...formData, isFree: v })} />
             </div>
-            <Switch checked={formData.status === 'Published'} onCheckedChange={(v) => setFormData({ ...formData, status: v ? 'Published' : 'Draft' })} />
           </div>
         </div>
 
         <DialogFooter className="gap-2 pt-4">
-          <Button variant="outline" onClick={onClose} disabled={isSaving || isUploadingJson} className="border-white/10 h-12 flex-1">Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving || isUploadingJson} className="bg-primary hover:bg-primary/90 text-white font-bold h-12 flex-[2] shadow-lg shadow-primary/20">
-            {isSaving || isUploadingJson ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-            Sync Mock Test
+          <Button variant="outline" onClick={onClose} className="border-white/10 h-12 flex-1">Cancel</Button>
+          <Button onClick={handleSave} disabled={isSaving} className="bg-primary hover:bg-primary/90 text-white font-bold h-12 flex-[2]">
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+            Sync Series
           </Button>
         </DialogFooter>
       </DialogContent>
