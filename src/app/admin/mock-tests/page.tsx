@@ -401,22 +401,31 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
     try {
       const text = await file.text();
-      const json = JSON.parse(text);
-      const validation = validateAndNormalizeMockTest(json);
+      const parsed = JSON.parse(text);
+      
+      // Support both structure types for quick question count
+      const questions = parsed?.sections?.flatMap((s: any) => s.questions || []) || parsed?.questions || [];
+
+      // Auto update form state with detected metrics
+      setFormData((prev: any) => ({
+        ...prev,
+        title: parsed.title || prev.title,
+        totalQuestions: questions.length,
+        fullMarks: questions.length * Number(prev.marksPerQuestion || 1)
+      }));
+
+      // Run strict validation for normalization
+      const validation = validateAndNormalizeMockTest(parsed);
 
       if (validation.success) {
         setValidatedData(validation.data);
-        setFormData(prev => ({
-          ...prev,
-          title: validation.data.title,
-          totalQuestions: validation.data.totalQuestions
-        }));
       } else {
         setValidationError(validation.error);
-        toast({ variant: "destructive", title: "Validation Failed", description: validation.error });
+        toast({ variant: "destructive", title: "Validation Warning", description: validation.error });
       }
     } catch (err: any) {
       setValidationError("Invalid JSON file format.");
+      toast({ variant: "destructive", title: "Invalid JSON", description: "Unable to detect questions from uploaded file." });
     }
   };
 
@@ -463,7 +472,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       return;
     }
 
-    if (jsonFile && !validatedData) {
+    if (jsonFile && !validatedData && validationError) {
       toast({ variant: "destructive", title: "Invalid File", description: "Please fix JSON errors before saving." });
       return;
     }
@@ -632,7 +641,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
           <div className="md:col-span-2 grid grid-cols-3 gap-4 pt-2 border-t border-white/5 mt-2">
             <div className="space-y-1.5">
               <Label className="text-[10px] uppercase font-bold text-muted-foreground">Positive (+)</Label>
-              <Input type="number" step="0.1" className="bg-white/5 border-white/10 h-11" value={formData.marksPerQuestion} onChange={(e) => setFormData({ ...formData, marksPerQuestion: parseFloat(e.target.value) || 0 })} />
+              <Input type="number" step="0.1" className="bg-white/5 border-white/10 h-11" value={formData.marksPerQuestion} onChange={(e) => setFormData({ ...formData, marksPerQuestion: parseFloat(e.target.value) || 0, fullMarks: formData.totalQuestions * (parseFloat(e.target.value) || 0) })} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-[10px] uppercase font-bold text-muted-foreground">Negative (-)</Label>
@@ -647,6 +656,19 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
           <div className="space-y-1.5">
             <Label className="text-[10px] uppercase font-bold text-muted-foreground">Duration (min)</Label>
             <Input type="number" className="bg-white/5 border-white/10 h-11" value={formData.durationMinutes} onChange={(e) => setFormData({ ...formData, durationMinutes: parseInt(e.target.value) || 0 })} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Total Questions</Label>
+            <Input 
+              type="number" 
+              readOnly 
+              value={formData.totalQuestions} 
+              className="bg-white/5 border-white/10 h-11 opacity-80 cursor-not-allowed" 
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Auto-detected from uploaded JSON file
+            </p>
           </div>
 
           <div className="space-y-1.5">
