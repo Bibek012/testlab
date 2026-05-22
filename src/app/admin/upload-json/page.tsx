@@ -403,7 +403,7 @@ export default function BulkIngestionPipeline() {
                  ) : (
                    <div className="divide-y divide-white/5">
                       {queue.map((item) => (
-                        <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors group relative">
+                        <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors group relative overflow-hidden">
                            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center border shrink-0", 
                              item.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : 
                              item.status === 'failed' ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : 
@@ -411,9 +411,9 @@ export default function BulkIngestionPipeline() {
                               {item.status === 'success' ? <CheckCircle2 className="w-5 h-5" /> : item.status === 'failed' ? <AlertCircle className="w-5 h-5" /> : <FileJson className="w-5 h-5" />}
                            </div>
                            
-                           <div className="flex-1 min-w-0 flex flex-col gap-1">
-                              <div className="flex items-center gap-2">
-                                 <div className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap hide-scrollbar cursor-default">
+                           <div className="flex-1 min-w-0 flex flex-col gap-1 overflow-hidden">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                 <div className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap hide-scrollbar cursor-default py-0.5">
                                     <span className="text-xs font-bold">{item.name}</span>
                                  </div>
                                  <div className="flex items-center gap-1.5 shrink-0 ml-auto">
@@ -422,7 +422,7 @@ export default function BulkIngestionPipeline() {
                                        <HelpCircle className="w-2.5 h-2.5" /> {item.totalQuestions} Qs
                                      </Badge>
                                    )}
-                                   <Badge className="text-[8px] h-4 uppercase bg-white/5 font-mono tracking-tighter">{item.status}</Badge>
+                                   <Badge className="text-[8px] h-4 uppercase bg-white/5 font-mono tracking-tighter shrink-0">{item.status}</Badge>
                                  </div>
                               </div>
                               {item.status !== 'pending' && item.status !== 'success' && item.status !== 'failed' && (
