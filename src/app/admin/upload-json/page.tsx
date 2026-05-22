@@ -335,6 +335,17 @@ export default function BulkIngestionPipeline() {
                     )}
                   </div>
                 </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] uppercase font-bold opacity-60">Lifecycle Status</Label>
+                  <Select value={batchConfig.status} onValueChange={(v) => setBatchConfig({ ...batchConfig, status: v })}>
+                    <SelectTrigger className="bg-white/5 border-white/10 h-12 rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent className="glass">
+                      <SelectItem value="Draft">Draft (Private)</SelectItem>
+                      <SelectItem value="Published">Published (Live)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-4">

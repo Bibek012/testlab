@@ -627,12 +627,6 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
                 <AlertCircle className="w-3 h-3" /> {validationError}
               </p>
             )}
-            
-            {!editingItem && !jsonFile && (
-              <p className="text-[10px] text-muted-foreground italic">
-                Upload a JSON file to automatically populate questions and sections.
-              </p>
-            )}
           </div>
 
           <div className="md:col-span-2 grid grid-cols-3 gap-4 pt-2 border-t border-white/5 mt-2">
@@ -656,9 +650,20 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Is Free Test</Label>
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Lifecycle Status</Label>
+            <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
+              <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue /></SelectTrigger>
+              <SelectContent className="glass">
+                <SelectItem value="Draft">Draft (Private)</SelectItem>
+                <SelectItem value="Published">Published (Live)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="md:col-span-2 space-y-1.5 pt-2 border-t border-white/5 mt-2">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground">Premium Unlocking</Label>
             <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 h-11">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase">Unlocked</span>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">Unlocked for Free Users</span>
               <Switch checked={formData.isFree} onCheckedChange={(v) => setFormData({ ...formData, isFree: v })} />
             </div>
           </div>
