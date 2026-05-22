@@ -15,7 +15,8 @@ import {
   PlusCircle,
   History,
   Layers,
-  Target
+  Target,
+  HelpCircle
 } from "lucide-react";
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
 import { 
@@ -60,6 +61,7 @@ interface QueueItem {
   progress: number;
   error?: string;
   validatedData?: any;
+  totalQuestions?: number;
 }
 
 export default function BulkIngestionPipeline() {
@@ -164,6 +166,17 @@ export default function BulkIngestionPipeline() {
     setStats(prev => ({ ...prev, total: prev.total + newItems.length }));
   }, []);
 
+  const removeFromQueue = (id: string) => {
+    setQueue(prev => {
+      const item = prev.find(q => q.id === id);
+      if (!item) return prev;
+      if (item.status === 'success') setStats(s => ({ ...s, completed: s.completed - 1 }));
+      if (item.status === 'failed') setStats(s => ({ ...s, failed: s.failed - 1 }));
+      setStats(s => ({ ...s, total: s.total - 1 }));
+      return prev.filter(q => q.id !== id);
+    });
+  };
+
   const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -212,6 +225,7 @@ export default function BulkIngestionPipeline() {
 
         const normalized = validation.data;
         const questions = normalized.sections.flatMap(s => s.questions);
+        updateItem(item.id, { totalQuestions: normalized.totalQuestions });
 
         updateItem(item.id, { status: 'syncing', progress: 50 });
         const exam = exams?.find(e => e.id === batchConfig.examId);
@@ -282,15 +296,15 @@ export default function BulkIngestionPipeline() {
   };
 
   return (
-    <div className="space-y-6 md:space-y-8 pb-20 px-4">
+    <div className="space-y-6 md:space-y-8 pb-20 px-4 max-w-[1600px] mx-auto">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-headline font-bold">Bulk Ingestion <span className="text-accent">Pipeline</span></h1>
           <p className="text-muted-foreground text-xs mt-1">High-yield content synchronization to the global exam registry.</p>
         </div>
         <div className="flex items-center gap-3">
-           <Badge variant="outline" className="h-8 gap-2 bg-white/5">Queue: {stats.total} | Success: {stats.completed}</Badge>
-           <Button disabled={stats.total === 0 || isProcessing} onClick={processQueue} className="bg-primary h-10 px-8 font-bold gap-2 shadow-lg shadow-primary/20">
+           <Badge variant="outline" className="h-8 gap-2 bg-white/5 border-white/10 hidden sm:flex">Queue: {stats.total} | Success: {stats.completed}</Badge>
+           <Button disabled={stats.total === 0 || isProcessing} onClick={processQueue} className="bg-primary h-10 px-8 font-bold gap-2 shadow-lg shadow-primary/20 flex-1 sm:flex-none">
              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
              Initiate Batch
            </Button>
@@ -376,7 +390,11 @@ export default function BulkIngestionPipeline() {
            <Card className="glass border-white/10 flex flex-col h-[600px] overflow-hidden">
               <div className="p-5 border-b border-white/5 flex items-center justify-between shrink-0 bg-white/[0.02]">
                  <div className="font-bold text-sm">Ingestion Queue ({queue.length})</div>
-                 {queue.length > 0 && !isProcessing && <Button variant="ghost" size="sm" onClick={() => setQueue([])} className="text-rose-400 hover:bg-rose-500/10"><Trash2 className="w-4 h-4 mr-1" /> Purge</Button>}
+                 {queue.length > 0 && !isProcessing && (
+                   <Button variant="ghost" size="sm" onClick={() => { setQueue([]); setStats({ total: 0, completed: 0, failed: 0 }); }} className="text-rose-400 hover:bg-rose-500/10 h-8 rounded-lg">
+                     <Trash2 className="w-4 h-4 mr-1" /> Purge
+                   </Button>
+                 )}
               </div>
               
               <ScrollArea className="flex-1">
@@ -385,15 +403,46 @@ export default function BulkIngestionPipeline() {
                  ) : (
                    <div className="divide-y divide-white/5">
                       {queue.map((item) => (
-                        <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors">
-                           <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center border shrink-0", item.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : item.status === 'failed' ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-white/5 border-white/10 text-muted-foreground")}>
+                        <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors group relative">
+                           <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center border shrink-0", 
+                             item.status === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : 
+                             item.status === 'failed' ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : 
+                             "bg-white/5 border-white/10 text-muted-foreground")}>
                               {item.status === 'success' ? <CheckCircle2 className="w-5 h-5" /> : item.status === 'failed' ? <AlertCircle className="w-5 h-5" /> : <FileJson className="w-5 h-5" />}
                            </div>
-                           <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold truncate">{item.name}</span><Badge className="text-[8px] h-4 uppercase bg-white/5">{item.status}</Badge></div>
-                              {item.status !== 'pending' && item.status !== 'success' && item.status !== 'failed' && <Progress value={item.progress} className="h-1 mt-2" />}
+                           
+                           <div className="flex-1 min-w-0 flex flex-col gap-1">
+                              <div className="flex items-center justify-between gap-2">
+                                 <div className="flex-1 overflow-x-auto whitespace-nowrap hide-scrollbar cursor-default pr-2">
+                                    <span className="text-xs font-bold">{item.name}</span>
+                                 </div>
+                                 <div className="flex items-center gap-1.5 shrink-0">
+                                   {item.totalQuestions && (
+                                     <Badge variant="outline" className="text-[8px] h-4 bg-primary/5 text-primary border-primary/20 gap-1">
+                                       <HelpCircle className="w-2.5 h-2.5" /> {item.totalQuestions} Qs
+                                     </Badge>
+                                   )}
+                                   <Badge className="text-[8px] h-4 uppercase bg-white/5 font-mono tracking-tighter">{item.status}</Badge>
+                                 </div>
+                              </div>
+                              {item.status !== 'pending' && item.status !== 'success' && item.status !== 'failed' && (
+                                <Progress value={item.progress} className="h-1 mt-1" />
+                              )}
                               {item.error && <p className="text-[9px] text-rose-400 mt-1 truncate font-medium">{item.error}</p>}
                            </div>
+
+                           {!isProcessing && (
+                             <div className="flex items-center pl-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                               <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
+                                onClick={() => removeFromQueue(item.id)}
+                               >
+                                 <Trash2 className="w-4 h-4" />
+                               </Button>
+                             </div>
+                           )}
                         </div>
                       ))}
                    </div>
