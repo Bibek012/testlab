@@ -78,6 +78,7 @@ export default function BulkIngestionPipeline() {
     durationMinutes: 90,
     marksPerQuestion: 1.0,
     negativeMarks: 0.33,
+    skipMarks: 0,
     passingMarks: 33,
     isFree: true,
     language: "en",
@@ -217,7 +218,7 @@ export default function BulkIngestionPipeline() {
         const type = mockTypes?.find(t => t.id === batchConfig.typeId);
         const sub = subTypes?.find(s => s.id === batchConfig.subTypeId);
 
-        const mockId = item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const mockId = item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9/]/g, '-').replace(/\//g, '-');
         const mockRef = doc(db, "mockTests", mockId);
 
         const mockData = {
@@ -232,6 +233,7 @@ export default function BulkIngestionPipeline() {
           totalQuestions: normalized.totalQuestions,
           marksPerQuestion: parseFloat(batchConfig.marksPerQuestion),
           negativeMarks: parseFloat(batchConfig.negativeMarks),
+          skipMarks: parseFloat(batchConfig.skipMarks || 0),
           fullMarks: questions.reduce((acc, q) => acc + (q.marks?.positive || 1), 0),
           durationMinutes: parseInt(batchConfig.durationMinutes) || 90,
           status: batchConfig.status,
@@ -337,9 +339,10 @@ export default function BulkIngestionPipeline() {
 
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-400 uppercase tracking-widest"><Target className="w-4 h-4" /> Global Rules</div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                    <div className="space-y-1"><Label className="text-[10px] uppercase font-bold opacity-60">Marks / Q</Label><Input type="number" step="0.5" className="h-12 bg-white/5 rounded-xl" value={batchConfig.marksPerQuestion} onChange={(e) => setBatchConfig({ ...batchConfig, marksPerQuestion: e.target.value })} /></div>
                    <div className="space-y-1"><Label className="text-[10px] uppercase font-bold opacity-60">Penalty / Q</Label><Input type="number" step="0.01" className="h-12 bg-white/5 rounded-xl" value={batchConfig.negativeMarks} onChange={(e) => setBatchConfig({ ...batchConfig, negativeMarks: e.target.value })} /></div>
+                   <div className="space-y-1"><Label className="text-[10px] uppercase font-bold opacity-60">Skip Penalty</Label><Input type="number" step="0.01" className="h-12 bg-white/5 rounded-xl" value={batchConfig.skipMarks} onChange={(e) => setBatchConfig({ ...batchConfig, skipMarks: e.target.value })} /></div>
                    <div className="space-y-1"><Label className="text-[10px] uppercase font-bold opacity-60">Duration (m)</Label><Input type="number" className="h-12 bg-white/5 rounded-xl" value={batchConfig.durationMinutes} onChange={(e) => setBatchConfig({ ...batchConfig, durationMinutes: e.target.value })} /></div>
                 </div>
               </div>

@@ -22,10 +22,10 @@ import {
 } from "lucide-react";
 
 import {
+  useUser,
   useFirestore,
   useCollection,
-  useMemoFirebase,
-  useUser
+  useMemoFirebase
 } from "@/firebase";
 
 import {
@@ -341,6 +341,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
     totalQuestions: 0,
     marksPerQuestion: 1,
     negativeMarks: 0.33,
+    skipMarks: 0,
     isFree: true,
     status: "Draft",
   });
@@ -376,11 +377,12 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         totalQuestions: editingItem.totalQuestions || 0,
         marksPerQuestion: editingItem.marksPerQuestion || 1,
         negativeMarks: editingItem.negativeMarks || 0.33,
+        skipMarks: editingItem.skipMarks || 0,
         isFree: editingItem.isFree ?? true,
         status: editingItem.status || "Draft"
       });
     } else {
-      setFormData({ title: "", examId: "", examName: "", typeId: "", typeName: "", subTypeId: "", subTypeName: "", durationMinutes: 90, totalQuestions: 0, marksPerQuestion: 1, negativeMarks: 0.33, isFree: true, status: "Draft" });
+      setFormData({ title: "", examId: "", examName: "", typeId: "", typeName: "", subTypeId: "", subTypeName: "", durationMinutes: 90, totalQuestions: 0, marksPerQuestion: 1, negativeMarks: 0.33, skipMarks: 0, isFree: true, status: "Draft" });
     }
     setIsAddingType(false);
     setIsAddingSubType(false);
@@ -631,6 +633,21 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
                 Upload a JSON file to automatically populate questions and sections.
               </p>
             )}
+          </div>
+
+          <div className="md:col-span-2 grid grid-cols-3 gap-4 pt-2 border-t border-white/5 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Positive (+)</Label>
+              <Input type="number" step="0.1" className="bg-white/5 border-white/10 h-11" value={formData.marksPerQuestion} onChange={(e) => setFormData({ ...formData, marksPerQuestion: parseFloat(e.target.value) || 0 })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Negative (-)</Label>
+              <Input type="number" step="0.01" className="bg-white/5 border-white/10 h-11" value={formData.negativeMarks} onChange={(e) => setFormData({ ...formData, negativeMarks: parseFloat(e.target.value) || 0 })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Skip Penalty</Label>
+              <Input type="number" step="0.01" className="bg-white/5 border-white/10 h-11" value={formData.skipMarks} onChange={(e) => setFormData({ ...formData, skipMarks: parseFloat(e.target.value) || 0 })} />
+            </div>
           </div>
 
           <div className="space-y-1.5">
