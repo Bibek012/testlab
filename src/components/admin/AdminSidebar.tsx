@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
@@ -61,7 +61,14 @@ const menuItems: NavItem[] = [
 
 export const AdminSidebar = ({ role = "student" }: { role?: AdminRole }) => {
   const pathname = usePathname();
-  const { toggleSidebar, state } = useSidebar();
+  const { toggleSidebar, state, isMobile, setOpenMobile } = useSidebar();
+
+  // Automatically close mobile sidebar when navigation occurs
+  useEffect(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [pathname, isMobile, setOpenMobile]);
 
   const filteredMenu = useMemo(() => {
     return menuItems.filter(item => {
@@ -75,10 +82,20 @@ export const AdminSidebar = ({ role = "student" }: { role?: AdminRole }) => {
     return pathname.startsWith(href);
   };
 
+  const handleLinkClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
+
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
       <SidebarHeader className="h-16 flex items-center px-4 border-b border-sidebar-border">
-        <Link href="/admin" className="flex items-center gap-3 overflow-hidden group">
+        <Link 
+          href="/admin" 
+          className="flex items-center gap-3 overflow-hidden group"
+          onClick={handleLinkClick}
+        >
           <div className="bg-primary p-2 rounded-lg shrink-0">
             <Rocket className="w-5 h-5 text-white" />
           </div>
@@ -111,7 +128,11 @@ export const AdminSidebar = ({ role = "student" }: { role?: AdminRole }) => {
                         : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     )}
                   >
-                    <Link href={item.href} className="flex items-center gap-3">
+                    <Link 
+                      href={item.href} 
+                      className="flex items-center gap-3"
+                      onClick={handleLinkClick}
+                    >
                       <item.icon className="w-5 h-5 shrink-0" />
                       <span className="font-medium text-sm">{item.title}</span>
                     </Link>
