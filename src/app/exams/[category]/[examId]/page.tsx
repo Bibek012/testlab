@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useMemo } from "react";
@@ -138,7 +137,7 @@ export default function ExamDashboardPage() {
             </section>
 
             <Leaderboard />
-          </div>
+          </aside>
         </div>
       </div>
 
