@@ -412,11 +412,11 @@ export default function BulkIngestionPipeline() {
                            </div>
                            
                            <div className="flex-1 min-w-0 flex flex-col gap-1">
-                              <div className="flex items-center justify-between gap-2">
-                                 <div className="flex-1 overflow-x-auto whitespace-nowrap hide-scrollbar cursor-default pr-2">
+                              <div className="flex items-center gap-2">
+                                 <div className="flex-1 min-w-0 overflow-x-auto whitespace-nowrap hide-scrollbar cursor-default">
                                     <span className="text-xs font-bold">{item.name}</span>
                                  </div>
-                                 <div className="flex items-center gap-1.5 shrink-0">
+                                 <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                                    {item.totalQuestions && (
                                      <Badge variant="outline" className="text-[8px] h-4 bg-primary/5 text-primary border-primary/20 gap-1">
                                        <HelpCircle className="w-2.5 h-2.5" /> {item.totalQuestions} Qs
@@ -432,11 +432,11 @@ export default function BulkIngestionPipeline() {
                            </div>
 
                            {!isProcessing && (
-                             <div className="flex items-center pl-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                             <div className="flex items-center pl-2 shrink-0">
                                <Button 
                                 variant="ghost" 
                                 size="icon" 
-                                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
+                                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all opacity-40 hover:opacity-100"
                                 onClick={() => removeFromQueue(item.id)}
                                >
                                  <Trash2 className="w-4 h-4" />
