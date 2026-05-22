@@ -1,6 +1,6 @@
 'use client';
 
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, FirebaseApp, setLogLevel } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { firebaseConfig, isFirebaseConfigValid } from './config';
@@ -21,6 +21,9 @@ export function initializeFirebase(): {
       getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     const firestore = getFirestore(firebaseApp);
     const auth = getAuth(firebaseApp);
+
+    // Suppress verbose connection warnings that trigger Next.js error overlays
+    setLogLevel('error');
 
     console.log("Firebase: Successfully initialized services.");
     return { firebaseApp, firestore, auth };

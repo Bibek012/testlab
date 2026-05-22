@@ -8,7 +8,7 @@ import { FirestorePermissionError, type SecurityRuleContext } from '../errors';
 export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
   const [data, setData] = useState<(T & { id: string }) | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<Error | any>(null);
 
   useEffect(() => {
     if (!ref) {
@@ -31,8 +31,6 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
         setLoading(false);
       },
       async (serverError: FirestoreError) => {
-        // SILENT LOGGING: Prevent disruptive dev overlays for connection/permission issues.
-
         if (serverError.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
             path: ref.path,
@@ -41,10 +39,11 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
           
           errorEmitter.emit('permission-error', permissionError);
           setError(permissionError);
-        } else if (serverError.code === 'unavailable') {
-          setError(new Error("Server unreachable. Operating in offline mode."));
+        } else if (serverError.code === 'unavailable' || serverError.code === 'deadline-exceeded') {
+          const connError = new Error("Unable to connect to the database. Retrying...");
+          (connError as any).code = serverError.code;
+          setError(connError);
         } else {
-          console.warn("Firestore [useDoc] non-critical error:", serverError.message);
           setError(serverError);
         }
         setLoading(false);

@@ -8,7 +8,7 @@ import { FirestorePermissionError, type SecurityRuleContext } from '../errors';
 export function useCollection<T = DocumentData>(query: Query<T> | null) {
   const [data, setData] = useState<(T & { id: string })[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<Error | any>(null);
 
   useEffect(() => {
     if (!query) {
@@ -30,24 +30,20 @@ export function useCollection<T = DocumentData>(query: Query<T> | null) {
         setError(null);
       },
       async (serverError: FirestoreError) => {
-        // SILENT LOGGING: Do not use console.error for permission or connection issues
-        // as it triggers disruptive Next.js dev overlays.
-        
         if (serverError.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
             path: (query as any)._query?.path?.toString() || 'unknown',
             operation: 'list',
           } satisfies SecurityRuleContext);
           
-          // The error emitter will be caught by the FirebaseErrorListener
           errorEmitter.emit('permission-error', permissionError);
           setError(permissionError);
-        } else if (serverError.code === 'unavailable') {
-          // Soft error for connectivity issues
-          setError(new Error("Connecting to server... Your data will sync once online."));
+        } else if (serverError.code === 'unavailable' || serverError.code === 'deadline-exceeded') {
+          // Handle connection timeouts or offline states without logging critical console errors
+          const connError = new Error("The database is currently unreachable. Please check your internet connection.");
+          (connError as any).code = serverError.code;
+          setError(connError);
         } else {
-          // For other unexpected errors, we can log but be mindful of the overlay
-          console.warn("Firestore [useCollection] non-critical error:", serverError.message);
           setError(serverError);
         }
         setLoading(false);
