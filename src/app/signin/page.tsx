@@ -3,13 +3,14 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, useUser } from "@/firebase";
 import { 
   signInWithEmailAndPassword, 
   GoogleAuthProvider, 
   signInWithRedirect, 
-  getRedirectResult 
+  getRedirectResult,
+  onAuthStateChanged
 } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,68 +24,67 @@ export default function SignInPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isRedirectProcessing, setIsRedirectProcessing] = useState(true);
   
   const auth = useAuth();
   const { user, loading: authLoading } = useUser();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
 
+  const callbackUrl = searchParams.get("callbackUrl") || "/";
+
+  // Handle standard auth state change (e.g. session persistence)
   useEffect(() => {
-    if (!authLoading && user) {
-      router.push("/");
+    if (!authLoading && user && !isRedirectProcessing) {
+      router.replace(callbackUrl);
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, callbackUrl, isRedirectProcessing]);
 
   // Handle redirect result for Google Sign-In
   useEffect(() => {
-    if (!auth) return;
+    if (!auth) {
+      setIsRedirectProcessing(false);
+      return;
+    }
 
     const checkRedirect = async () => {
       try {
         const result = await getRedirectResult(auth);
-        if (result) {
+        if (result?.user) {
           toast({
             title: "Welcome back",
             description: "Successfully signed in with Google.",
           });
-          router.push("/");
+          router.replace(callbackUrl);
+          return;
         }
       } catch (error: any) {
-        // Ignore redirect-cancelled errors which happen if the user just reloads the page
         if (error.code !== 'auth/redirect-cancelled-by-user') {
-          console.error("Redirect Sign-In Error:", error);
+          console.error("Auth: Redirect consumer failed", error);
           toast({
             variant: "destructive",
             title: "Sign In Error",
             description: error.message,
           });
         }
+      } finally {
+        setIsRedirectProcessing(false);
       }
     };
 
     checkRedirect();
-  }, [auth, router, toast]);
+  }, [auth, router, toast, callbackUrl]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth) {
-      toast({
-        variant: "destructive",
-        title: "Configuration Error",
-        description: "Firebase Auth is not initialized. Please check your configuration.",
-      });
-      return;
-    }
+    if (!auth) return;
 
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      toast({
-        title: "Welcome back",
-        description: "Successfully signed in.",
-      });
-      router.push("/");
+      toast({ title: "Welcome back", description: "Successfully signed in." });
+      router.replace(callbackUrl);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -98,11 +98,9 @@ export default function SignInPage() {
 
   const handleGoogleSignIn = async () => {
     if (!auth) return;
-    setIsGoogleLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      // Using redirect instead of popup for better compatibility in 
-      // restricted environments like mobile browsers and Cloud Workstations.
+      setIsRedirectProcessing(true);
       await signInWithRedirect(auth, provider);
     } catch (error: any) {
       toast({
@@ -110,9 +108,18 @@ export default function SignInPage() {
         title: "Google Sign In Error",
         description: error.message,
       });
-      setIsGoogleLoading(false);
+      setIsRedirectProcessing(false);
     }
   };
+
+  if (isRedirectProcessing || (authLoading && !user)) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-background gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">Verifying Identity...</p>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden bg-background">
@@ -189,9 +196,8 @@ export default function SignInPage() {
             variant="outline"
             className="w-full border-white/10 hover:bg-white/5 h-12 rounded-xl font-bold"
             onClick={handleGoogleSignIn}
-            disabled={isGoogleLoading}
           >
-            {isGoogleLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <><Chrome className="w-4 h-4 mr-2" /> Google</>}
+            <Chrome className="w-4 h-4 mr-2" /> Google
           </Button>
         </CardContent>
         <CardFooter>
