@@ -208,7 +208,7 @@ export default function BulkIngestionPipeline() {
     }
 
     setIsProcessing(true);
-    const pending = queue.filter(q => q.status === 'pending');
+    const pending = queue.filter(q => q.status === 'pending' || q.status === 'failed');
 
     for (const item of pending) {
       try {
@@ -417,18 +417,24 @@ export default function BulkIngestionPipeline() {
                                     <span className="text-xs font-bold">{item.name}</span>
                                  </div>
                                  <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-                                   {item.totalQuestions && (
-                                     <Badge variant="outline" className="text-[8px] h-4 bg-primary/5 text-primary border-primary/20 gap-1">
-                                       <HelpCircle className="w-2.5 h-2.5" /> {item.totalQuestions} Qs
+                                   {item.totalQuestions !== undefined && (
+                                     <Badge variant="outline" className="text-[9px] h-5 bg-primary/10 text-primary border-primary/20 gap-1 font-bold">
+                                       {item.totalQuestions} Qs
                                      </Badge>
                                    )}
-                                   <Badge className="text-[8px] h-4 uppercase bg-white/5 font-mono tracking-tighter shrink-0">{item.status}</Badge>
+                                   <Badge className={cn(
+                                     "text-[9px] h-5 uppercase font-mono tracking-tighter shrink-0 font-bold",
+                                     item.status === 'success' ? "bg-emerald-500/20 text-emerald-400" : 
+                                     item.status === 'failed' ? "bg-rose-500/20 text-rose-400" : "bg-white/10"
+                                   )}>
+                                     {item.status}
+                                   </Badge>
                                  </div>
                               </div>
                               {item.status !== 'pending' && item.status !== 'success' && item.status !== 'failed' && (
                                 <Progress value={item.progress} className="h-1 mt-1" />
                               )}
-                              {item.error && <p className="text-[9px] text-rose-400 mt-1 truncate font-medium">{item.error}</p>}
+                              {item.error && <p className="text-[9px] text-rose-400 mt-1 truncate font-medium flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {item.error}</p>}
                            </div>
 
                            {!isProcessing && (
@@ -436,10 +442,11 @@ export default function BulkIngestionPipeline() {
                                <Button 
                                 variant="ghost" 
                                 size="icon" 
-                                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all opacity-40 hover:opacity-100"
+                                title="Remove from queue"
+                                className="h-9 w-9 rounded-xl text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all opacity-40 group-hover:opacity-100"
                                 onClick={() => removeFromQueue(item.id)}
                                >
-                                 <Trash2 className="w-4 h-4" />
+                                 <Trash2 className="w-4.5 h-4.5" />
                                </Button>
                              </div>
                            )}
