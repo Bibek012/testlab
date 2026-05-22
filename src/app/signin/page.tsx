@@ -5,7 +5,12 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth, useUser } from "@/firebase";
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { 
+  signInWithEmailAndPassword, 
+  GoogleAuthProvider, 
+  signInWithRedirect, 
+  getRedirectResult 
+} from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +35,36 @@ export default function SignInPage() {
       router.push("/");
     }
   }, [user, authLoading, router]);
+
+  // Handle redirect result for Google Sign-In
+  useEffect(() => {
+    if (!auth) return;
+
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          toast({
+            title: "Welcome back",
+            description: "Successfully signed in with Google.",
+          });
+          router.push("/");
+        }
+      } catch (error: any) {
+        // Ignore redirect-cancelled errors which happen if the user just reloads the page
+        if (error.code !== 'auth/redirect-cancelled-by-user') {
+          console.error("Redirect Sign-In Error:", error);
+          toast({
+            variant: "destructive",
+            title: "Sign In Error",
+            description: error.message,
+          });
+        }
+      }
+    };
+
+    checkRedirect();
+  }, [auth, router, toast]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,19 +101,15 @@ export default function SignInPage() {
     setIsGoogleLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      toast({
-        title: "Success",
-        description: "Signed in with Google.",
-      });
-      router.push("/");
+      // Using redirect instead of popup for better compatibility in 
+      // restricted environments like mobile browsers and Cloud Workstations.
+      await signInWithRedirect(auth, provider);
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Google Sign In Error",
         description: error.message,
       });
-    } finally {
       setIsGoogleLoading(false);
     }
   };
