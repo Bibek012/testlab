@@ -5,10 +5,10 @@ import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { 
-  Search, 
-  Play, 
-  FileText, 
+import {
+  Search,
+  Play,
+  FileText,
   Loader2,
   Clock,
   Target,
@@ -39,32 +39,32 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   const [searchQuery, setSearchQuery] = useState("");
 
   // FETCH METADATA HIERARCHY
-  const typesQuery = useMemoFirebase(() => 
+  const typesQuery = useMemoFirebase(() =>
     db ? query(collection(db, "exams", examId, "mockTypes"), orderBy("order", "asc")) : null,
-  [db, examId]);
+    [db, examId]);
   const { data: mockTypes, loading: typesLoading } = useCollection<any>(typesQuery);
 
-  const subTypesQuery = useMemoFirebase(() => 
-    db && selectedTypeId !== "all" 
-      ? query(collection(db, "exams", examId, "mockTypes", selectedTypeId, "subTypes"), orderBy("order", "asc")) 
+  const subTypesQuery = useMemoFirebase(() =>
+    db && selectedTypeId !== "all"
+      ? query(collection(db, "exams", examId, "mockTypes", selectedTypeId, "subTypes"), orderBy("order", "asc"))
       : null,
-  [db, examId, selectedTypeId]);
+    [db, examId, selectedTypeId]);
   const { data: subTypes, loading: subTypesLoading } = useCollection<any>(subTypesQuery);
 
   // FETCH PUBLISHED MOCKS
-  const mocksQuery = useMemoFirebase(() => 
+  const mocksQuery = useMemoFirebase(() =>
     db ? query(
-      collection(db, "mockTests"), 
-      where("examId", "==", examId), 
+      collection(db, "mockTests"),
+      where("examId", "==", examId),
       where("status", "==", "Published")
     ) : null,
-  [db, examId]);
+    [db, examId]);
   const { data: tests, loading: testsLoading } = useCollection<any>(mocksQuery);
 
   // FETCH USER ATTEMPTS FOR STATUS MAPPING
-  const attemptsQuery = useMemoFirebase(() => 
+  const attemptsQuery = useMemoFirebase(() =>
     user && db ? query(collection(db, "attempts"), where("uid", "==", user.uid), where("examId", "==", examId)) : null,
-  [user?.uid, db, examId]);
+    [user?.uid, db, examId]);
   const { data: attempts } = useCollection<any>(attemptsQuery);
 
   const filteredTests = useMemo(() => {
@@ -129,9 +129,9 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
       {/* CHIP SCROLLER - Subjects/SubTypes */}
       <AnimatePresence mode="wait">
         {selectedTypeId !== "all" && subTypes && subTypes.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }} 
-            animate={{ opacity: 1, y: 0 }} 
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             className="flex items-center gap-2 overflow-x-auto hide-scrollbar py-1"
           >
@@ -166,16 +166,16 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
           Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 rounded-xl bg-white/5 animate-pulse" />)
         ) : filteredTests.length === 0 ? (
           <div className="py-20 text-center border border-dashed border-white/10 rounded-2xl">
-             <FileText className="w-10 h-10 text-muted-foreground opacity-10 mx-auto mb-3" />
-             <p className="text-muted-foreground text-xs font-medium">No mocks available in this category yet.</p>
+            <FileText className="w-10 h-10 text-muted-foreground opacity-10 mx-auto mb-3" />
+            <p className="text-muted-foreground text-xs font-medium">No mocks available in this category yet.</p>
           </div>
         ) : (
           filteredTests.map((test) => (
-            <TestListItem 
-              key={test.id} 
-              test={test} 
+            <TestListItem
+              key={test.id}
+              test={test}
               attempt={attempts?.find(a => a.mockId === test.id)}
-              url={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`} 
+              url={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
             />
           ))
         )}
@@ -187,49 +187,49 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
 // COMPACT PROFESSIONAL LIST CARD
 function TestListItem({ test, attempt, url }: any) {
   const isAttempted = !!attempt;
-  
+
   return (
     <div className="group bg-card border border-white/5 rounded-xl p-4 md:p-5 hover:border-primary/30 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
       <div className="flex-1 space-y-3">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 shrink-0">
-             {isAttempted ? (
-               <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">Attempted</Badge>
-             ) : test.isFree ? (
-               <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">Free</Badge>
-             ) : (
-               <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold">Live</Badge>
-             )}
+            {isAttempted ? (
+              <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">Attempted</Badge>
+            ) : test.isFree ? (
+              <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">Free</Badge>
+            ) : (
+              <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold">Live</Badge>
+            )}
           </div>
           <h3 className="text-sm md:text-base font-bold leading-tight line-clamp-1">{test.title}</h3>
         </div>
 
         <div className="flex items-center gap-4 text-[10px] md:text-xs text-muted-foreground">
-           <div className="flex items-center gap-1.5">
-             <FileText className="w-3 h-3 text-primary/60" />
-             <span>{test.totalQuestions} Questions</span>
-           </div>
-           <div className="h-1 w-1 rounded-full bg-white/10" />
-           <div className="flex items-center gap-1.5">
-             <Clock className="w-3 h-3 text-accent/60" />
-             <span>{test.durationMinutes} Mins</span>
-           </div>
-           <div className="h-1 w-1 rounded-full bg-white/10" />
-           <div className="flex items-center gap-1.5">
-             <Target className="w-3 h-3 text-emerald-400/60" />
-             <span>{test.fullMarks} Marks</span>
-           </div>
+          <div className="flex items-center gap-1.5">
+            <FileText className="w-3 h-3 text-primary/60" />
+            <span>{test.totalQuestions} Questions</span>
+          </div>
+          <div className="h-1 w-1 rounded-full bg-white/10" />
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-3 h-3 text-accent/60" />
+            <span>{test.durationMinutes} Mins</span>
+          </div>
+          <div className="h-1 w-1 rounded-full bg-white/10" />
+          <div className="flex items-center gap-1.5">
+            <Target className="w-3 h-3 text-emerald-400/60" />
+            <span>{test.fullMarks} Marks</span>
+          </div>
         </div>
 
         {isAttempted && (
           <div className="pt-1">
-             <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Your Last Score: <span className="text-accent">{attempt.score?.toFixed(1)}</span></span>
-                <span className="text-[10px] text-muted-foreground">{attempt.accuracy?.toFixed(0)}% Accuracy</span>
-             </div>
-             <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                <div className="h-full bg-primary" style={{ width: `${attempt.percentage || 0}%` }} />
-             </div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Your Last Score: <span className="text-accent">{attempt.score?.toFixed(1)}</span></span>
+              <span className="text-[10px] text-muted-foreground">{attempt.accuracy?.toFixed(0)}% Accuracy</span>
+            </div>
+            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+              <div className="h-full bg-primary" style={{ width: `${attempt.percentage || 0}%` }} />
+            </div>
           </div>
         )}
       </div>
@@ -242,7 +242,7 @@ function TestListItem({ test, attempt, url }: any) {
                 <History className="w-3.5 h-3.5" /> Reattempt
               </Button>
             </Link>
-            <Link href={url} className="flex-1 md:flex-none">
+            <Link href={`${url}?view=result`} className="flex-1 md:flex-none">
               <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white h-10 rounded-xl text-xs font-bold gap-2">
                 <TrendingUp className="w-3.5 h-3.5" /> Result
               </Button>
@@ -263,16 +263,16 @@ function TestListItem({ test, attempt, url }: any) {
 function TestLibrarySkeleton() {
   return (
     <div className="space-y-6">
-       <div className="flex justify-between items-center">
-          <div className="h-6 w-32 bg-white/5 rounded animate-pulse" />
-          <div className="h-9 w-48 bg-white/5 rounded-xl animate-pulse" />
-       </div>
-       <div className="h-12 w-full bg-white/5 rounded-xl animate-pulse" />
-       <div className="space-y-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-28 w-full bg-white/5 rounded-xl animate-pulse" />
-          ))}
-       </div>
+      <div className="flex justify-between items-center">
+        <div className="h-6 w-32 bg-white/5 rounded animate-pulse" />
+        <div className="h-9 w-48 bg-white/5 rounded-xl animate-pulse" />
+      </div>
+      <div className="h-12 w-full bg-white/5 rounded-xl animate-pulse" />
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-28 w-full bg-white/5 rounded-xl animate-pulse" />
+        ))}
+      </div>
     </div>
   );
 }

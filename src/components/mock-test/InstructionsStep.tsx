@@ -13,11 +13,9 @@ interface Props {
 }
 
 export const InstructionsStep = ({ testData, onNext }: Props) => {
-  const totalMarks = (testData.questions || []).reduce(
-    (acc: number, q: any) =>
-      acc + Number(q?.positiveMarks ?? q?.marks?.positive ?? 1),
-    0
-  );
+  const totalMarks =
+  Number(testData.fullMarks) ||
+  ((testData.questions?.length || 0) * Number(testData.marksPerQuestion || 1));
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">

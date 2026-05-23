@@ -247,7 +247,9 @@ export default function MockTestManagementPage() {
                   <tr key={mock.id} className="hover:bg-white/[0.01] transition-colors group">
                     <td className="py-4 px-6">
                       <div className="flex flex-col">
-                        <span className="font-bold text-foreground text-base">{mock.title}</span>
+                        <span className="font-bold text-foreground text-base max-w-[220px] truncate block">
+                          {mock.title}
+                        </span>
                         <span className="text-[10px] text-primary font-bold uppercase tracking-widest">{mock.examName || 'Unmapped'}</span>
                       </div>
                     </td>
@@ -402,7 +404,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
-      
+
       // Support both structure types for quick question count
       const questions = parsed?.sections?.flatMap((s: any) => s.questions || []) || parsed?.questions || [];
 
@@ -483,7 +485,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       const selectedType = mockTypes?.find(t => t.id === formData.typeId);
       const selectedSubType = subTypes?.find(s => s.id === formData.subTypeId);
 
-      const fullMarks = validatedData 
+      const fullMarks = validatedData
         ? validatedData.sections.flatMap(s => s.questions).reduce((acc, q) => acc + (q.marks?.positive || 1), 0)
         : (formData.totalQuestions * formData.marksPerQuestion);
 
@@ -502,7 +504,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         await logAction(db, user, "update_mock", editingItem.id, "mock_test", `Updated: ${formData.title}`);
       } else {
         const mockRef = await addDoc(collection(db, "mockTests"), { ...mockData, createdAt: serverTimestamp() });
-        
+
         if (validatedData) {
           // Sync Sections
           const secBatch = writeBatch(db);
@@ -596,24 +598,24 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
           </div>
 
           <div className="md:col-span-2 space-y-1.5">
-             <div className="flex items-center justify-between">
-                <Label className="text-[10px] uppercase font-bold text-muted-foreground">Subject / Chapter</Label>
-                <button onClick={() => setIsAddingSubType(true)} className="text-[10px] text-accent hover:underline">+ New Subject</button>
-             </div>
-             {isAddingSubType ? (
-                <div className="flex gap-1">
-                   <Input size="sm" className="h-11 text-xs bg-white/10" value={newSubTypeName} onChange={(e) => setNewSubTypeName(e.target.value)} placeholder="Subject name..." />
-                   <Button size="sm" onClick={handleAddSubType} className="h-11 w-11 p-0 bg-accent hover:bg-accent/90"><PlusCircle className="w-4 h-4" /></Button>
-                </div>
-             ) : (
-                <Select value={formData.subTypeId} onValueChange={(v) => setFormData({ ...formData, subTypeId: v })} disabled={!formData.typeId}>
-                   <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="All Subjects / General" /></SelectTrigger>
-                   <SelectContent className="glass">
-                      <SelectItem value="none">General</SelectItem>
-                      {subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
-                   </SelectContent>
-                </Select>
-             )}
+            <div className="flex items-center justify-between">
+              <Label className="text-[10px] uppercase font-bold text-muted-foreground">Subject / Chapter</Label>
+              <button onClick={() => setIsAddingSubType(true)} className="text-[10px] text-accent hover:underline">+ New Subject</button>
+            </div>
+            {isAddingSubType ? (
+              <div className="flex gap-1">
+                <Input size="sm" className="h-11 text-xs bg-white/10" value={newSubTypeName} onChange={(e) => setNewSubTypeName(e.target.value)} placeholder="Subject name..." />
+                <Button size="sm" onClick={handleAddSubType} className="h-11 w-11 p-0 bg-accent hover:bg-accent/90"><PlusCircle className="w-4 h-4" /></Button>
+              </div>
+            ) : (
+              <Select value={formData.subTypeId} onValueChange={(v) => setFormData({ ...formData, subTypeId: v })} disabled={!formData.typeId}>
+                <SelectTrigger className="bg-white/5 border-white/10 h-11"><SelectValue placeholder="All Subjects / General" /></SelectTrigger>
+                <SelectContent className="glass">
+                  <SelectItem value="none">General</SelectItem>
+                  {subTypes?.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="md:col-span-2 space-y-2">
@@ -630,7 +632,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
               </div>
               <input type="file" accept=".json" className="hidden" onChange={handleFileSelect} />
             </label>
-            
+
             {validationError && (
               <p className="text-[10px] text-rose-400 flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" /> {validationError}
@@ -660,11 +662,11 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
 
           <div className="space-y-1.5">
             <Label className="text-[10px] uppercase font-bold text-muted-foreground">Total Questions</Label>
-            <Input 
-              type="number" 
-              readOnly 
-              value={formData.totalQuestions} 
-              className="bg-white/5 border-white/10 h-11 opacity-80 cursor-not-allowed" 
+            <Input
+              type="number"
+              readOnly
+              value={formData.totalQuestions}
+              className="bg-white/5 border-white/10 h-11 opacity-80 cursor-not-allowed"
             />
             <p className="text-[10px] text-muted-foreground">
               Auto-detected from uploaded JSON file

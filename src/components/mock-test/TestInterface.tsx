@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { 
-  MockTestData, 
-  UserResponse, 
-  Question, 
-  QuestionStatus 
+import {
+  MockTestData,
+  UserResponse,
+  Question,
+  QuestionStatus
 } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Clock, 
+import {
+  Clock,
   Pause,
   Monitor,
   ChevronLeft,
@@ -25,12 +25,12 @@ import { Progress } from "@/components/ui/progress";
 import { QuestionPalette } from "./QuestionPalette";
 import { RichTextRenderer } from "./RichTextRenderer";
 import { QuestionImage } from "./QuestionImage";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogFooter 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useUser } from "@/firebase";
@@ -52,7 +52,7 @@ const TimerDisplay = React.memo(({ targetEndTime, onTimeout }: { targetEndTime: 
       const now = Date.now();
       const remaining = Math.max(0, Math.floor((targetEndTime - now) / 1000));
       setTimeLeft(remaining);
-      
+
       if (remaining <= 0) {
         if (timerRef.current) clearInterval(timerRef.current);
         onTimeout();
@@ -84,12 +84,12 @@ const TimerDisplay = React.memo(({ targetEndTime, onTimeout }: { targetEndTime: 
 });
 TimerDisplay.displayName = "TimerDisplay";
 
-export const TestInterface = ({ 
-  testData, 
-  userLanguage: initialLang, 
-  responses, 
-  setResponses, 
-  onSubmit 
+export const TestInterface = ({
+  testData,
+  userLanguage: initialLang,
+  responses,
+  setResponses,
+  onSubmit
 }: Props) => {
   const { user } = useUser();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -149,8 +149,8 @@ export const TestInterface = ({
       const currentResp = prev[qId] || { questionId: qId, timeSpentSeconds: 0 };
       return {
         ...prev,
-        [qId]: { 
-          ...currentResp, 
+        [qId]: {
+          ...currentResp,
           selectedOptionId: numericOptionId.toString(),
           status: currentResp.status === 'marked-review' ? 'answered-marked-review' : 'answered'
         }
@@ -237,40 +237,40 @@ export const TestInterface = ({
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
-           <Button variant="ghost" size="sm" onClick={() => setIsPaused(true)} className="text-muted-foreground hover:text-white h-9 px-2 md:px-4">
-             <Pause className="w-4 h-4 md:mr-2" /> <span className="hidden md:inline">Pause</span>
-           </Button>
-           
-           <Button 
-            onClick={() => setShowSubmitConfirm(true)} 
+          <Button variant="ghost" size="sm" onClick={() => setIsPaused(true)} className="text-muted-foreground hover:text-white h-9 px-2 md:px-4">
+            <Pause className="w-4 h-4 md:mr-2" /> <span className="hidden md:inline">Pause</span>
+          </Button>
+
+          <Button
+            onClick={() => setShowSubmitConfirm(true)}
             className="hidden sm:flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-9 px-6 text-sm font-bold shadow-lg shadow-emerald-500/20 gap-2"
-           >
-             <Send className="w-4 h-4" />
-             Submit Test
-           </Button>
-           
-           <Sheet>
-             <SheetTrigger asChild>
-               <Button variant="ghost" size="icon" className="lg:hidden text-muted-foreground hover:text-white">
-                 <LayoutGrid className="w-5 h-5" />
-               </Button>
-             </SheetTrigger>
-             <SheetContent side="right" className="p-0 bg-[#0f172a] border-white/5 w-[85%] sm:w-[350px]">
-                <SheetHeader className="p-4 border-b border-white/5 text-left">
-                  <SheetTitle className="text-sm font-bold flex items-center gap-2">
-                    <LayoutGrid className="w-4 h-4 text-primary" /> Question Palette
-                  </SheetTitle>
-                </SheetHeader>
-                <div className="h-full flex flex-col">
-                  <QuestionPalette 
-                    questions={testData.questions} 
-                    responses={responses} 
-                    currentIndex={currentQuestionIndex}
-                    onNavigate={(index) => setCurrentQuestionIndex(index)}
-                  />
-                </div>
-             </SheetContent>
-           </Sheet>
+          >
+            <Send className="w-4 h-4" />
+            Submit Test
+          </Button>
+
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="lg:hidden text-muted-foreground hover:text-white">
+                <LayoutGrid className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="p-0 bg-[#0f172a] border-white/5 w-[85%] sm:w-[350px]">
+              <SheetHeader className="p-4 border-b border-white/5 text-left">
+                <SheetTitle className="text-sm font-bold flex items-center gap-2">
+                  <LayoutGrid className="w-4 h-4 text-primary" /> Question Palette
+                </SheetTitle>
+              </SheetHeader>
+              <div className="h-full flex flex-col">
+                <QuestionPalette
+                  questions={testData.questions}
+                  responses={responses}
+                  currentIndex={currentQuestionIndex}
+                  onNavigate={(index) => setCurrentQuestionIndex(index)}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </header>
 
@@ -295,8 +295,8 @@ export const TestInterface = ({
           ))}
         </div>
         <div className="hidden lg:flex items-center gap-4 w-48 xl:w-64">
-           <span className="text-[10px] font-bold text-muted-foreground uppercase whitespace-nowrap">Progress</span>
-           <Progress value={sectionProgress} className="h-1.5 flex-1" />
+          <span className="text-[10px] font-bold text-muted-foreground uppercase whitespace-nowrap">Progress</span>
+          <Progress value={sectionProgress} className="h-1.5 flex-1" />
         </div>
       </div>
 
@@ -304,32 +304,32 @@ export const TestInterface = ({
         <div className="flex-1 overflow-y-auto bg-slate-900/10 custom-scrollbar p-4 md:p-10">
           <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-32 md:pb-20">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
-               <div className="flex items-center gap-3">
-                 <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg px-3 py-1 text-[10px] md:text-xs">
-                   Question {currentQuestionIndex + 1}
-                 </Badge>
-               </div>
-               <div className="flex items-center justify-between sm:justify-end gap-4">
-                  <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/10">
-                    <button 
-                      onClick={() => setCurrentLang('en')}
-                      className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentLang === 'en' ? "bg-accent text-white" : "text-muted-foreground")}
-                    >EN</button>
-                    <button 
-                      onClick={() => setCurrentLang('hn')}
-                      className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentLang === 'hn' ? "bg-accent text-white" : "text-muted-foreground")}
-                    >HN</button>
-                  </div>
-                  <div className="text-[10px] font-bold bg-white/5 px-3 py-1 rounded-lg border border-white/5">
-                    <span className="text-emerald-400">+{currentQuestion.marks?.positive || 1}</span>
-                    <span className="text-white/20 mx-1">/</span>
-                    <span className="text-rose-400">-{currentQuestion.marks?.negative || 0.33}</span>
-                  </div>
-               </div>
+              <div className="flex items-center gap-3">
+                <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg px-3 py-1 text-[10px] md:text-xs">
+                  Question {currentQuestionIndex + 1}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between sm:justify-end gap-4">
+                <div className="flex bg-white/5 p-0.5 rounded-lg border border-white/10">
+                  <button
+                    onClick={() => setCurrentLang('en')}
+                    className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentLang === 'en' ? "bg-accent text-white" : "text-muted-foreground")}
+                  >EN</button>
+                  <button
+                    onClick={() => setCurrentLang('hn')}
+                    className={cn("px-2 py-0.5 text-[10px] font-bold rounded", currentLang === 'hn' ? "bg-accent text-white" : "text-muted-foreground")}
+                  >HN</button>
+                </div>
+                <div className="text-[10px] font-bold bg-white/5 px-3 py-1 rounded-lg border border-white/5">
+                  <span className="text-emerald-400">+{testData.marksPerQuestion ?? 1}</span>
+                  <span className="text-white/20 mx-1">/</span>
+                  <span className="text-rose-400">-{testData.negativeMarks ?? 0}</span>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-6 animate-in fade-in duration-300">
-              <RichTextRenderer 
+              <RichTextRenderer
                 content={(currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string}
                 className="text-base md:text-xl font-medium leading-relaxed"
               />
@@ -360,7 +360,7 @@ export const TestInterface = ({
                     {String(option.id).split('-').pop()?.toUpperCase() || ''}
                   </div>
                   <div className="flex-1 overflow-hidden">
-                    <RichTextRenderer 
+                    <RichTextRenderer
                       content={(option[`${currentLang}_html` as keyof typeof option] || option[currentLang as keyof typeof option]) as string}
                       className="text-sm md:text-base font-medium"
                     />
@@ -372,9 +372,9 @@ export const TestInterface = ({
         </div>
 
         <aside className="hidden lg:flex w-72 xl:w-80 bg-[#0f172a] border-l border-white/5 flex-col overflow-hidden">
-          <QuestionPalette 
-            questions={testData.questions} 
-            responses={responses} 
+          <QuestionPalette
+            questions={testData.questions}
+            responses={responses}
             currentIndex={currentQuestionIndex}
             onNavigate={(index) => setCurrentQuestionIndex(index)}
           />
@@ -383,23 +383,23 @@ export const TestInterface = ({
 
       <footer className="h-auto border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between px-4 md:px-6 py-4 md:py-0 shrink-0 z-50 gap-4">
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto hide-scrollbar">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleMarkForReview}
             className="rounded-xl border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 font-bold text-[10px] md:text-xs h-10 px-4 whitespace-nowrap"
           >
             Review & Next
           </Button>
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             onClick={handleClearResponse}
             className="rounded-xl text-muted-foreground hover:bg-white/5 font-bold text-[10px] md:text-xs h-10 px-4 whitespace-nowrap"
           >
             Clear Response
           </Button>
-          
-          <Button 
-            onClick={() => setShowSubmitConfirm(true)} 
+
+          <Button
+            onClick={() => setShowSubmitConfirm(true)}
             className="sm:hidden bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-10 px-4 text-xs font-bold shadow-lg flex-1"
           >
             Submit
@@ -407,21 +407,21 @@ export const TestInterface = ({
         </div>
 
         <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
-           <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             disabled={currentQuestionIndex === 0}
             onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
             className="rounded-xl border-white/10 h-10 px-4"
-           >
-             <ChevronLeft className="w-5 h-5" />
-           </Button>
-           <Button 
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <Button
             onClick={handleSaveAndNext}
             className="bg-primary hover:bg-primary/90 text-white rounded-xl h-10 px-6 md:px-10 font-bold gap-2 flex-1 md:flex-none"
-           >
-             {currentQuestionIndex === testData.questions.length - 1 ? "Submit Exam" : "Save & Next"}
-             <ChevronRight className="w-4 h-4" />
-           </Button>
+          >
+            {currentQuestionIndex === testData.questions.length - 1 ? "Submit Exam" : "Save & Next"}
+            <ChevronRight className="w-4 h-4" />
+          </Button>
         </div>
       </footer>
 
@@ -433,7 +433,7 @@ export const TestInterface = ({
               Final Submission Summary
             </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <SummaryItem label="Total Questions" value={stats.total} color="slate" />

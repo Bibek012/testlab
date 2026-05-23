@@ -149,21 +149,56 @@ export default function BulkIngestionPipeline() {
     }
   };
 
-  const addToQueue = useCallback((files: FileList | File[]) => {
-    const newItems: QueueItem[] = Array.from(files)
-      .filter(f => f.name.endsWith('.json'))
-      .map(file => ({
-        id: Math.random().toString(36).substr(2, 9),
-        file,
-        name: file.name,
-        path: (file as any).webkitRelativePath || file.name,
-        size: file.size,
-        status: 'pending',
-        progress: 0
-      }));
-    if (newItems.length === 0) return;
+  const addToQueue = useCallback(async (files: FileList | File[]) => {
+    const jsonFiles = Array.from(files).filter(f => f.name.endsWith('.json'));
+  
+    if (jsonFiles.length === 0) return;
+  
+    const newItems: QueueItem[] = await Promise.all(
+      jsonFiles.map(async (file) => {
+        let totalQuestions = 0;
+  
+        try {
+          const content = await file.text();
+          const json = JSON.parse(content);
+  
+          // Different possible structures support
+          if (json.totalQuestions) {
+            totalQuestions = json.totalQuestions;
+          } 
+          else if (json.sections && Array.isArray(json.sections)) {
+            totalQuestions = json.sections.reduce(
+              (acc: number, sec: any) =>
+                acc + (Array.isArray(sec.questions) ? sec.questions.length : 0),
+              0
+            );
+          }
+          else if (Array.isArray(json.questions)) {
+            totalQuestions = json.questions.length;
+          }
+        } catch (err) {
+          console.error("Question count parse failed:", file.name, err);
+        }
+  
+        return {
+          id: Math.random().toString(36).substr(2, 9),
+          file,
+          name: file.name,
+          path: (file as any).webkitRelativePath || file.name,
+          size: file.size,
+          status: 'pending' as IngestionStatus,
+          progress: 0,
+          totalQuestions
+        };
+      })
+    );
+  
     setQueue(prev => [...prev, ...newItems]);
-    setStats(prev => ({ ...prev, total: prev.total + newItems.length }));
+  
+    setStats(prev => ({
+      ...prev,
+      total: prev.total + newItems.length
+    }));
   }, []);
 
   const removeFromQueue = (id: string) => {

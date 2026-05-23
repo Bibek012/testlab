@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { 
-  MockTestData, 
-  UserResponse 
+import {
+  MockTestData,
+  UserResponse
 } from "@/lib/mock-test-engine-data";
 import { InstructionsStep } from "@/components/mock-test/InstructionsStep";
 import { ConfigStep } from "@/components/mock-test/ConfigStep";
@@ -24,7 +24,7 @@ export default function MockTestEnginePage() {
   const examId = params.examId as string;
   const mockId = params.mockId as string;
   const category = params.category as string;
-  
+
   const { user, loading: userLoading } = useUser();
   const db = useFirestore();
 
@@ -58,7 +58,7 @@ export default function MockTestEnginePage() {
       marksPerQuestion: Number(mockMetadata.marksPerQuestion || 1),
       negativeMarks: Number(mockMetadata.negativeMarks || 0),
       fullMarks: Number(mockMetadata.fullMarks) || (questions.length * Number(mockMetadata.marksPerQuestion || 1)),
-      
+
       sections: (sections && sections.length > 0) ? (sections || []).map((section: any, index: number) => ({
         ...section,
         id: section.id || `section_${index}`,
@@ -71,7 +71,7 @@ export default function MockTestEnginePage() {
         .map((q: any, index: number) => {
           const base = q.question || q;
           const sol = q.explanation || q.solution || { en: "", hn: "" };
-          
+
           // 1. Normalize Options: Ensure every option has a numeric ID
           const options = (Array.isArray(q.options) ? q.options : []).map((opt: any, optIndex: number) => ({
             ...opt,
@@ -87,8 +87,8 @@ export default function MockTestEnginePage() {
             resolvedCorrectId = Number(rawId);
           } else if (rawAns !== undefined && rawAns !== null) {
             const answerText = String(rawAns).trim().toLowerCase();
-            const match = options.find(o => 
-              String(o.en || "").trim().toLowerCase() === answerText || 
+            const match = options.find(o =>
+              String(o.en || "").trim().toLowerCase() === answerText ||
               String(o.hn || "").trim().toLowerCase() === answerText ||
               String(o.text || "").trim().toLowerCase() === answerText
             );
@@ -111,8 +111,8 @@ export default function MockTestEnginePage() {
             options,
             correctOptionId: resolvedCorrectId,
             marks: {
-              positive: Number(q?.marks?.positive ?? q?.positiveMarks ?? mockMetadata?.marksPerQuestion ?? 1),
-              negative: Number(q?.marks?.negative ?? q?.negativeMarks ?? mockMetadata?.negativeMarks ?? 0),
+              positive: Number(mockMetadata?.marksPerQuestion ?? 1),
+              negative: Number(mockMetadata?.negativeMarks ?? 0),
               skip: Number(q?.marks?.skip ?? 0),
             },
             explanation: typeof sol === 'object' ? {
@@ -121,8 +121,8 @@ export default function MockTestEnginePage() {
               en_html: sol.en_html || "",
               hn_html: sol.hn_html || ""
             } : { en: sol, hn: "" },
-            positiveMarks: Number(q?.marks?.positive ?? q?.positiveMarks ?? mockMetadata?.marksPerQuestion ?? 1),
-            negativeMarks: Number(q?.marks?.negative ?? q?.negativeMarks ?? mockMetadata?.negativeMarks ?? 0),
+            positiveMarks: Number(mockMetadata?.marksPerQuestion ?? 1),
+            negativeMarks: Number(mockMetadata?.negativeMarks ?? 0),
           };
         }).sort((a, b) => (a.order || 0) - (b.order || 0))
     };
@@ -133,7 +133,7 @@ export default function MockTestEnginePage() {
   // INITIALIZE RESPONSES
   useEffect(() => {
     if (!testData || !user || !db) return;
-    
+
     if (Object.keys(responses).length === 0) {
       const initial: Record<string, UserResponse> = {};
       (testData.questions || []).forEach((q: any) => {
@@ -151,7 +151,7 @@ export default function MockTestEnginePage() {
       try {
         const snap = await getDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
         if (snap.exists() && step === 'instructions') setHasResumeData(true);
-      } catch (e) {}
+      } catch (e) { }
     };
     checkResume();
   }, [testData, user, db, mockId]);
@@ -169,6 +169,51 @@ export default function MockTestEnginePage() {
     }
   };
 
+
+useEffect(() => {
+  if (
+    !user ||
+    !db ||
+    !testData ||
+    step !== 'test' ||
+    !startTime
+  ) return;
+
+  const interval = setInterval(async () => {
+    try {
+      const saved = localStorage.getItem(`test_progress_${mockId}`);
+
+      if (!saved) return;
+
+      const parsed = JSON.parse(saved);
+
+      await setDoc(
+        doc(db, 'progress', user.uid, 'activeTests', mockId),
+        {
+          mockId,
+          responses: parsed.responses || {},
+          startTime: parsed.startTime,
+          userLanguage: parsed.userLanguage,
+          updatedAt: serverTimestamp()
+        }
+      );
+
+    } catch (err) {
+      console.error("Firestore sync failed:", err);
+    }
+  }, 15000);
+
+  return () => clearInterval(interval);
+
+}, [
+  user,
+  db,
+  testData,
+  mockId,
+  startTime,
+  step
+]);
+
   const handleStartTest = (lang: 'en' | 'hn') => {
     setUserLanguage(lang);
     setStartTime(Date.now());
@@ -179,7 +224,7 @@ export default function MockTestEnginePage() {
   const handleSubmitTest = async () => {
     setEndTime(Date.now());
     localStorage.removeItem(`test_end_${mockId}`);
-    if (user) await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId)).catch(() => {});
+    if (user) await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId)).catch(() => { });
     setStep('result');
   };
 
@@ -231,32 +276,32 @@ export default function MockTestEnginePage() {
       {step === 'instructions' && <InstructionsStep testData={testData} onNext={() => setStep('config')} />}
       {step === 'config' && <ConfigStep testData={testData} onBack={() => setStep('instructions')} onStart={handleStartTest} />}
       {step === 'test' && (
-        <TestInterface 
-          testData={testData} 
-          userLanguage={userLanguage} 
-          responses={responses} 
-          setResponses={setResponses} 
-          onSubmit={handleSubmitTest} 
+        <TestInterface
+          testData={testData}
+          userLanguage={userLanguage}
+          responses={responses}
+          setResponses={setResponses}
+          onSubmit={handleSubmitTest}
         />
       )}
       {step === 'result' && (
-        <ResultPage 
-          testData={testData} 
-          responses={responses} 
-          startTime={startTime!} 
-          endTime={endTime!} 
-          userLanguage={userLanguage} 
-          onReattempt={handleReattempt} 
-          onViewSolutions={() => setStep('solution')} 
-          dashboardUrl={dashboardUrl} 
+        <ResultPage
+          testData={testData}
+          responses={responses}
+          startTime={startTime!}
+          endTime={endTime!}
+          userLanguage={userLanguage}
+          onReattempt={handleReattempt}
+          onViewSolutions={() => setStep('solution')}
+          dashboardUrl={dashboardUrl}
         />
       )}
       {step === 'solution' && (
-        <SolutionInterface 
-          testData={testData} 
-          userLanguage={userLanguage} 
-          responses={responses} 
-          onBack={() => setStep('result')} 
+        <SolutionInterface
+          testData={testData}
+          userLanguage={userLanguage}
+          responses={responses}
+          onBack={() => setStep('result')}
         />
       )}
     </main>

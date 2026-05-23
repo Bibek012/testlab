@@ -5,7 +5,7 @@ import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trophy, CheckCircle, Clock, Target, RotateCcw, BookOpen, Zap, TrendingUp, Loader2 } from "lucide-react";
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
 import Link from "next/link";
@@ -23,13 +23,13 @@ interface Props {
   dashboardUrl?: string;
 }
 
-export const ResultPage = ({ 
-  testData, 
-  responses, 
-  startTime, 
-  endTime, 
-  userLanguage, 
-  onReattempt, 
+export const ResultPage = ({
+  testData,
+  responses,
+  startTime,
+  endTime,
+  userLanguage,
+  onReattempt,
   onViewSolutions,
   dashboardUrl = "/"
 }: Props) => {
@@ -49,14 +49,14 @@ export const ResultPage = ({
 
     (testData.questions || []).forEach(q => {
       const resp = responses[q.id];
-      const selectedId = (resp?.selectedOptionId !== null && resp?.selectedOptionId !== undefined) 
-        ? Number(resp.selectedOptionId) 
+      const selectedId = (resp?.selectedOptionId !== null && resp?.selectedOptionId !== undefined)
+        ? Number(resp.selectedOptionId)
         : null;
-      
+
       const correctId = Number(q.correctOptionId);
-      
-      const pos = Number(q.marks?.positive ?? 1);
-      const neg = Number(q.marks?.negative ?? 0);
+      console.log(correctId)
+      const pos = Number(testData.marksPerQuestion ?? 1);
+      const neg = Number(testData.negativeMarks ?? 0);
       const skipPenalty = Number(q.marks?.skip ?? 0);
 
       maxPossibleScore += pos;
@@ -64,7 +64,7 @@ export const ResultPage = ({
       const isSkipped = selectedId === null || isNaN(selectedId);
       const isCorrect = !isSkipped && selectedId === correctId;
       const isWrong = !isSkipped && !isCorrect;
-      
+
       let awarded = 0;
       if (isCorrect) {
         correct++;
@@ -95,14 +95,14 @@ export const ResultPage = ({
     const accuracy = (correct + incorrect > 0) ? (correct / (correct + incorrect)) * 100 : 0;
     const percentage = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
 
-    return { 
-      correct, 
-      incorrect, 
-      unattempted, 
-      totalScore, 
+    return {
+      correct,
+      incorrect,
+      unattempted,
+      totalScore,
       maxPossibleScore,
-      timeTaken, 
-      accuracy, 
+      timeTaken,
+      accuracy,
       percentage: percentage.toFixed(2),
       totalQuestions: testData.questions.length,
       questionAnalysis: analysis
@@ -187,20 +187,20 @@ export const ResultPage = ({
       <div className="container mx-auto px-6 max-w-6xl mt-12 space-y-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <Card className="glass border-white/10 p-6 space-y-2">
-             <div className="text-3xl font-bold font-headline">{metrics.totalScore.toFixed(2)}</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Score Obtained</p>
+            <div className="text-3xl font-bold font-headline">{metrics.totalScore.toFixed(2)}</div>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Score Obtained</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-2">
-             <div className="text-3xl font-bold font-headline text-emerald-400">{metrics.accuracy.toFixed(1)}%</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Accuracy</p>
+            <div className="text-3xl font-bold font-headline text-emerald-400">{metrics.accuracy.toFixed(1)}%</div>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Accuracy</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-2">
-             <div className="text-3xl font-bold font-headline text-indigo-400">{metrics.percentage}%</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Performance</p>
+            <div className="text-3xl font-bold font-headline text-indigo-400">{metrics.percentage}%</div>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Performance</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-2">
-             <div className="text-3xl font-bold font-headline text-accent">{(metrics.timeTaken / 60).toFixed(1)}m</div>
-             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Time Taken</p>
+            <div className="text-3xl font-bold font-headline text-accent">{(metrics.timeTaken / 60).toFixed(1)}m</div>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Time Taken</p>
           </Card>
         </div>
 
@@ -240,14 +240,14 @@ export const ResultPage = ({
                 </Link>
               </div>
             </Card>
-            
+
             <div className="p-8 bg-indigo-500/10 rounded-[2.5rem] border border-indigo-500/20 space-y-4">
-               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-widest">
-                 <Zap className="w-4 h-4 fill-current" /> AI Lab Insights
-               </div>
-               <p className="text-xs text-muted-foreground italic">
-                 "Based on your accuracy, focus on improving speed in {testData.examName} to boost your percentile rank."
-               </p>
+              <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-widest">
+                <Zap className="w-4 h-4 fill-current" /> AI Lab Insights
+              </div>
+              <p className="text-xs text-muted-foreground italic">
+                "Based on your accuracy, focus on improving speed in {testData.examName} to boost your percentile rank."
+              </p>
             </div>
           </div>
         </div>
