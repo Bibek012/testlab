@@ -23,26 +23,25 @@ export default function AttemptResultPage() {
   const { user, loading: userLoading } = useUser();
   const db = useFirestore();
 
-  // 1. Fetch the specific attempt from USER subcollection
+  // 1. FETCH TARGET ATTEMPT
   const attemptRef = useMemoFirebase(() => 
-    (db && user) ? doc(db, "users", user.uid, "attempts", attemptId as string) : null,
+    (db && user) ? doc(db, "users", user.uid, "mockAttempts", attemptId as string) : null,
   [db, user?.uid, attemptId]);
   const { data: attempt, loading: attemptLoading } = useDoc<any>(attemptRef);
 
-  // 2. Fetch the mock metadata
+  // 2. FETCH MOCK CONTENT (KEYS)
   const mockRef = useMemoFirebase(() => db ? doc(db, "mockTests", mockId as string) : null, [db, mockId]);
   const { data: mockMetadata, loading: mockLoading } = useDoc<any>(mockRef);
 
-  // 3. Fetch questions to perform dynamic calculation (Verification)
   const questionsQuery = useMemoFirebase(() => 
     db ? query(collection(db, "mockTests", mockId as string, "questions")) : null, 
   [db, mockId]);
   const { data: questions, loading: questionsLoading } = useCollection<any>(questionsQuery);
 
-  // 4. Fetch attempt history from USER subcollection for the dropdown
+  // 3. FETCH ATTEMPT HISTORY (Switcher)
   const historyQuery = useMemoFirebase(() => 
     (db && user) ? query(
-      collection(db, "users", user.uid, "attempts"),
+      collection(db, "users", user.uid, "mockAttempts"),
       where("mockId", "==", mockId),
       orderBy("completedAt", "desc"),
       limit(10)
@@ -73,8 +72,8 @@ export default function AttemptResultPage() {
   if (!attempt || !testData) {
     return (
       <div className="h-screen bg-[#0b1120] flex flex-col items-center justify-center p-6 text-center gap-4">
-        <h2 className="text-2xl font-bold">Attempt Not Found</h2>
-        <Button onClick={() => router.push(`/exams/${category}/${examId}`)}>Return to Dashboard</Button>
+        <h2 className="text-2xl font-bold">Analysis Not Found</h2>
+        <Button onClick={() => router.push(`/exams/${category}/${examId}`)}>Dashboard</Button>
       </div>
     );
   }
@@ -83,13 +82,13 @@ export default function AttemptResultPage() {
     <div className="min-h-screen bg-[#0b1120]">
       <Navbar />
       
-      {/* History Switcher Overlay */}
+      {/* Attempt Switcher Floating Hub */}
       <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[60] w-full max-w-md px-6">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full glass border-white/10 rounded-full h-10 gap-2 font-bold text-xs uppercase tracking-widest">
+            <Button variant="outline" className="w-full glass border-white/10 rounded-full h-10 gap-2 font-bold text-[10px] uppercase tracking-widest shadow-2xl">
               <History className="w-3.5 h-3.5 text-primary" />
-              Attempt: {attempt.completedAt?.toDate ? format(attempt.completedAt.toDate(), "MMM dd, HH:mm") : 'Viewing Analysis'}
+              Attempt: {attempt.completedAt?.toDate ? format(attempt.completedAt.toDate(), "MMM dd, HH:mm") : 'Processing'}
               <ChevronDown className="w-3.5 h-3.5 ml-auto opacity-50" />
             </Button>
           </DropdownMenuTrigger>
@@ -97,7 +96,10 @@ export default function AttemptResultPage() {
             {history?.map((h) => (
               <DropdownMenuItem 
                 key={h.id} 
-                className="flex items-center justify-between py-3 cursor-pointer"
+                className={cn(
+                  "flex items-center justify-between py-3 cursor-pointer",
+                  h.id === attemptId && "bg-primary/10"
+                )}
                 onClick={() => router.push(`/exams/${category}/${examId}/mock/${mockId}/result/${h.id}`)}
               >
                 <div className="flex flex-col">
@@ -117,11 +119,11 @@ export default function AttemptResultPage() {
       <ResultPage
         testData={testData as any}
         responses={attempt.rawResponses}
-        startTime={0} // Not needed for saved attempts
+        startTime={0}
         endTime={0}
         userLanguage={attempt.userLanguage}
         onReattempt={() => router.push(`/exams/${category}/${examId}/mock/${mockId}`)}
-        onViewSolutions={() => {}} // Placeholder for future enhancement
+        onViewSolutions={() => {}} 
         dashboardUrl={`/exams/${category}/${examId}`}
       />
       <Footer />

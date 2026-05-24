@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import {
   MockTestData,
   UserResponse,
-  Question,
   QuestionStatus
 } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
@@ -103,7 +102,7 @@ export const TestInterface = ({
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
 
-  // Initialize End Time
+  // Timer Initialization
   useEffect(() => {
     let savedEndTime = localStorage.getItem(`test_end_${testData.id}`);
     if (!savedEndTime) {
@@ -114,7 +113,39 @@ export const TestInterface = ({
     setTargetEndTime(parseInt(savedEndTime));
   }, [testData.id, testData.durationMinutes]);
 
-  // Question Timer
+  // Response Autosave Logic (Firestore + LocalStorage)
+  useEffect(() => {
+    if (!user || !db || isPaused || showSubmitConfirm) return;
+
+    const saveInterval = setInterval(async () => {
+      const sessionData = {
+        mockId: testData.id,
+        examId: testData.examId,
+        examName: testData.examName,
+        mockTitle: testData.title,
+        responses,
+        userLanguage: currentLang,
+        currentQuestionIndex,
+        startedAt: parseInt(localStorage.getItem(`test_start_${testData.id}`) || Date.now().toString()),
+        endTime: targetEndTime,
+        updatedAt: serverTimestamp()
+      };
+
+      // 1. Fast Cache
+      localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(sessionData));
+
+      // 2. Cloud Persistence
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'activeMocks', testData.id), sessionData, { merge: true });
+      } catch (e) {
+        console.warn("Autosave cloud sync deferred", e);
+      }
+    }, 15000);
+
+    return () => clearInterval(saveInterval);
+  }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm, targetEndTime]);
+
+  // Individual Question Timing
   useEffect(() => {
     if (isPaused || showSubmitConfirm) return;
     const qTimer = setInterval(() => {
@@ -132,33 +163,6 @@ export const TestInterface = ({
     }, 1000);
     return () => clearInterval(qTimer);
   }, [currentQuestion.id, isPaused, showSubmitConfirm, setResponses]);
-
-  // Auto-save logic (15 seconds interval)
-  useEffect(() => {
-    if (!user || !db || isPaused || showSubmitConfirm) return;
-
-    const saveInterval = setInterval(async () => {
-      const progressData = {
-        mockId: testData.id,
-        responses,
-        startTime: parseInt(localStorage.getItem(`test_start_${testData.id}`) || '0'),
-        userLanguage: currentLang,
-        updatedAt: serverTimestamp()
-      };
-
-      // Local persistence for instant fallback
-      localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(progressData));
-
-      // Cloud persistence
-      try {
-        await setDoc(doc(db, 'progress', user.uid, 'activeTests', testData.id), progressData, { merge: true });
-      } catch (e) {
-        console.warn("Autosave sync failed", e);
-      }
-    }, 15000);
-
-    return () => clearInterval(saveInterval);
-  }, [user, db, testData.id, responses, currentLang, isPaused, showSubmitConfirm]);
 
   const handleOptionSelect = useCallback((optionId: string | number) => {
     const numericOptionId = String(optionId);
@@ -340,7 +344,7 @@ export const TestInterface = ({
 
             <div className="space-y-6 animate-in fade-in duration-300">
               <RichTextRenderer
-                content={(currentQuestion[`${currentLang}_html` as keyof Question] || currentQuestion[currentLang as keyof Question]) as string}
+                content={(currentQuestion[`${currentLang}_html` as any] || currentQuestion[currentLang as any]) as string}
                 className="text-base md:text-xl font-medium leading-relaxed"
               />
 
@@ -371,7 +375,7 @@ export const TestInterface = ({
                   </div>
                   <div className="flex-1 overflow-hidden">
                     <RichTextRenderer
-                      content={(option[`${currentLang}_html` as keyof typeof option] || option[currentLang as keyof typeof option]) as string}
+                      content={(option[`${currentLang}_html` as any] || option[currentLang as any]) as string}
                       className="text-sm md:text-base font-medium"
                     />
                   </div>

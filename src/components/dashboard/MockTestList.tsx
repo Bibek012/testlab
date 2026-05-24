@@ -51,27 +51,27 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   const { data: tests, loading: testsLoading } = useCollection<any>(mocksQuery);
 
   // 3. FETCH ACTIVE SESSIONS (Resume Data)
-  const activeTestsQuery = useMemoFirebase(() => 
-    (db && user) ? query(collection(db, "progress", user.uid, "activeTests")) : null,
+  const activeSessionsQuery = useMemoFirebase(() => 
+    (db && user) ? query(collection(db, "users", user.uid, "activeMocks")) : null,
   [db, user?.uid]);
-  const { data: activeTests } = useCollection<any>(activeTestsQuery);
+  const { data: activeSessions } = useCollection<any>(activeSessionsQuery);
 
-  // 4. FETCH LATEST ATTEMPTS FROM USER SUBCOLLECTION (Point 1 Architecture)
+  // 4. FETCH LATEST ATTEMPTS (Optimized)
   const attemptsQuery = useMemoFirebase(() =>
     (db && user) ? query(
-      collection(db, "users", user.uid, "attempts"),
+      collection(db, "users", user.uid, "mockAttempts"),
       where("examId", "==", examId),
       orderBy("completedAt", "desc")
     ) : null,
   [db, user?.uid, examId]);
   const { data: attempts } = useCollection<any>(attemptsQuery);
 
-  // Transform attempts into a "Latest for Mock" map (Point 3)
+  // Map status for each mock
   const mockStatusMap = useMemo(() => {
     const map: Record<string, { latestAttempt?: any; activeSession?: any }> = {};
     
-    activeTests?.forEach(session => {
-      map[session.id] = { ...map[session.id], activeSession: session };
+    activeSessions?.forEach(session => {
+      map[session.mockId] = { ...map[session.mockId], activeSession: session };
     });
 
     attempts?.forEach(attempt => {
@@ -81,7 +81,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
     });
 
     return map;
-  }, [activeTests, attempts]);
+  }, [activeSessions, attempts]);
 
   const filteredTests = useMemo(() => {
     if (!tests) return [];
@@ -92,15 +92,18 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
     });
   }, [tests, selectedTypeId, searchQuery]);
 
-  const handleClearSession = async (mockId: string) => {
+  const handleReattempt = async (mockId: string, baseUrl: string) => {
     if (!user || !db) return;
     try {
-      await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
+      // Clear all buffers
+      await deleteDoc(doc(db, 'users', user.uid, 'activeMocks', mockId));
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
       localStorage.removeItem(`test_start_${mockId}`);
+      // Hard redirect to clear engine state
+      window.location.href = baseUrl;
     } catch (e) {
-      console.error("Clear session failed", e);
+      console.error("Reattempt trigger failed", e);
     }
   };
 
@@ -165,7 +168,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
               test={test}
               status={mockStatusMap[test.id]}
               baseUrl={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
-              onClearSession={() => handleClearSession(test.id)}
+              onReattempt={() => handleReattempt(test.id, `/exams/${categorySlug}/${examSlug}/mock/${test.id}`)}
             />
           ))
         )}
@@ -174,7 +177,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   );
 };
 
-function TestListItem({ test, status, baseUrl, onClearSession }: any) {
+function TestListItem({ test, status, baseUrl, onReattempt }: any) {
   const { activeSession, latestAttempt } = status || {};
 
   return (
@@ -183,7 +186,7 @@ function TestListItem({ test, status, baseUrl, onClearSession }: any) {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 shrink-0">
             {activeSession ? (
-              <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold animate-pulse">In Progress</Badge>
+              <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold animate-pulse">Resume Available</Badge>
             ) : latestAttempt ? (
               <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">Attempted</Badge>
             ) : test.isFree ? (
@@ -235,10 +238,7 @@ function TestListItem({ test, status, baseUrl, onClearSession }: any) {
             <Button
               variant="outline"
               className="w-full md:w-auto border-white/10 h-10 rounded-xl text-xs font-bold gap-2"
-              onClick={async () => {
-                await onClearSession();
-                window.location.href = baseUrl;
-              }}
+              onClick={onReattempt}
             >
               <History className="w-3.5 h-3.5" /> Reattempt
             </Button>

@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trophy, CheckCircle, Target, BookOpen, Zap, Loader2 } from "lucide-react";
+import { Trophy, CheckCircle, Target, BookOpen, Zap, Loader2, ListTree } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
+import { SolutionInterface } from "./SolutionInterface";
 
 interface Props {
   testData: MockTestData;
@@ -23,16 +24,16 @@ interface Props {
 export const ResultPage = ({
   testData,
   responses,
+  userLanguage,
   onReattempt,
-  onViewSolutions,
 }: Props) => {
+  const [viewMode, setViewMode] = useState<'stats' | 'solutions'>('stats');
 
   const metrics = useMemo(() => {
     let correct = 0;
     let incorrect = 0;
     let totalScore = 0;
     let maxPossibleScore = 0;
-    const analysis: any[] = [];
 
     (testData.questions || []).forEach(q => {
       const resp = responses[q.id];
@@ -55,12 +56,6 @@ export const ResultPage = ({
         incorrect++;
         totalScore -= neg;
       }
-
-      analysis.push({
-        isCorrect,
-        isWrong,
-        timeTaken: resp?.timeSpentSeconds || 0
-      });
     });
 
     const accuracy = (correct + incorrect > 0) ? (correct / (correct + incorrect)) * 100 : 0;
@@ -83,6 +78,17 @@ export const ResultPage = ({
     { name: 'Wrong', value: metrics.incorrect, color: '#f43f5e' },
     { name: 'Skipped', value: metrics.unattempted, color: '#64748b' },
   ];
+
+  if (viewMode === 'solutions') {
+    return (
+      <SolutionInterface 
+        testData={testData} 
+        responses={responses} 
+        userLanguage={userLanguage} 
+        onBack={() => setViewMode('stats')} 
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0b1120] pb-24 animate-in fade-in duration-700">
@@ -112,18 +118,18 @@ export const ResultPage = ({
           </Card>
           <Card className="glass border-white/10 p-6 space-y-2">
             <div className="text-3xl font-bold font-headline text-indigo-400">{metrics.percentage}%</div>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Percentile</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Percentage</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-2">
             <div className="text-3xl font-bold font-headline text-accent">{metrics.correct}/{metrics.totalQuestions}</div>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Score Breakdown</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Correct Answers</p>
           </Card>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-8">
           <Card className="glass border-white/10 p-8 lg:col-span-8">
             <CardHeader className="px-0 pt-0 pb-10">
-              <CardTitle className="text-xl font-headline font-bold uppercase tracking-widest">Question Stats</CardTitle>
+              <CardTitle className="text-xl font-headline font-bold uppercase tracking-widest">Question Breakdown</CardTitle>
             </CardHeader>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -142,16 +148,21 @@ export const ResultPage = ({
           <div className="lg:col-span-4 space-y-6">
             <div className="p-8 bg-indigo-500/10 rounded-[2.5rem] border border-indigo-500/20 space-y-4">
               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-widest">
-                <Zap className="w-4 h-4 fill-current" /> AI Lab Insights
+                <Zap className="w-4 h-4 fill-current" /> Mastery Insight
               </div>
-              <p className="text-xs text-muted-foreground italic">
-                "Your accuracy in the Quantitative section is improving. Focus on Time Management in Logical Reasoning to break into the 90th percentile."
+              <p className="text-xs text-muted-foreground leading-relaxed italic">
+                "Based on this attempt, your accuracy is highest in the starting modules. Focus on speed in the final sections to improve your overall ranking."
               </p>
             </div>
             
-            <Button onClick={onReattempt} variant="outline" className="w-full h-14 rounded-2xl border-white/10 font-bold uppercase tracking-widest text-xs">
-              Take Fresh Attempt
-            </Button>
+            <div className="grid gap-3">
+              <Button onClick={() => setViewMode('solutions')} className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 font-bold uppercase tracking-widest text-xs gap-2">
+                <ListTree className="w-4 h-4" /> View Detailed Solutions
+              </Button>
+              <Button onClick={onReattempt} variant="outline" className="w-full h-14 rounded-2xl border-white/10 font-bold uppercase tracking-widest text-xs">
+                Fresh Reattempt
+              </Button>
+            </div>
           </div>
         </div>
       </div>

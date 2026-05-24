@@ -14,7 +14,7 @@ import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@
 import { doc, setDoc, deleteDoc, serverTimestamp, collection, query, getDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 
-export type TestStep = 'instructions' | 'config' | 'test' | 'solution';
+export type TestStep = 'instructions' | 'config' | 'test';
 
 export default function MockTestEnginePage() {
   const params = useParams();
@@ -102,50 +102,37 @@ export default function MockTestEnginePage() {
 
   const dashboardUrl = `/exams/${category || 'all'}/${examId}`;
 
-  // INITIALIZE RESPONSES & CHECK RESUME
+  // CHECK CLOUD RESUME DATA
   useEffect(() => {
-    if (!testData || !user || !db) return;
-
-    if (Object.keys(responses).length === 0) {
-      const initial: Record<string, UserResponse> = {};
-      (testData.questions || []).forEach((q: any) => {
-        initial[q.id] = {
-          questionId: q.id,
-          selectedOptionId: null,
-          status: 'not-visited',
-          timeSpentSeconds: 0
-        };
-      });
-      setResponses(initial);
-    }
+    if (!user || !db || !mockId) return;
 
     const checkResume = async () => {
       try {
-        const snapRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-        const snap = await getDoc(snapRef);
+        const sessionRef = doc(db, 'users', user.uid, 'activeMocks', mockId);
+        const snap = await getDoc(sessionRef);
         if (snap.exists()) {
           setHasResumeData(true);
         }
       } catch (e) { }
     };
     checkResume();
-  }, [testData, user, db, mockId]);
+  }, [user, db, mockId]);
 
   const handleResume = async () => {
     if (!user || !db || !testData) return;
     try {
-      const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-      const actualSnap = await getDoc(progressRef);
+      const sessionRef = doc(db, 'users', user.uid, 'activeMocks', mockId);
+      const snap = await getDoc(sessionRef);
 
-      if (actualSnap.exists()) {
-        const data = actualSnap.data();
-        setResponses(data.responses);
-        setUserLanguage(data.userLanguage);
-        setStartTime(data.startTime || Date.now());
+      if (snap.exists()) {
+        const data = snap.data();
+        setResponses(data.responses || {});
+        setUserLanguage(data.userLanguage || 'en');
+        setStartTime(data.startedAt || Date.now());
         setStep('test');
       }
     } catch (e) {
-      console.error("Resume failed", e);
+      console.error("Resume handoff failed", e);
     }
   };
 
@@ -163,13 +150,16 @@ export default function MockTestEnginePage() {
     const attemptId = crypto.randomUUID();
     const endTime = Date.now();
     
+    // Dynamic Analysis Generation
     let correct = 0, incorrect = 0, totalScore = 0;
     testData.questions.forEach(q => {
       const resp = responses[q.id];
-      if (resp?.selectedOptionId === q.correctOptionId) {
+      if (!resp?.selectedOptionId) return;
+      
+      if (resp.selectedOptionId === q.correctOptionId) {
         correct++;
         totalScore += testData.marksPerQuestion;
-      } else if (resp?.selectedOptionId) {
+      } else {
         incorrect++;
         totalScore -= testData.negativeMarks;
       }
@@ -180,38 +170,41 @@ export default function MockTestEnginePage() {
 
     try {
       const attemptData = {
-        id: attemptId,
+        attemptId,
         uid: user.uid,
         mockId,
         examId: testData.examId,
         examName: testData.examName,
-        totalQuestions: testData.questions.length,
-        attempted,
+        mockTitle: testData.title,
+        
+        score: totalScore,
+        totalMarks: testData.fullMarks,
+        
         correct,
         wrong: incorrect,
         unattempted: testData.questions.length - attempted,
-        score: totalScore,
-        totalMarks: testData.fullMarks,
+        
         accuracy,
         percentage: (totalScore / testData.fullMarks) * 100,
+        
         timeTakenSeconds: Math.floor((endTime - (startTime || endTime)) / 1000),
         completedAt: serverTimestamp(),
         userLanguage,
         rawResponses: responses
       };
 
-      // Consistently save to user subcollection
-      await setDoc(doc(db, "users", user.uid, "attempts", attemptId), attemptData);
+      // 1. Save to User History
+      await setDoc(doc(db, "users", user.uid, "mockAttempts", attemptId), attemptData);
       
-      // Cleanup progress
-      await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
+      // 2. Clear Active Session
+      await deleteDoc(doc(db, 'users', user.uid, 'activeMocks', mockId));
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
       localStorage.removeItem(`test_start_${mockId}`);
 
       router.push(`${dashboardUrl}/mock/${mockId}/result/${attemptId}`);
     } catch (e) {
-      console.error("Submission failed", e);
+      console.error("Critical submission failure", e);
     }
   };
 
@@ -219,7 +212,7 @@ export default function MockTestEnginePage() {
     return (
       <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">Loading Test...</p>
+        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">Warming Engine...</p>
       </div>
     );
   }
@@ -228,7 +221,7 @@ export default function MockTestEnginePage() {
     return (
       <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4 p-6 text-center">
         <AlertCircle className="w-12 h-12 text-destructive" />
-        <h2 className="text-2xl font-bold">No Questions Found</h2>
+        <h2 className="text-2xl font-bold">Module Data Missing</h2>
         <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
       </div>
     );
@@ -240,12 +233,12 @@ export default function MockTestEnginePage() {
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="glass border-white/10 p-8 rounded-[2.5rem] max-w-md w-full text-center space-y-6">
             <Loader2 className="w-12 h-12 text-primary mx-auto animate-pulse" />
-            <h2 className="text-2xl font-headline font-bold">Resume Attempt?</h2>
+            <h2 className="text-2xl font-headline font-bold">Resume Previous?</h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              We found an unfinished session for this test. You can continue where you left off.
+              We found an active session for <strong>{testData.title}</strong>. Continue where you left off?
             </p>
             <div className="flex flex-col gap-3">
-              <Button onClick={handleResume} className="w-full h-12 bg-primary">Resume Test</Button>
+              <Button onClick={handleResume} className="w-full h-12 bg-primary">Resume Attempt</Button>
               <Button onClick={() => setHasResumeData(false)} variant="outline" className="w-full h-12">Start Fresh</Button>
             </div>
           </div>
