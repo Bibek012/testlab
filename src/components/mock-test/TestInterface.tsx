@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -145,13 +146,24 @@ export const TestInterface = ({
     return () => clearInterval(saveInterval);
   }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm, targetEndTime]);
 
-  // Individual Question Timing
+  // Individual Question Timing & Record Initialization
   useEffect(() => {
     if (isPaused || showSubmitConfirm) return;
     const qTimer = setInterval(() => {
       setResponses(prev => {
         const qId = currentQuestion.id;
-        if (!prev[qId]) return prev;
+        // If first visit, initialize record as 'not-answered'
+        if (!prev[qId]) {
+          return {
+            ...prev,
+            [qId]: {
+              questionId: qId,
+              selectedOptionId: null,
+              status: 'not-answered',
+              timeSpentSeconds: 1
+            }
+          };
+        }
         return {
           ...prev,
           [qId]: {

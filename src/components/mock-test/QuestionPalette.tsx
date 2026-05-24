@@ -13,13 +13,28 @@ interface Props {
 }
 
 export const QuestionPalette = React.memo(({ questions, responses, currentIndex, onNavigate }: Props) => {
-  const stats = useMemo(() => ({
-    answered: Object.values(responses).filter(r => r.selectedOptionId !== null && (r.status === 'answered' || r.status === 'answered-marked-review')).length,
-    notAnswered: Object.values(responses).filter(r => r.selectedOptionId === null && r.status === 'not-answered').length,
-    notVisited: Object.values(responses).filter(r => r.status === 'not-visited').length,
-    marked: Object.values(responses).filter(r => r.status === 'marked-review').length,
-    answeredMarked: Object.values(responses).filter(r => r.status === 'answered-marked-review').length,
-  }), [responses]);
+  const stats = useMemo(() => {
+    const counts = {
+      answered: 0,
+      notAnswered: 0,
+      notVisited: 0,
+      marked: 0,
+      answeredMarked: 0,
+    };
+
+    questions.forEach(q => {
+      const r = responses[q.id];
+      const status = r?.status || 'not-visited';
+
+      if (status === 'answered') counts.answered++;
+      else if (status === 'not-answered') counts.notAnswered++;
+      else if (status === 'marked-review') counts.marked++;
+      else if (status === 'answered-marked-review') counts.answeredMarked++;
+      else counts.notVisited++;
+    });
+
+    return counts;
+  }, [questions, responses]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-900/50">
@@ -42,7 +57,7 @@ export const QuestionPalette = React.memo(({ questions, responses, currentIndex,
               <PaletteButton 
                 key={q.id}
                 index={i}
-                status={resp.status}
+                status={resp?.status || 'not-visited'}
                 isActive={currentIndex === i}
                 onClick={() => onNavigate(i)}
               />
