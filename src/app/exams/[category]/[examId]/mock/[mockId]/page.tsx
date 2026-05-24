@@ -9,10 +9,9 @@ import {
 import { InstructionsStep } from "@/components/mock-test/InstructionsStep";
 import { ConfigStep } from "@/components/mock-test/ConfigStep";
 import { TestInterface } from "@/components/mock-test/TestInterface";
-import { SolutionInterface } from "@/components/mock-test/SolutionInterface";
-import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
-import { doc, setDoc, deleteDoc, serverTimestamp, collection, query } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, collection, query, getDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 
 export type TestStep = 'instructions' | 'config' | 'test' | 'solution';
@@ -43,7 +42,6 @@ export default function MockTestEnginePage() {
   const questionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "questions")) : null, [db, mockId]);
   const { data: questions, loading: questionsLoading } = useCollection<any>(questionsQuery);
 
-  // CRITICAL: ROBUST NORMALIZATION ENGINE
   const testData = useMemo<MockTestData | null>(() => {
     if (!mockMetadata || !questions) return null;
 
@@ -123,9 +121,9 @@ export default function MockTestEnginePage() {
 
     const checkResume = async () => {
       try {
-        const snap = await doc(db, 'progress', user.uid, 'activeTests', mockId);
-        const res = localStorage.getItem(`test_progress_${mockId}`);
-        if (res || (await (await setDoc(snap, {}, {merge: true}) as any))) {
+        const snapRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+        const snap = await getDoc(snapRef);
+        if (snap.exists()) {
           setHasResumeData(true);
         }
       } catch (e) { }
@@ -135,25 +133,27 @@ export default function MockTestEnginePage() {
 
   const handleResume = async () => {
     if (!user || !db || !testData) return;
-    const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
-    const snap = await (await fetch(`/api/noop`)).status === 200 ? { exists: () => false, data: () => ({}) } : null; // Logic placeholder
-    
-    // In actual implementation, we read from Firestore
-    // For brevity, using the doc fetch logic
-    const actualSnap = await (await import('firebase/firestore')).getDoc(progressRef);
+    try {
+      const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+      const actualSnap = await getDoc(progressRef);
 
-    if (actualSnap.exists()) {
-      const data = actualSnap.data();
-      setResponses(data.responses);
-      setUserLanguage(data.userLanguage);
-      setStartTime(data.startTime);
-      setStep('test');
+      if (actualSnap.exists()) {
+        const data = actualSnap.data();
+        setResponses(data.responses);
+        setUserLanguage(data.userLanguage);
+        setStartTime(data.startTime || Date.now());
+        setStep('test');
+      }
+    } catch (e) {
+      console.error("Resume failed", e);
     }
   };
 
   const handleStartTest = (lang: 'en' | 'hn') => {
     setUserLanguage(lang);
-    setStartTime(Date.now());
+    const now = Date.now();
+    setStartTime(now);
+    localStorage.setItem(`test_start_${mockId}`, now.toString());
     setStep('test');
   };
 
@@ -163,7 +163,6 @@ export default function MockTestEnginePage() {
     const attemptId = crypto.randomUUID();
     const endTime = Date.now();
     
-    // Calculate basic stats for the attempt record
     let correct = 0, incorrect = 0, totalScore = 0;
     testData.questions.forEach(q => {
       const resp = responses[q.id];
@@ -181,6 +180,8 @@ export default function MockTestEnginePage() {
 
     try {
       const attemptData = {
+        id: attemptId,
+        uid: user.uid,
         mockId,
         examId: testData.examId,
         examName: testData.examName,
@@ -199,10 +200,14 @@ export default function MockTestEnginePage() {
         rawResponses: responses
       };
 
+      // CRITICAL: Consistently save to user subcollection
       await setDoc(doc(db, "users", user.uid, "attempts", attemptId), attemptData);
+      
+      // Cleanup progress
       await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
+      localStorage.removeItem(`test_start_${mockId}`);
 
       router.push(`${dashboardUrl}/mock/${mockId}/result/${attemptId}`);
     } catch (e) {
@@ -234,8 +239,11 @@ export default function MockTestEnginePage() {
       {hasResumeData && step === 'instructions' && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="glass border-white/10 p-8 rounded-[2.5rem] max-w-md w-full text-center space-y-6">
-            <RefreshCw className="w-12 h-12 text-primary mx-auto" />
+            <Loader2 className="w-12 h-12 text-primary mx-auto animate-pulse" />
             <h2 className="text-2xl font-headline font-bold">Resume Attempt?</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              We found an unfinished session for this test. You can continue where you left off.
+            </p>
             <div className="flex flex-col gap-3">
               <Button onClick={handleResume} className="w-full h-12 bg-primary">Resume Test</Button>
               <Button onClick={() => setHasResumeData(false)} variant="outline" className="w-full h-12">Start Fresh</Button>

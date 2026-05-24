@@ -11,19 +11,15 @@ import {
   Calendar,
   ChevronRight,
   ArrowUpRight,
-  Filter,
   Loader2,
-  Activity,
-  WifiOff
 } from "lucide-react";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, orderBy, limit } from "firebase/firestore";
+import { collection, query, orderBy, limit, collectionGroup } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, PieChart, Pie
 } from "recharts";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -33,8 +29,9 @@ import { ErrorState } from "@/components/ErrorState";
 export default function AnalyticsOverviewPage() {
   const db = useFirestore();
   
+  // Use collectionGroup for global analytics across all user subcollections
   const attemptsQuery = useMemoFirebase(() => 
-    db ? query(collection(db, "attempts"), orderBy("completedAt", "desc"), limit(1000)) : null,
+    db ? query(collectionGroup(db, "attempts"), orderBy("completedAt", "desc"), limit(1000)) : null,
   [db]);
   const { data: attempts, loading: attemptsLoading, error: attemptsError } = useCollection<any>(attemptsQuery);
 
@@ -81,7 +78,6 @@ export default function AnalyticsOverviewPage() {
     );
   }
 
-  // Handle connection errors gracefully without crashing
   if (attemptsError || usersError) {
     return (
       <div className="p-8">
@@ -99,7 +95,7 @@ export default function AnalyticsOverviewPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold">Analytics <span className="text-accent">Overview</span></h1>
-          <p className="text-muted-foreground text-sm mt-1">Real-time performance metrics and user engagement trends.</p>
+          <p className="text-muted-foreground text-sm mt-1">Real-time performance metrics across all user attempts.</p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="outline" className="border-white/10 rounded-xl gap-2">
@@ -107,7 +103,7 @@ export default function AnalyticsOverviewPage() {
             Last 30 Days
           </Button>
           <Button className="bg-primary hover:bg-primary/90 text-white rounded-xl gap-2 shadow-lg shadow-primary/20">
-            Export Report
+            Export Global Report
           </Button>
         </div>
       </div>
@@ -116,7 +112,7 @@ export default function AnalyticsOverviewPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard label="Total Attempts" value={stats.total} icon={BarChart3} color="text-primary" trend="+12%" />
         <MetricCard label="Avg. Accuracy" value={`${stats.avgAccuracy}%`} icon={Target} color="text-emerald-400" trend="+2.4%" />
-        <MetricCard label="Active Users" value={stats.activeUsers} icon={Users} color="text-accent" trend="+5%" />
+        <MetricCard label="Registered Users" value={stats.activeUsers} icon={Users} color="text-accent" trend="+5%" />
         <MetricCard label="Learning Hours" value={`${stats.totalTime}h`} icon={Clock} color="text-indigo-400" trend="+18h" />
       </div>
 
@@ -125,9 +121,9 @@ export default function AnalyticsOverviewPage() {
           <CardHeader className="px-0 pt-0 pb-8 flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg font-headline font-bold">Platform Activity</CardTitle>
-              <CardDescription className="text-xs">Number of mock tests completed per day</CardDescription>
+              <CardDescription className="text-xs">Number of mock tests completed per day (Global)</CardDescription>
             </div>
-            <Badge className="bg-primary/10 text-primary border-primary/20">Live Sync</Badge>
+            <Badge className="bg-primary/10 text-primary border-primary/20">Cloud Group Query</Badge>
           </CardHeader>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -166,7 +162,7 @@ export default function AnalyticsOverviewPage() {
                <TrendingUp className="w-4 h-4" /> AI Growth Projection
              </div>
              <p className="text-xs text-muted-foreground leading-relaxed italic">
-               "Based on current trends, user engagement is expected to grow by <span className="text-white font-bold">24%</span> next month. Consider adding more 'Daily Quizzes' to maintain the streak."
+               "Based on current trends, global engagement is expected to grow by <span className="text-white font-bold">24%</span> next month. Group queries confirm scaling potential."
              </p>
           </div>
         </div>
@@ -175,18 +171,15 @@ export default function AnalyticsOverviewPage() {
       <Card className="glass border-white/10 overflow-hidden">
         <CardHeader className="p-6 bg-white/[0.02] border-b border-white/5 flex flex-row items-center justify-between">
            <div>
-             <CardTitle className="text-lg font-headline font-bold">Recent Submissions</CardTitle>
-             <CardDescription className="text-xs">Latest 10 attempts across the platform</CardDescription>
+             <CardTitle className="text-lg font-headline font-bold">Recent Global Submissions</CardTitle>
+             <CardDescription className="text-xs">Latest 10 attempts across all users</CardDescription>
            </div>
-           <Link href="/admin/analytics/tests">
-             <Button variant="ghost" size="sm" className="text-primary gap-2">View All <ChevronRight className="w-4 h-4" /></Button>
-           </Link>
         </CardHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.01]">
-                <th className="px-6 py-4 font-semibold text-muted-foreground">User / Exam</th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground">User Identity</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground text-center">Score</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground text-center">Accuracy</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground text-center">Time</th>
@@ -199,7 +192,7 @@ export default function AnalyticsOverviewPage() {
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="font-bold text-foreground">UID: {a.uid?.slice(0, 8)}...</span>
-                      <span className="text-[10px] text-muted-foreground uppercase">{a.examId || 'Mock Test'}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase">{a.examName || 'Mock Test'}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center font-mono font-bold text-accent">{a.score?.toFixed(2)}</td>
@@ -214,7 +207,7 @@ export default function AnalyticsOverviewPage() {
                   <td className="px-6 py-4 text-center text-muted-foreground">{Math.floor(a.timeTakenSeconds / 60)}m {a.timeTakenSeconds % 60}s</td>
                   <td className="px-6 py-4 text-right">
                     <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 gap-1.5 h-6">
-                      <CheckCircle2 className="w-3 h-3" /> Evaluated
+                      <CheckCircle2 className="w-3 h-3" /> Group Sync
                     </Badge>
                   </td>
                 </tr>

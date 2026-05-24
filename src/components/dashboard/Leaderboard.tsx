@@ -2,17 +2,17 @@
 
 import React, { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Trophy, Medal, Loader2, Inbox } from "lucide-react";
 import { useFirestore, useCollection } from "@/firebase";
-import { collection, query, orderBy, limit } from "firebase/firestore";
+import { collectionGroup, query, orderBy, limit } from "firebase/firestore";
 
 export const Leaderboard = () => {
   const db = useFirestore();
 
-  // Fetch real top performers based on absolute score
+  // Fetch real top performers using collectionGroup across all user attempt subcollections
   const topAttemptsQuery = useMemo(() => 
-    db ? query(collection(db, "attempts"), orderBy("score", "desc"), limit(5)) : null,
+    db ? query(collectionGroup(db, "attempts"), orderBy("score", "desc"), limit(5)) : null,
   [db]);
 
   const { data: attempts, loading } = useCollection<any>(topAttemptsQuery);
@@ -45,7 +45,7 @@ export const Leaderboard = () => {
               <div className="relative">
                 <Avatar className="w-10 h-10 border border-white/10">
                   <AvatarFallback className="bg-primary/20 text-primary font-bold">
-                    {(attempt.uid.slice(0, 1) || 'U').toUpperCase()}
+                    {(attempt.uid?.slice(0, 1) || 'U').toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 {index < 3 && (
@@ -55,12 +55,12 @@ export const Leaderboard = () => {
                 )}
               </div>
               <div className="overflow-hidden">
-                <div className="text-sm font-bold leading-none mb-1 truncate max-w-[120px]">UID: {attempt.uid.slice(0, 6)}...</div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-widest truncate">{attempt.examId || 'Mock Test'}</div>
+                <div className="text-sm font-bold leading-none mb-1 truncate max-w-[120px]">UID: {attempt.uid?.slice(0, 6)}...</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-widest truncate">{attempt.examName || 'Mock Test'}</div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-sm font-bold text-accent">{attempt.score.toFixed(1)}</div>
+              <div className="text-sm font-bold text-accent">{attempt.score?.toFixed(1)}</div>
               <div className="text-[10px] text-muted-foreground font-mono">Rank {index + 1}</div>
             </div>
           </div>

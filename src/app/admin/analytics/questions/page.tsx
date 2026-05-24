@@ -1,23 +1,19 @@
-
 "use client";
 
 import React, { useMemo, useState } from "react";
 import { 
-  Target, 
   ArrowLeft, 
   Search, 
-  HelpCircle, 
-  AlertCircle, 
   Clock, 
-  CheckCircle2,
+  CheckCircle2, 
   TrendingDown,
   Loader2,
   ImageIcon,
   Languages
 } from "lucide-react";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, orderBy, limit, collectionGroup } from "firebase/firestore";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { collection, query, limit, collectionGroup } from "firebase/firestore";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +25,8 @@ export default function QuestionAnalyticsPage() {
   const db = useFirestore();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const attemptsQuery = useMemoFirebase(() => db ? collection(db, "attempts") : null, [db]);
+  // Use collectionGroup to aggregate attempts from all user subcollections
+  const attemptsQuery = useMemoFirebase(() => db ? collectionGroup(db, "attempts") : null, [db]);
   const { data: attempts, loading: attemptsLoading } = useCollection<any>(attemptsQuery);
 
   const questionsQuery = useMemoFirebase(() => 
@@ -42,17 +39,15 @@ export default function QuestionAnalyticsPage() {
 
     return questions.map(q => {
       let correct = 0;
-      let incorrect = 0;
       let total = 0;
       let totalTime = 0;
 
       attempts.forEach(attempt => {
-        const resp = attempt.responses?.[q.id];
+        const resp = attempt.rawResponses?.[q.id];
         if (resp) {
           total++;
           totalTime += resp.timeSpentSeconds || 0;
-          if (resp.selectedOptionId === q.answer) correct++;
-          else if (resp.selectedOptionId) incorrect++;
+          if (resp.selectedOptionId === q.correctOptionId || resp.selectedOptionId === q.answer) correct++;
         }
       });
 
@@ -64,11 +59,9 @@ export default function QuestionAnalyticsPage() {
         totalAttempts: total,
         accuracy: accuracy.toFixed(1),
         avgTime: avgTime.toFixed(1),
-        correctCount: correct,
-        incorrectCount: incorrect,
         isProblematic: total > 5 && accuracy < 30
       };
-    }).filter(q => q.en.toLowerCase().includes(searchQuery.toLowerCase()));
+    }).filter(q => (q.en || q.id).toLowerCase().includes(searchQuery.toLowerCase()));
   }, [attempts, questions, searchQuery]);
 
   return (
@@ -81,29 +74,19 @@ export default function QuestionAnalyticsPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-headline font-bold">Item <span className="text-accent">Analysis</span></h1>
-            <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold mt-1">Question Difficulty & Accuracy Trends</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold mt-1">Cross-User Difficulty Analytics</p>
           </div>
         </div>
       </div>
 
-      {/* Overview Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="glass border-white/10 p-6 flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
             <CheckCircle2 className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-2xl font-bold font-headline">84%</div>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Avg Pass Rate</p>
-          </div>
-        </Card>
-        <Card className="glass border-white/10 p-6 flex items-center gap-4 border-rose-500/20">
-          <div className="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-400">
-            <TrendingDown className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold font-headline text-rose-400">12</div>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Problematic Items</p>
+            <div className="text-2xl font-bold font-headline">{attempts?.length || 0}</div>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Analyzed Attempts</p>
           </div>
         </Card>
         <Card className="glass border-white/10 p-6 flex items-center gap-4">
@@ -111,13 +94,12 @@ export default function QuestionAnalyticsPage() {
             <Clock className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-2xl font-bold font-headline">42.5s</div>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Avg Thinking Time</p>
+            <div className="text-2xl font-bold font-headline">Syncing</div>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Real-time Pulse</p>
           </div>
         </Card>
       </div>
 
-      {/* Filter Bar */}
       <Card className="glass border-white/10">
         <CardContent className="p-4">
           <div className="relative w-full">
@@ -132,16 +114,15 @@ export default function QuestionAnalyticsPage() {
         </CardContent>
       </Card>
 
-      {/* Question Table */}
       <Card className="glass border-white/10 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.01]">
                 <th className="px-6 py-4 font-semibold text-muted-foreground">Question Preview</th>
-                <th className="px-6 py-4 font-semibold text-muted-foreground text-center">Attempts</th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground text-center">Global Hits</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground text-center">Correct %</th>
-                <th className="px-6 py-4 font-semibold text-muted-foreground text-center">Thinking Time</th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground text-center">Avg Time</th>
                 <th className="px-6 py-4 font-semibold text-muted-foreground text-right">Insight</th>
               </tr>
             </thead>
@@ -175,14 +156,14 @@ export default function QuestionAnalyticsPage() {
                   <td className="px-6 py-4 text-right">
                     {q.isProblematic ? (
                       <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 gap-1.5">
-                        <AlertCircle className="w-3 h-3" /> Check Solution
+                        <TrendingDown className="w-3 h-3" /> Review Key
                       </Badge>
                     ) : q.totalAttempts > 10 ? (
                       <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 gap-1.5">
-                        <CheckCircle2 className="w-3 h-3" /> Reliable Item
+                        <CheckCircle2 className="w-3 h-3" /> Calibrated
                       </Badge>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground italic">Insufficient Data</span>
+                      <span className="text-[10px] text-muted-foreground italic">Low Sample</span>
                     )}
                   </td>
                 </tr>

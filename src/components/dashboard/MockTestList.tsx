@@ -2,23 +2,20 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Search,
   Play,
   FileText,
-  Loader2,
   Clock,
   Target,
-  ChevronRight,
-  Zap,
   History,
   TrendingUp,
   LayoutGrid,
   RefreshCw
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, orderBy, deleteDoc, doc } from "firebase/firestore";
@@ -32,6 +29,7 @@ interface MockTestListProps {
 export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListProps) => {
   const { user } = useUser();
   const db = useFirestore();
+  const router = useRouter();
 
   const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -58,7 +56,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   [db, user?.uid]);
   const { data: activeTests } = useCollection<any>(activeTestsQuery);
 
-  // 4. FETCH LATEST ATTEMPTS
+  // 4. FETCH LATEST ATTEMPTS FROM USER SUBCOLLECTION
   const attemptsQuery = useMemoFirebase(() =>
     (db && user) ? query(
       collection(db, "users", user.uid, "attempts"),
@@ -93,6 +91,19 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
       return matchesType && matchesSearch;
     });
   }, [tests, selectedTypeId, searchQuery]);
+
+  const handleClearSession = async (mockId: string, baseUrl: string) => {
+    if (!user || !db) return;
+    try {
+      await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
+      localStorage.removeItem(`test_progress_${mockId}`);
+      localStorage.removeItem(`test_end_${mockId}`);
+      localStorage.removeItem(`test_start_${mockId}`);
+      router.push(baseUrl);
+    } catch (e) {
+      console.error("Clear session failed", e);
+    }
+  };
 
   if (typesLoading && !mockTypes) {
     return <TestLibrarySkeleton />;
@@ -155,13 +166,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
               test={test}
               status={mockStatusMap[test.id]}
               baseUrl={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
-              onClearSession={async () => {
-                if (!user || !db) return;
-                await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', test.id));
-                localStorage.removeItem(`test_progress_${test.id}`);
-                localStorage.removeItem(`test_end_${test.id}`);
-                window.location.reload();
-              }}
+              onClearSession={() => handleClearSession(test.id, `/exams/${categorySlug}/${examSlug}/mock/${test.id}`)}
             />
           ))
         )}
