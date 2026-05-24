@@ -23,7 +23,7 @@ export default function AttemptResultPage() {
   const { user, loading: userLoading } = useUser();
   const db = useFirestore();
 
-  // 1. Fetch the specific attempt
+  // 1. Fetch the specific attempt from USER subcollection
   const attemptRef = useMemoFirebase(() => 
     (db && user) ? doc(db, "users", user.uid, "attempts", attemptId as string) : null,
   [db, user?.uid, attemptId]);
@@ -39,7 +39,7 @@ export default function AttemptResultPage() {
   [db, mockId]);
   const { data: questions, loading: questionsLoading } = useCollection<any>(questionsQuery);
 
-  // 4. Fetch attempt history for the dropdown
+  // 4. Fetch attempt history from USER subcollection for the dropdown
   const historyQuery = useMemoFirebase(() => 
     (db && user) ? query(
       collection(db, "users", user.uid, "attempts"),

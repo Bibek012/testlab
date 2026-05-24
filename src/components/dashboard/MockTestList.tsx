@@ -56,7 +56,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   [db, user?.uid]);
   const { data: activeTests } = useCollection<any>(activeTestsQuery);
 
-  // 4. FETCH LATEST ATTEMPTS FROM USER SUBCOLLECTION
+  // 4. FETCH LATEST ATTEMPTS FROM USER SUBCOLLECTION (Point 1 Architecture)
   const attemptsQuery = useMemoFirebase(() =>
     (db && user) ? query(
       collection(db, "users", user.uid, "attempts"),
@@ -66,7 +66,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   [db, user?.uid, examId]);
   const { data: attempts } = useCollection<any>(attemptsQuery);
 
-  // Transform attempts into a "Latest for Mock" map
+  // Transform attempts into a "Latest for Mock" map (Point 3)
   const mockStatusMap = useMemo(() => {
     const map: Record<string, { latestAttempt?: any; activeSession?: any }> = {};
     
@@ -92,14 +92,13 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
     });
   }, [tests, selectedTypeId, searchQuery]);
 
-  const handleClearSession = async (mockId: string, baseUrl: string) => {
+  const handleClearSession = async (mockId: string) => {
     if (!user || !db) return;
     try {
       await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
       localStorage.removeItem(`test_start_${mockId}`);
-      router.push(baseUrl);
     } catch (e) {
       console.error("Clear session failed", e);
     }
@@ -166,7 +165,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
               test={test}
               status={mockStatusMap[test.id]}
               baseUrl={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
-              onClearSession={() => handleClearSession(test.id, `/exams/${categorySlug}/${examSlug}/mock/${test.id}`)}
+              onClearSession={() => handleClearSession(test.id)}
             />
           ))
         )}
@@ -236,7 +235,10 @@ function TestListItem({ test, status, baseUrl, onClearSession }: any) {
             <Button
               variant="outline"
               className="w-full md:w-auto border-white/10 h-10 rounded-xl text-xs font-bold gap-2"
-              onClick={onClearSession}
+              onClick={async () => {
+                await onClearSession();
+                window.location.href = baseUrl;
+              }}
             >
               <History className="w-3.5 h-3.5" /> Reattempt
             </Button>

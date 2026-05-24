@@ -86,7 +86,7 @@ export default function MockTestEnginePage() {
             correctOptionId: String(q.correctOptionId || q.raw_answer_id || q.answer || ""),
             marks: {
               positive: Number(mockMetadata?.marksPerQuestion ?? 1),
-              negative: Number(mockMetadata?.negativeMarks ?? 0),
+              negative: Number(mockMetadata?.negativeMarks ?? 0.33),
               skip: Number(q?.marks?.skip ?? 0),
             },
             explanation: typeof sol === 'object' ? {
@@ -200,7 +200,7 @@ export default function MockTestEnginePage() {
         rawResponses: responses
       };
 
-      // CRITICAL: Consistently save to user subcollection
+      // Consistently save to user subcollection
       await setDoc(doc(db, "users", user.uid, "attempts", attemptId), attemptData);
       
       // Cleanup progress
