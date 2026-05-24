@@ -4,44 +4,64 @@ import { initializeApp, getApps, getApp, FirebaseApp, setLogLevel } from 'fireba
 import { getFirestore, Firestore, initializeFirestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { firebaseConfig, isFirebaseConfigValid } from './config';
-import { useMemo, useRef } from 'react';
+import { useRef } from 'react';
 
+// Module-level singletons to ensure consistent instances across the client lifecycle
+let cachedApp: FirebaseApp | null = null;
+let cachedFirestore: Firestore | null = null;
+let cachedAuth: Auth | null = null;
+
+/**
+ * Initializes Firebase services with environment-specific optimizations.
+ * Strictly forces Long Polling to prevent "Unexpected state (ID: ca9)" errors
+ * common in Cloud Workstation and Proxy environments.
+ */
 export function initializeFirebase(): {
   firebaseApp: FirebaseApp | null;
   firestore: Firestore | null;
   auth: Auth | null;
 } {
+  // Prevent initialization if configuration is missing (e.g. during build or missing .env)
   if (!isFirebaseConfigValid) {
-    console.warn("Firebase: Skipping initialization - Missing configuration keys in .env");
     return { firebaseApp: null, firestore: null, auth: null };
   }
 
+  // Return cached instances if already initialized in this session
+  if (cachedApp && cachedFirestore && cachedAuth) {
+    return { firebaseApp: cachedApp, firestore: cachedFirestore, auth: cachedAuth };
+  }
+
   try {
-    const firebaseApp =
-      getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    // Initialize or retrieve the Firebase App
+    cachedApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     
-    // Use initializeFirestore with experimentalForceLongPolling
-    // This is critical for Cloud Workstation/Proxy environments to prevent WebSocket failures
-    // which cause the "Unexpected state (ID: ca9) INTERNAL ASSERTION FAILED" error.
-    let firestore: Firestore;
+    /**
+     * Configure Firestore with forced Long Polling. 
+     * This is mandatory for the Firebase Studio / Cloud Workstations preview 
+     * to bypass WebSocket connection drops caused by the proxy layers.
+     */
     try {
-      firestore = initializeFirestore(firebaseApp, {
+      cachedFirestore = initializeFirestore(cachedApp, {
         experimentalForceLongPolling: true,
       });
     } catch (e) {
-      // If firestore was already initialized elsewhere, we grab the existing instance.
-      firestore = getFirestore(firebaseApp);
+      // If Firestore was already initialized (common during Fast Refresh), 
+      // we retrieve the existing instance.
+      cachedFirestore = getFirestore(cachedApp);
     }
 
-    const auth = getAuth(firebaseApp);
+    cachedAuth = getAuth(cachedApp);
 
-    // Suppress verbose connection warnings that trigger Next.js error overlays
+    // Suppress verbose SDK logging to focus on critical errors
     setLogLevel('error');
 
-    console.log("Firebase: Successfully initialized services with Long Polling enabled.");
-    return { firebaseApp, firestore, auth };
+    return { 
+      firebaseApp: cachedApp, 
+      firestore: cachedFirestore, 
+      auth: cachedAuth 
+    };
   } catch (error) {
-    console.error("Firebase: Initialization failed:", error);
+    console.error("Firebase: Critical Initialization failure:", error);
     return { firebaseApp: null, firestore: null, auth: null };
   }
 }
@@ -54,7 +74,9 @@ export function useMemoFirebase<T>(factory: () => T, deps: any[]): T {
   const ref = useRef<T | null>(null);
   const depsRef = useRef<any[]>([]);
 
-  const depsChanged = deps.some((dep, i) => dep !== depsRef.current[i]);
+  // Simple comparison for dependencies
+  const depsChanged = deps.length !== depsRef.current.length || 
+                      deps.some((dep, i) => dep !== depsRef.current[i]);
 
   if (depsChanged || !ref.current) {
     ref.current = factory();
