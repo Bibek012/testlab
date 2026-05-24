@@ -35,6 +35,12 @@ export interface Question {
     en_html?: string;
     hn_html?: string;
   };
+  solution?: {
+    en: string;
+    hn: string;
+    en_html?: string;
+    hn_html?: string;
+  };
 }
 
 export interface Section {

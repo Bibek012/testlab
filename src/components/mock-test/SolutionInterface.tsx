@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -206,13 +207,23 @@ export const SolutionInterface = ({
               })}
             </div>
 
-            {currentQuestion.explanation && (
+            {(currentQuestion.explanation || currentQuestion.solution) && (
               <div className="space-y-4 p-6 rounded-3xl border border-white/5 bg-gradient-to-br from-white/5 to-transparent">
                 <div className="flex items-center gap-2 text-primary font-bold uppercase tracking-widest text-xs">
                   <Zap className="w-4 h-4 fill-current" /> Detailed Solution
                 </div>
                 <RichTextRenderer 
-                  content={(currentQuestion.explanation[`${currentLang}_html` as keyof typeof currentQuestion.explanation] || currentQuestion.explanation[currentLang as keyof typeof currentQuestion.explanation]) as string}
+                  content={
+                    (
+                      (currentQuestion.explanation || currentQuestion.solution)?.[
+                        `${currentLang}_html`
+                      ] ||
+                      (currentQuestion.explanation || currentQuestion.solution)?.[
+                        currentLang
+                      ] ||
+                      "No detailed solution available."
+                    ) as string
+                  }
                   className="text-sm md:text-base text-muted-foreground leading-relaxed"
                 />
               </div>
