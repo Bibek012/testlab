@@ -3,6 +3,7 @@
 import React, { useMemo } from "react";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Trophy, CheckCircle, Target, BookOpen, Zap, Loader2 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
