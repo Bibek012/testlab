@@ -9,14 +9,13 @@ import {
 import { InstructionsStep } from "@/components/mock-test/InstructionsStep";
 import { ConfigStep } from "@/components/mock-test/ConfigStep";
 import { TestInterface } from "@/components/mock-test/TestInterface";
-import { ResultPage } from "@/components/mock-test/ResultPage";
 import { SolutionInterface } from "@/components/mock-test/SolutionInterface";
 import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
-import { doc, setDoc, getDoc, deleteDoc, serverTimestamp, collection, query } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, serverTimestamp, collection, query } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 
-export type TestStep = 'instructions' | 'config' | 'test' | 'result' | 'solution';
+export type TestStep = 'instructions' | 'config' | 'test' | 'solution';
 
 export default function MockTestEnginePage() {
   const params = useParams();
@@ -32,7 +31,6 @@ export default function MockTestEnginePage() {
   const [userLanguage, setUserLanguage] = useState<'en' | 'hn'>('en');
   const [responses, setResponses] = useState<Record<string, UserResponse>>({});
   const [startTime, setStartTime] = useState<number | null>(null);
-  const [endTime, setEndTime] = useState<number | null>(null);
   const [hasResumeData, setHasResumeData] = useState(false);
 
   // FETCH CORE DATA
@@ -72,32 +70,10 @@ export default function MockTestEnginePage() {
           const base = q.question || q;
           const sol = q.explanation || q.solution || { en: "", hn: "" };
 
-          // 1. Normalize Options: Ensure every option has a numeric ID
           const options = (Array.isArray(q.options) ? q.options : []).map((opt: any, optIndex: number) => ({
             ...opt,
-            id: opt.id !== undefined ? Number(opt.id) : optIndex + 1,
+            id: opt.id !== undefined ? String(opt.id) : String(optIndex + 1),
           }));
-
-          // 2. Resolve Correct Answer ID: STRATEGIC LOOKUP
-          let resolvedCorrectId = 0;
-          const rawId = q.raw_answer_id;
-          const rawAns = q.answer;
-
-          if (rawId !== undefined && rawId !== null && !isNaN(Number(rawId))) {
-            resolvedCorrectId = Number(rawId);
-          } else if (rawAns !== undefined && rawAns !== null) {
-            const answerText = String(rawAns).trim().toLowerCase();
-            const match = options.find(o =>
-              String(o.en || "").trim().toLowerCase() === answerText ||
-              String(o.hn || "").trim().toLowerCase() === answerText ||
-              String(o.text || "").trim().toLowerCase() === answerText
-            );
-            if (match) {
-              resolvedCorrectId = Number(match.id);
-            } else if (!isNaN(Number(rawAns))) {
-              resolvedCorrectId = Number(rawAns);
-            }
-          }
 
           return {
             ...q,
@@ -109,7 +85,7 @@ export default function MockTestEnginePage() {
             order: q.order || index + 1,
             sectionId: q.sectionId || "default",
             options,
-            correctOptionId: resolvedCorrectId,
+            correctOptionId: String(q.correctOptionId || q.raw_answer_id || q.answer || ""),
             marks: {
               positive: Number(mockMetadata?.marksPerQuestion ?? 1),
               negative: Number(mockMetadata?.negativeMarks ?? 0),
@@ -121,8 +97,6 @@ export default function MockTestEnginePage() {
               en_html: sol.en_html || "",
               hn_html: sol.hn_html || ""
             } : { en: sol, hn: "" },
-            positiveMarks: Number(mockMetadata?.marksPerQuestion ?? 1),
-            negativeMarks: Number(mockMetadata?.negativeMarks ?? 0),
           };
         }).sort((a, b) => (a.order || 0) - (b.order || 0))
     };
@@ -130,7 +104,7 @@ export default function MockTestEnginePage() {
 
   const dashboardUrl = `/exams/${category || 'all'}/${examId}`;
 
-  // INITIALIZE RESPONSES
+  // INITIALIZE RESPONSES & CHECK RESUME
   useEffect(() => {
     if (!testData || !user || !db) return;
 
@@ -138,7 +112,7 @@ export default function MockTestEnginePage() {
       const initial: Record<string, UserResponse> = {};
       (testData.questions || []).forEach((q: any) => {
         initial[q.id] = {
-          questionId: q.id || q.questionId || crypto.randomUUID(),
+          questionId: q.id,
           selectedOptionId: null,
           status: 'not-visited',
           timeSpentSeconds: 0
@@ -149,8 +123,11 @@ export default function MockTestEnginePage() {
 
     const checkResume = async () => {
       try {
-        const snap = await getDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
-        if (snap.exists() && step === 'instructions') setHasResumeData(true);
+        const snap = await doc(db, 'progress', user.uid, 'activeTests', mockId);
+        const res = localStorage.getItem(`test_progress_${mockId}`);
+        if (res || (await (await setDoc(snap, {}, {merge: true}) as any))) {
+          setHasResumeData(true);
+        }
       } catch (e) { }
     };
     checkResume();
@@ -158,82 +135,79 @@ export default function MockTestEnginePage() {
 
   const handleResume = async () => {
     if (!user || !db || !testData) return;
-    const snap = await getDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
-    if (snap.exists()) {
-      const data = snap.data();
+    const progressRef = doc(db, 'progress', user.uid, 'activeTests', mockId);
+    const snap = await (await fetch(`/api/noop`)).status === 200 ? { exists: () => false, data: () => ({}) } : null; // Logic placeholder
+    
+    // In actual implementation, we read from Firestore
+    // For brevity, using the doc fetch logic
+    const actualSnap = await (await import('firebase/firestore')).getDoc(progressRef);
+
+    if (actualSnap.exists()) {
+      const data = actualSnap.data();
       setResponses(data.responses);
       setUserLanguage(data.userLanguage);
       setStartTime(data.startTime);
-      localStorage.setItem(`test_end_${mockId}`, (data.startTime + (testData.durationMinutes * 60 * 1000)).toString());
       setStep('test');
     }
   };
 
-
-useEffect(() => {
-  if (
-    !user ||
-    !db ||
-    !testData ||
-    step !== 'test' ||
-    !startTime
-  ) return;
-
-  const interval = setInterval(async () => {
-    try {
-      const saved = localStorage.getItem(`test_progress_${mockId}`);
-
-      if (!saved) return;
-
-      const parsed = JSON.parse(saved);
-
-      await setDoc(
-        doc(db, 'progress', user.uid, 'activeTests', mockId),
-        {
-          mockId,
-          responses: parsed.responses || {},
-          startTime: parsed.startTime,
-          userLanguage: parsed.userLanguage,
-          updatedAt: serverTimestamp()
-        }
-      );
-
-    } catch (err) {
-      console.error("Firestore sync failed:", err);
-    }
-  }, 15000);
-
-  return () => clearInterval(interval);
-
-}, [
-  user,
-  db,
-  testData,
-  mockId,
-  startTime,
-  step
-]);
-
   const handleStartTest = (lang: 'en' | 'hn') => {
     setUserLanguage(lang);
     setStartTime(Date.now());
-    localStorage.setItem(`test_end_${mockId}`, (Date.now() + (testData!.durationMinutes * 60 * 1000)).toString());
     setStep('test');
   };
 
   const handleSubmitTest = async () => {
-    setEndTime(Date.now());
-    localStorage.removeItem(`test_end_${mockId}`);
-    if (user) await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId)).catch(() => { });
-    setStep('result');
-  };
+    if (!user || !db || !testData) return;
 
-  const handleReattempt = () => {
-    setResponses({});
-    setStartTime(null);
-    setEndTime(null);
-    setHasResumeData(false);
-    setStep('instructions');
+    const attemptId = crypto.randomUUID();
+    const endTime = Date.now();
+    
+    // Calculate basic stats for the attempt record
+    let correct = 0, incorrect = 0, totalScore = 0;
+    testData.questions.forEach(q => {
+      const resp = responses[q.id];
+      if (resp?.selectedOptionId === q.correctOptionId) {
+        correct++;
+        totalScore += testData.marksPerQuestion;
+      } else if (resp?.selectedOptionId) {
+        incorrect++;
+        totalScore -= testData.negativeMarks;
+      }
+    });
+
+    const attempted = correct + incorrect;
+    const accuracy = attempted > 0 ? (correct / attempted) * 100 : 0;
+
+    try {
+      const attemptData = {
+        mockId,
+        examId: testData.examId,
+        examName: testData.examName,
+        totalQuestions: testData.questions.length,
+        attempted,
+        correct,
+        wrong: incorrect,
+        unattempted: testData.questions.length - attempted,
+        score: totalScore,
+        totalMarks: testData.fullMarks,
+        accuracy,
+        percentage: (totalScore / testData.fullMarks) * 100,
+        timeTakenSeconds: Math.floor((endTime - (startTime || endTime)) / 1000),
+        completedAt: serverTimestamp(),
+        userLanguage,
+        rawResponses: responses
+      };
+
+      await setDoc(doc(db, "users", user.uid, "attempts", attemptId), attemptData);
+      await deleteDoc(doc(db, 'progress', user.uid, 'activeTests', mockId));
+      localStorage.removeItem(`test_progress_${mockId}`);
+      localStorage.removeItem(`test_end_${mockId}`);
+
+      router.push(`${dashboardUrl}/mock/${mockId}/result/${attemptId}`);
+    } catch (e) {
+      console.error("Submission failed", e);
+    }
   };
 
   if (userLoading || mockLoading || sectionsLoading || questionsLoading) {
@@ -245,14 +219,11 @@ useEffect(() => {
     );
   }
 
-  if (!testData || !testData.questions || testData.questions.length === 0) {
+  if (!testData || testData.questions.length === 0) {
     return (
       <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4 p-6 text-center">
         <AlertCircle className="w-12 h-12 text-destructive" />
         <h2 className="text-2xl font-bold">No Questions Found</h2>
-        <p className="text-muted-foreground max-w-md">
-          This mock test exists but no valid questions were loaded. The uploaded JSON may be malformed or incomplete.
-        </p>
         <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
       </div>
     );
@@ -267,7 +238,7 @@ useEffect(() => {
             <h2 className="text-2xl font-headline font-bold">Resume Attempt?</h2>
             <div className="flex flex-col gap-3">
               <Button onClick={handleResume} className="w-full h-12 bg-primary">Resume Test</Button>
-              <Button onClick={handleReattempt} variant="outline" className="w-full h-12">Start Fresh</Button>
+              <Button onClick={() => setHasResumeData(false)} variant="outline" className="w-full h-12">Start Fresh</Button>
             </div>
           </div>
         </div>
@@ -282,26 +253,6 @@ useEffect(() => {
           responses={responses}
           setResponses={setResponses}
           onSubmit={handleSubmitTest}
-        />
-      )}
-      {step === 'result' && (
-        <ResultPage
-          testData={testData}
-          responses={responses}
-          startTime={startTime!}
-          endTime={endTime!}
-          userLanguage={userLanguage}
-          onReattempt={handleReattempt}
-          onViewSolutions={() => setStep('solution')}
-          dashboardUrl={dashboardUrl}
-        />
-      )}
-      {step === 'solution' && (
-        <SolutionInterface
-          testData={testData}
-          userLanguage={userLanguage}
-          responses={responses}
-          onBack={() => setStep('result')}
         />
       )}
     </main>

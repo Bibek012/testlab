@@ -485,9 +485,9 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       const selectedType = mockTypes?.find(t => t.id === formData.typeId);
       const selectedSubType = subTypes?.find(s => s.id === formData.subTypeId);
 
-      const fullMarks = validatedData
-        ? validatedData.sections.flatMap(s => s.questions).reduce((acc, q) => acc + (q.marks?.positive || 1), 0)
-        : (formData.totalQuestions * formData.marksPerQuestion);
+      const fullMarks =
+        formData.totalQuestions *
+        formData.marksPerQuestion;
 
       const mockData = {
         ...formData,
@@ -522,7 +522,18 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
             const qBatch = writeBatch(db);
             chunk.forEach(q => {
               const qRef = doc(db, "mockTests", mockRef.id, "questions", q.id);
-              qBatch.set(qRef, { ...q, mockId: mockRef.id, updatedAt: serverTimestamp() });
+
+              qBatch.set(qRef, {
+                ...q,
+                marks: {
+                  positive: formData.marksPerQuestion,
+                  negative: formData.negativeMarks,
+                  skipped: formData.skipMarks
+                },
+
+                mockId: mockRef.id,
+                updatedAt: serverTimestamp()
+              });
             });
             await qBatch.commit();
           }

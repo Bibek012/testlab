@@ -1,16 +1,12 @@
 "use client";
 
-import React, { useMemo, useEffect, useState, useRef } from "react";
+import React, { useMemo } from "react";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Trophy, CheckCircle, Clock, Target, RotateCcw, BookOpen, Zap, TrendingUp, Loader2 } from "lucide-react";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Trophy, CheckCircle, Target, BookOpen, Zap, Loader2 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
-import Link from "next/link";
-import { useUser, useFirestore } from "@/firebase";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 
 interface Props {
   testData: MockTestData;
@@ -26,133 +22,60 @@ interface Props {
 export const ResultPage = ({
   testData,
   responses,
-  startTime,
-  endTime,
-  userLanguage,
   onReattempt,
   onViewSolutions,
-  dashboardUrl = "/"
 }: Props) => {
-  const { user } = useUser();
-  const db = useFirestore();
-  const [isSaving, setIsSaving] = useState(false);
-  const saveInitiated = useRef(false);
 
-  // CRITICAL: UNIFIED SCORING ENGINE
   const metrics = useMemo(() => {
     let correct = 0;
     let incorrect = 0;
-    let unattempted = 0;
     let totalScore = 0;
     let maxPossibleScore = 0;
     const analysis: any[] = [];
 
     (testData.questions || []).forEach(q => {
       const resp = responses[q.id];
-      const selectedId = (resp?.selectedOptionId !== null && resp?.selectedOptionId !== undefined)
-        ? Number(resp.selectedOptionId)
-        : null;
-
-      const correctId = Number(q.correctOptionId);
-      console.log(correctId)
+      const selectedId = resp?.selectedOptionId ? String(resp.selectedOptionId) : null;
+      const correctId = String(q.correctOptionId);
+      
       const pos = Number(testData.marksPerQuestion ?? 1);
       const neg = Number(testData.negativeMarks ?? 0);
-      const skipPenalty = Number(q.marks?.skip ?? 0);
 
       maxPossibleScore += pos;
 
-      const isSkipped = selectedId === null || isNaN(selectedId);
+      const isSkipped = !selectedId;
       const isCorrect = !isSkipped && selectedId === correctId;
       const isWrong = !isSkipped && !isCorrect;
 
-      let awarded = 0;
       if (isCorrect) {
         correct++;
         totalScore += pos;
-        awarded = pos;
       } else if (isWrong) {
         incorrect++;
         totalScore -= neg;
-        awarded = -neg;
-      } else {
-        unattempted++;
-        totalScore += skipPenalty;
-        awarded = skipPenalty;
       }
 
       analysis.push({
-        questionId: q.id,
-        selectedAnswer: selectedId,
-        correctAnswer: correctId,
         isCorrect,
         isWrong,
-        marksAwarded: awarded,
         timeTaken: resp?.timeSpentSeconds || 0
       });
     });
 
-    const timeTaken = Math.floor((endTime - startTime) / 1000);
     const accuracy = (correct + incorrect > 0) ? (correct / (correct + incorrect)) * 100 : 0;
     const percentage = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
 
     return {
       correct,
       incorrect,
-      unattempted,
+      unattempted: testData.questions.length - (correct + incorrect),
       totalScore,
       maxPossibleScore,
-      timeTaken,
       accuracy,
-      percentage: percentage.toFixed(2),
+      percentage: percentage.toFixed(1),
       totalQuestions: testData.questions.length,
-      questionAnalysis: analysis
     };
-  }, [testData, responses, startTime, endTime]);
-
-  // PERSISTENCE LOGIC
-  useEffect(() => {
-    const saveResult = async () => {
-      if (user && db && !saveInitiated.current) {
-        saveInitiated.current = true;
-        setIsSaving(true);
-        try {
-          const normalizedResponses = Object.fromEntries(
-            Object.entries(responses || {}).map(([k, v]: any) => [
-              k,
-              { ...v, selectedOptionId: v.selectedOptionId ? String(v.selectedOptionId) : null }
-            ])
-          );
-
-          await addDoc(collection(db, 'attempts'), {
-            uid: user.uid,
-            mockId: testData.id,
-            examId: testData.examId || 'unmapped',
-            examName: testData.examName || 'Mock Test',
-            totalQuestions: metrics.totalQuestions,
-            attempted: metrics.correct + metrics.incorrect,
-            correct: metrics.correct,
-            wrong: metrics.incorrect,
-            unattempted: metrics.unattempted,
-            score: metrics.totalScore,
-            totalMarks: metrics.maxPossibleScore,
-            accuracy: metrics.accuracy,
-            percentage: metrics.percentage,
-            timeTakenSeconds: metrics.timeTaken,
-            completedAt: serverTimestamp(),
-            userLanguage,
-            questionAnalysis: metrics.questionAnalysis,
-            rawResponses: normalizedResponses
-          });
-        } catch (error) {
-          console.error("ResultEngine: Persistence failure", error);
-          saveInitiated.current = false;
-        } finally {
-          setIsSaving(false);
-        }
-      }
-    };
-    saveResult();
-  }, [user, db, testData, metrics, responses, userLanguage]);
+  }, [testData, responses]);
 
   const chartData = [
     { name: 'Correct', value: metrics.correct, color: '#10b981' },
@@ -162,21 +85,13 @@ export const ResultPage = ({
 
   return (
     <div className="min-h-screen bg-[#0b1120] pb-24 animate-in fade-in duration-700">
-      <div className="relative pt-24 pb-12 overflow-hidden border-b border-white/5">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px]" />
-          <div className="absolute bottom-[10%] right-[-10%] w-[30%] h-[30%] bg-accent/20 rounded-full blur-[120px]" />
-        </div>
-
+      <div className="relative pt-32 pb-12 overflow-hidden border-b border-white/5">
         <div className="container mx-auto px-6 flex flex-col items-center text-center space-y-6">
           <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white shadow-2xl">
             <Trophy className="w-10 h-10" />
           </div>
           <div className="space-y-2">
-            <div className="flex items-center justify-center gap-3">
-              <h1 className="text-3xl md:text-5xl font-headline font-bold">Analysis <span className="gradient-text">Report</span></h1>
-              {isSaving && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
-            </div>
+            <h1 className="text-3xl md:text-5xl font-headline font-bold">Attempt <span className="gradient-text">Analysis</span></h1>
             <p className="text-muted-foreground text-sm uppercase tracking-widest font-bold">
               {testData.title}
             </p>
@@ -196,25 +111,25 @@ export const ResultPage = ({
           </Card>
           <Card className="glass border-white/10 p-6 space-y-2">
             <div className="text-3xl font-bold font-headline text-indigo-400">{metrics.percentage}%</div>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Performance</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Percentile</p>
           </Card>
           <Card className="glass border-white/10 p-6 space-y-2">
-            <div className="text-3xl font-bold font-headline text-accent">{(metrics.timeTaken / 60).toFixed(1)}m</div>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Time Taken</p>
+            <div className="text-3xl font-bold font-headline text-accent">{metrics.correct}/{metrics.totalQuestions}</div>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Score Breakdown</p>
           </Card>
         </div>
 
         <div className="grid lg:grid-cols-12 gap-8">
           <Card className="glass border-white/10 p-8 lg:col-span-8">
             <CardHeader className="px-0 pt-0 pb-10">
-              <CardTitle className="text-xl font-headline font-bold uppercase tracking-widest">Score Distribution</CardTitle>
+              <CardTitle className="text-xl font-headline font-bold uppercase tracking-widest">Question Stats</CardTitle>
             </CardHeader>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} layout="vertical">
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 12 }} />
-                  <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }} />
+                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }} />
                   <Bar dataKey="value" radius={[0, 10, 10, 0]} barSize={40}>
                     {chartData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
                   </Bar>
@@ -224,31 +139,18 @@ export const ResultPage = ({
           </Card>
 
           <div className="lg:col-span-4 space-y-6">
-            <Card className="glass border-white/10 p-6">
-              <CardTitle className="text-lg font-headline font-bold mb-6">Next Steps</CardTitle>
-              <div className="space-y-3">
-                <Button onClick={onViewSolutions} className="w-full bg-primary h-14 rounded-2xl font-bold gap-3">
-                  <BookOpen className="w-5 h-5" /> View Solutions
-                </Button>
-                <Button variant="outline" onClick={onReattempt} className="w-full h-14 rounded-2xl border-white/10">
-                  <RotateCcw className="w-5 h-5 mr-2" /> Retake Test
-                </Button>
-                <Link href={dashboardUrl} className="block">
-                  <Button variant="ghost" className="w-full h-14 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                    Back to Dashboard
-                  </Button>
-                </Link>
-              </div>
-            </Card>
-
             <div className="p-8 bg-indigo-500/10 rounded-[2.5rem] border border-indigo-500/20 space-y-4">
               <div className="flex items-center gap-2 text-accent font-bold text-xs uppercase tracking-widest">
                 <Zap className="w-4 h-4 fill-current" /> AI Lab Insights
               </div>
               <p className="text-xs text-muted-foreground italic">
-                "Based on your accuracy, focus on improving speed in {testData.examName} to boost your percentile rank."
+                "Your accuracy in the Quantitative section is improving. Focus on Time Management in Logical Reasoning to break into the 90th percentile."
               </p>
             </div>
+            
+            <Button onClick={onReattempt} variant="outline" className="w-full h-14 rounded-2xl border-white/10 font-bold uppercase tracking-widest text-xs">
+              Take Fresh Attempt
+            </Button>
           </div>
         </div>
       </div>

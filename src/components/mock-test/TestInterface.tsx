@@ -33,7 +33,8 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useUser } from "@/firebase";
+import { useUser, useFirestore } from "@/firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 interface Props {
   testData: MockTestData;
@@ -92,6 +93,7 @@ export const TestInterface = ({
   onSubmit
 }: Props) => {
   const { user } = useUser();
+  const db = useFirestore();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentLang, setCurrentLang] = useState<'en' | 'hn'>(initialLang);
   const [isPaused, setIsPaused] = useState(false);
@@ -101,6 +103,7 @@ export const TestInterface = ({
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
 
+  // Initialize End Time
   useEffect(() => {
     let savedEndTime = localStorage.getItem(`test_end_${testData.id}`);
     if (!savedEndTime) {
@@ -111,6 +114,7 @@ export const TestInterface = ({
     setTargetEndTime(parseInt(savedEndTime));
   }, [testData.id, testData.durationMinutes]);
 
+  // Question Timer
   useEffect(() => {
     if (isPaused || showSubmitConfirm) return;
     const qTimer = setInterval(() => {
@@ -129,21 +133,35 @@ export const TestInterface = ({
     return () => clearInterval(qTimer);
   }, [currentQuestion.id, isPaused, showSubmitConfirm, setResponses]);
 
+  // Auto-save logic (15 seconds interval)
   useEffect(() => {
-    setResponses(prev => {
-      const qId = currentQuestion.id;
-      if (prev[qId]?.status === 'not-visited') {
-        return {
-          ...prev,
-          [qId]: { ...prev[qId], status: 'not-answered' }
-        };
+    if (!user || !db || isPaused || showSubmitConfirm) return;
+
+    const saveInterval = setInterval(async () => {
+      const progressData = {
+        mockId: testData.id,
+        responses,
+        startTime: parseInt(localStorage.getItem(`test_start_${testData.id}`) || '0'),
+        userLanguage: currentLang,
+        updatedAt: serverTimestamp()
+      };
+
+      // Local persistence for instant fallback
+      localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(progressData));
+
+      // Cloud persistence
+      try {
+        await setDoc(doc(db, 'progress', user.uid, 'activeTests', testData.id), progressData, { merge: true });
+      } catch (e) {
+        console.warn("Autosave sync failed", e);
       }
-      return prev;
-    });
-  }, [currentQuestion.id, setResponses]);
+    }, 15000);
+
+    return () => clearInterval(saveInterval);
+  }, [user, db, testData.id, responses, currentLang, isPaused, showSubmitConfirm]);
 
   const handleOptionSelect = useCallback((optionId: string | number) => {
-    const numericOptionId = Number(optionId);
+    const numericOptionId = String(optionId);
     setResponses(prev => {
       const qId = currentQuestion.id;
       const currentResp = prev[qId] || { questionId: qId, timeSpentSeconds: 0 };
@@ -151,7 +169,7 @@ export const TestInterface = ({
         ...prev,
         [qId]: {
           ...currentResp,
-          selectedOptionId: numericOptionId.toString(),
+          selectedOptionId: numericOptionId,
           status: currentResp.status === 'marked-review' ? 'answered-marked-review' : 'answered'
         }
       };
@@ -214,14 +232,6 @@ export const TestInterface = ({
     const marked = Object.values(responses).filter(r => r.status.includes('marked')).length;
     return { total, attempted, unattempted: total - attempted, marked };
   }, [testData.questions, responses]);
-
-  const sectionSummaries = useMemo(() => {
-    return testData.sections.map(sec => {
-      const secQs = testData.questions.filter(q => q.sectionId === sec.id);
-      const attempted = secQs.filter(q => responses[q.id]?.selectedOptionId !== null).length;
-      return { title: sec.title[currentLang], total: secQs.length, attempted };
-    });
-  }, [testData.sections, testData.questions, responses, currentLang]);
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
@@ -346,14 +356,14 @@ export const TestInterface = ({
                   onClick={() => handleOptionSelect(option.id)}
                   className={cn(
                     "flex items-start gap-4 p-5 rounded-2xl border text-left transition-all group",
-                    Number(responses[currentQuestion.id]?.selectedOptionId) === Number(option.id)
+                    responses[currentQuestion.id]?.selectedOptionId === String(option.id)
                       ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]"
                       : "bg-white/5 border-white/5 hover:border-white/20"
                   )}
                 >
                   <div className={cn(
                     "w-6 h-6 rounded-full border flex items-center justify-center shrink-0 text-[10px] font-bold",
-                    Number(responses[currentQuestion.id]?.selectedOptionId) === Number(option.id)
+                    responses[currentQuestion.id]?.selectedOptionId === String(option.id)
                       ? "bg-primary border-primary text-white"
                       : "border-white/20 text-muted-foreground"
                   )}>
@@ -397,13 +407,6 @@ export const TestInterface = ({
           >
             Clear Response
           </Button>
-
-          <Button
-            onClick={() => setShowSubmitConfirm(true)}
-            className="sm:hidden bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-10 px-4 text-xs font-bold shadow-lg flex-1"
-          >
-            Submit
-          </Button>
         </div>
 
         <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
@@ -445,18 +448,18 @@ export const TestInterface = ({
             <div className="space-y-4">
               <h4 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Section Overview</h4>
               <div className="space-y-3">
-                {sectionSummaries.map((sec, i) => (
-                  <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center justify-between">
-                    <span className="text-sm font-medium">{sec.title}</span>
-                    <div className="text-sm font-bold">{sec.attempted} / {sec.total} Attempted</div>
-                  </div>
-                ))}
+                {testData.sections.map((sec, i) => {
+                  const secQs = testData.questions.filter(q => q.sectionId === sec.id);
+                  const attempted = secQs.filter(q => responses[q.id]?.selectedOptionId !== null).length;
+                  return (
+                    <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center justify-between">
+                      <span className="text-sm font-medium">{sec.title[currentLang]}</span>
+                      <div className="text-sm font-bold">{attempted} / {secQs.length} Attempted</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-
-            <p className="text-xs text-muted-foreground text-center bg-white/5 p-4 rounded-lg italic border border-white/5">
-              Confirming will submit your answers for evaluation. You can review your results immediately after.
-            </p>
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-3 mt-8">
