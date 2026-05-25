@@ -64,7 +64,14 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
       orderBy("completedAt", "desc")
     ) : null,
   [db, user?.uid, examId]);
-  const { data: attempts } = useCollection<any>(attemptsQuery);
+  const {
+    data: attempts,
+    loading: attemptsLoading,
+    error: attemptsError
+  } = useCollection<any>(attemptsQuery);
+  
+  console.log("ATTEMPTS:", attempts);
+  console.log("ATTEMPTS ERROR:", attemptsError);
 
   // Map status for each mock
   const mockStatusMap = useMemo(() => {

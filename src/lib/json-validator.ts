@@ -33,6 +33,7 @@ const QuestionSchema = z.object({
     negative: z.number().optional(),
   }).optional(),
   explanation: BilingualContent.optional(),
+  solution: BilingualContent.optional(),
   dom_images: z.array(z.string()).optional(),
 }).refine(q => q.answer !== undefined || q.raw_answer_id !== undefined, {
   message: "Correct answer (answer or raw_answer_id) is missing"
@@ -99,7 +100,7 @@ export function validateAndNormalizeMockTest(json: any): { success: true; data: 
       const questions: NormalizedQuestion[] = section.questions.map((q, qIdx) => {
         totalQuestions++;
         const questionId = String(q.id || `q_${sIdx}_${qIdx}`);
-        
+
         // Normalize Question Content
         const baseQ = typeof q.question === 'string' ? { en: q.question, hn: "", en_html: q.question, hn_html: "" } : {
           en: q.question.en || "",
@@ -127,13 +128,23 @@ export function validateAndNormalizeMockTest(json: any): { success: true; data: 
         }
 
         // Normalize Explanation
-        const baseExp = !q.explanation ? { en: "", hn: "", en_html: "", hn_html: "" } :
-          typeof q.explanation === 'string' ? { en: q.explanation, hn: "", en_html: q.explanation, hn_html: "" } : {
-            en: q.explanation.en || "",
-            hn: q.explanation.hn || "",
-            en_html: q.explanation.en_html || q.explanation.en || "",
-            hn_html: q.explanation.hn_html || q.explanation.hn || ""
-          };
+        const explanationSource = q.explanation || q.solution;
+
+        const baseExp = !explanationSource
+          ? { en: "", hn: "", en_html: "", hn_html: "" }
+          : typeof explanationSource === 'string'
+            ? {
+              en: explanationSource,
+              hn: "",
+              en_html: explanationSource,
+              hn_html: ""
+            }
+            : {
+              en: explanationSource.en || "",
+              hn: explanationSource.hn || "",
+              en_html: explanationSource.en_html || explanationSource.en || "",
+              hn_html: explanationSource.hn_html || explanationSource.hn || ""
+            };
 
         return {
           id: questionId,
