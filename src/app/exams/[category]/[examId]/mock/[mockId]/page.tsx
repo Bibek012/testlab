@@ -32,6 +32,14 @@ export default function MockTestEnginePage() {
   const [startTime, setStartTime] = useState<number | null>(null);
   const [hasResumeData, setHasResumeData] = useState(false);
 
+  // Authentication Protection
+  useEffect(() => {
+    if (!userLoading && !user) {
+      const callback = encodeURIComponent(window.location.pathname);
+      router.replace(`/signin?callbackUrl=${callback}`);
+    }
+  }, [user, userLoading, router]);
+
   // FETCH CORE DATA
   const mockRef = useMemoFirebase(() => db ? doc(db, "mockTests", mockId) : null, [db, mockId]);
   const { data: mockMetadata, loading: mockLoading } = useDoc<any>(mockRef);
@@ -216,6 +224,8 @@ export default function MockTestEnginePage() {
       </div>
     );
   }
+
+  if (!user) return null; // Redirect handled in useEffect
 
   if (!testData || testData.questions.length === 0) {
     return (

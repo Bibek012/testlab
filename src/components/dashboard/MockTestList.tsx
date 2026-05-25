@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -193,6 +192,8 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
               key={test.id}
               test={test}
               status={mockStatusMap[test.id]}
+              user={user}
+              router={router}
               baseUrl={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
               onReattempt={() => handleReattempt(test.id, `/exams/${categorySlug}/${examSlug}/mock/${test.id}`)}
             />
@@ -203,8 +204,13 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   );
 };
 
-function TestListItem({ test, status, baseUrl, onReattempt }: any) {
+function TestListItem({ test, status, baseUrl, onReattempt, user, router }: any) {
   const { activeSession, latestAttempt } = status || {};
+
+  const handleLoginRedirect = () => {
+    const callback = encodeURIComponent(window.location.pathname);
+    router.push(`/signin?callbackUrl=${callback}`);
+  };
 
   return (
     <div className="group bg-card border border-white/5 rounded-xl p-4 md:p-5 hover:border-primary/30 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
@@ -253,7 +259,14 @@ function TestListItem({ test, status, baseUrl, onReattempt }: any) {
       </div>
 
       <div className="flex items-center gap-2 pt-3 md:pt-0 border-t md:border-0 border-white/5">
-        {activeSession ? (
+        {!user ? (
+          <Button 
+            onClick={handleLoginRedirect}
+            className="w-full md:w-auto bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2 shadow-lg shadow-primary/20"
+          >
+            Login to Start
+          </Button>
+        ) : activeSession ? (
           <Link href={baseUrl} className="w-full md:w-auto">
             <Button className="w-full bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2">
               <RefreshCw className="w-4 h-4" /> Resume Test
