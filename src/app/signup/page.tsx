@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from "react";
@@ -50,13 +49,13 @@ export default function SignUpPage() {
       await updateProfile(user, { displayName: fullName });
       
       // 3. Create Firestore User Profile
-      // Default to 'super-admin' for development mode as requested
+      // Secure Role: Default to 'student'. Administrative roles must be granted manually.
       const userProfile = {
         uid: user.uid,
         email: user.email,
         displayName: fullName,
         photoURL: user.photoURL || "",
-        role: "super-admin", 
+        role: "student", 
         status: "active",
         subscriptionType: "free",
         createdAt: serverTimestamp(),
@@ -67,15 +66,14 @@ export default function SignUpPage() {
         preferredLanguage: "en"
       };
 
-      console.log("Signup: Creating Firestore profile for", user.uid);
       await setDoc(doc(db, "users", user.uid), userProfile);
       
       toast({
         title: "Welcome to Testlab",
-        description: "Your administrative account has been created successfully.",
+        description: "Your account has been created successfully.",
       });
       
-      router.push("/admin");
+      router.push("/");
     } catch (error: any) {
       console.error("Signup error:", error);
       toast({

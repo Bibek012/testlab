@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function getRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && getRole() in ['admin', 'super-admin', 'content-manager', 'support-staff'];
+    }
+
+    // User Profile Rules
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) 
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                        .hasAny(['role', 'subscriptionType', 'status', 'email', 'uid']);
+      allow delete: if false; // Users cannot delete their own profiles
+
+      // User Subcollections
+      match /activeMocks/{mockId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /mockAttempts/{attemptId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId);
+        allow update, delete: if false; // Attempts are immutable
+      }
+      match /bookmarks/{bookmarkId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /notifications/{notifId} {
+        allow read: if isOwner(userId);
+        allow update: if isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+        allow create, delete: if false;
+      }
+    }
+
+    // Platform Content Rules
+    match /exams/{examId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      match /mockTypes/{typeId} {
+        allow read: if true;
+        allow write: if isAdmin();
+        
+        match /subTypes/{subId} {
+          allow read: if true;
+          allow write: if isAdmin();
+        }
+      }
+    }
+
+    match /mockTests/{testId} {
+      allow read: if true;
+      allow write: if isAdmin();
+      
+      match /sections/{sectionId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+      match /questions/{questionId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    match /examCategories/{catId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Global Collections
+    match /attempts/{attemptId} {
+      allow read, write: if false; // Redirected to user subcollection for security
+    }
+    
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /announcements/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/global {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

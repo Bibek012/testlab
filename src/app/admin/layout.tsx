@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -42,6 +41,8 @@ export default function AdminLayout({
 
     if (profileLoading) return;
 
+    // Secure Auto-Creation: If a profile doesn't exist, create it as a 'student'.
+    // They will then be redirected out by the next authorization check.
     if (!profile && db && !creationAttempted) {
       setCreationAttempted(true);
       const autoCreateProfile = async () => {
@@ -49,17 +50,19 @@ export default function AdminLayout({
           await setDoc(doc(db, "users", user.uid), {
             uid: user.uid,
             email: user.email,
-            displayName: user.displayName || "Admin User",
-            role: "super-admin",
+            displayName: user.displayName || "User",
+            role: "student", // Secure default role
             status: "active",
             subscriptionType: "free",
             createdAt: serverTimestamp(),
             lastActive: serverTimestamp(),
             preferredLanguage: "en"
           }, { merge: true });
-          setIsAuthorized(true);
+          
+          // After creation, the isAdmin check below will naturally fail for a 'student'.
+          setIsAuthorized(false);
         } catch (e) {
-          console.error("AdminGate: Profile auto-creation failed:", e);
+          console.error("AdminGate: Profile creation failed:", e);
           setIsAuthorized(false);
         }
       };
