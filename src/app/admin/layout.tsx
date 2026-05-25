@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -42,7 +43,6 @@ export default function AdminLayout({
     if (profileLoading) return;
 
     // Secure Auto-Creation: If a profile doesn't exist, create it as a 'student'.
-    // They will then be redirected out by the next authorization check.
     if (!profile && db && !creationAttempted) {
       setCreationAttempted(true);
       const autoCreateProfile = async () => {
@@ -59,7 +59,6 @@ export default function AdminLayout({
             preferredLanguage: "en"
           }, { merge: true });
           
-          // After creation, the isAdmin check below will naturally fail for a 'student'.
           setIsAuthorized(false);
         } catch (e) {
           console.error("AdminGate: Profile creation failed:", e);
@@ -76,13 +75,15 @@ export default function AdminLayout({
         setIsAuthorized(true);
       } else {
         setIsAuthorized(false);
+        router.replace("/");
       }
     } else if (!profileLoading && creationAttempted) {
       setIsAuthorized(false);
+      router.replace("/");
     }
   }, [user, profile, authLoading, profileLoading, db, pathname, router, creationAttempted]);
 
-  if (authLoading || (profileLoading && !isAuthorized)) {
+  if (authLoading || (profileLoading && isAuthorized === null)) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-[#0b1120] gap-4 p-6 text-center">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
@@ -109,11 +110,14 @@ export default function AdminLayout({
     );
   }
 
+  // Ensure we don't render the sidebar/navbar until we know for sure they are authorized
+  if (isAuthorized !== true) return null;
+
   return (
     <SidebarProvider>
-      <AdminSidebar role={(profile?.role || "super-admin") as AdminRole} />
+      <AdminSidebar role={(profile?.role || "student") as AdminRole} />
       <SidebarInset className="bg-[#0b1120] min-h-screen">
-        <AdminNavbar profile={profile || { email: user?.email, role: 'super-admin' }} />
+        <AdminNavbar profile={profile || { email: user?.email, role: 'student' }} />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
           <div className="max-w-[1600px] mx-auto w-full">
             {children}
