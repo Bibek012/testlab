@@ -101,6 +101,9 @@ export const ResultPage = ({
     { name: 'Skipped', value: metrics.unattempted, color: '#64748b' },
   ];
 
+  const currentAttempt = history?.find(h => h.id === currentAttemptId);
+  const currentAttemptDate = currentAttempt?.completedAt?.toDate ? currentAttempt.completedAt.toDate() : null;
+
   if (viewMode === 'solutions') {
     return (
       <SolutionInterface 
@@ -141,31 +144,34 @@ export const ResultPage = ({
                   </div>
                   <div className="text-left hidden sm:block">
                     <p className="text-[10px] text-muted-foreground font-bold uppercase leading-none mb-1">Switch Attempt</p>
-                    <p className="text-xs font-bold">{history.find(h => h.id === currentAttemptId)?.completedAt?.toDate ? format(history.find(h => h.id === currentAttemptId).completedAt.toDate(), "MMM dd, HH:mm") : 'Current'}</p>
+                    <p className="text-xs font-bold">{currentAttemptDate ? format(currentAttemptDate, "MMM dd, HH:mm") : 'Latest'}</p>
                   </div>
                   <ChevronDown className="w-4 h-4 ml-2 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-[280px] glass border-white/10 p-1" align="end">
-                {history?.map((h) => (
-                  <DropdownMenuItem 
-                    key={h.id} 
-                    className={cn(
-                      "flex items-center justify-between py-3 px-4 cursor-pointer rounded-lg mb-1",
-                      h.id === currentAttemptId ? "bg-primary/20 text-primary" : "hover:bg-white/5"
-                    )}
-                    onClick={() => router.push(`/exams/${category}/${examId}/mock/${mockId}/result/${h.id}`)}
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-bold text-xs">{format(h.completedAt.toDate(), "MMM dd, yyyy")}</span>
-                      <span className="text-[10px] opacity-60">{format(h.completedAt.toDate(), "HH:mm")}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-bold">{h.score.toFixed(1)}</div>
-                      <div className="text-[9px] opacity-60">{h.accuracy.toFixed(0)}% Acc</div>
-                    </div>
-                  </DropdownMenuItem>
-                ))}
+                {history?.map((h) => {
+                  const date = h.completedAt?.toDate ? h.completedAt.toDate() : null;
+                  return (
+                    <DropdownMenuItem 
+                      key={h.id} 
+                      className={cn(
+                        "flex items-center justify-between py-3 px-4 cursor-pointer rounded-lg mb-1",
+                        h.id === currentAttemptId ? "bg-primary/20 text-primary" : "hover:bg-white/5"
+                      )}
+                      onClick={() => router.push(`/exams/${category}/${examId}/mock/${mockId}/result/${h.id}`)}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-bold text-xs">{date ? format(date, "MMM dd, yyyy") : 'Recently'}</span>
+                        <span className="text-[10px] opacity-60">{date ? format(date, "HH:mm") : ''}</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs font-bold">{h.score?.toFixed(1)}</div>
+                        <div className="text-[9px] opacity-60">{h.accuracy?.toFixed(0)}% Acc</div>
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
