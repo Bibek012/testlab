@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Link from "next/link";
 import {
   MockTestData,
   UserResponse,
@@ -37,7 +38,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 
 interface Props {
   testData: MockTestData;
@@ -148,22 +148,25 @@ export const SolutionInterface = ({
               {history?.map((h) => {
                 const date = h.completedAt?.toDate ? h.completedAt.toDate() : null;
                 return (
-                  <Link
+                  <DropdownMenuItem
+                    asChild
                     key={h.id}
-                    href={`/exams/${category}/${examId}/mock/${mockId}/result/${h.id}`}
+                    className={cn(
+                      "flex items-center justify-between py-3 px-4 cursor-pointer rounded-lg mb-1",
+                      h.id === currentAttemptId
+                        ? "bg-primary/20 text-primary"
+                        : "hover:bg-white/5"
+                    )}
                   >
-                    <DropdownMenuItem
-                      className={cn(
-                        "flex items-center justify-between py-3 px-4 cursor-pointer rounded-lg mb-1",
-                        h.id === currentAttemptId
-                          ? "bg-primary/20 text-primary"
-                          : "hover:bg-white/5"
-                      )}
+                    <Link
+                      href={`/exams/${category}/${examId}/mock/${mockId}/result/${h.id}`}
+                      className="flex items-center justify-between w-full"
                     >
                       <div className="flex flex-col">
                         <span className="font-bold text-xs">
                           {date ? format(date, "MMM dd, yyyy") : "Recently"}
                         </span>
+
                         <span className="text-[10px] opacity-60">
                           {date ? format(date, "HH:mm") : ""}
                         </span>
@@ -173,12 +176,13 @@ export const SolutionInterface = ({
                         <div className="text-xs font-bold">
                           {Number(h.score || 0).toFixed(1)}
                         </div>
+
                         <div className="text-[9px] opacity-60">
                           {Number(h.accuracy || 0).toFixed(0)}% Acc
                         </div>
                       </div>
-                    </DropdownMenuItem>
-                  </Link>
+                    </Link>
+                  </DropdownMenuItem>
                 );
               })}
             </DropdownMenuContent>

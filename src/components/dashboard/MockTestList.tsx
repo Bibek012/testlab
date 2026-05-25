@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo } from "react";
@@ -25,6 +26,16 @@ interface MockTestListProps {
   examSlug: string;
   categorySlug: string;
 }
+
+const formatCompactNumber = (num: number) => {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1).replace('.0', '') + 'M+';
+  }
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1).replace('.0', '') + 'K+';
+  }
+  return String(num);
+};
 
 export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListProps) => {
   const { user } = useUser();
@@ -56,7 +67,7 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   [db, user?.uid]);
   const { data: activeSessions } = useCollection<any>(activeSessionsQuery);
 
-  // 4. FETCH LATEST ATTEMPTS (Optimized)
+  // 4. FETCH LATEST ATTEMPTS
   const attemptsQuery = useMemoFirebase(() =>
     (db && user) ? query(
       collection(db, "users", user.uid, "mockAttempts"),
@@ -67,11 +78,16 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   const {
     data: attempts,
     loading: attemptsLoading,
-    error: attemptsError
   } = useCollection<any>(attemptsQuery);
   
-  console.log("ATTEMPTS:", attempts);
-  console.log("ATTEMPTS ERROR:", attemptsError);
+  // Aggregate stats from actual mocks
+  const totalMocks = tests?.length || 0;
+  const totalQuestions = useMemo(() => {
+    return tests?.reduce(
+      (sum, mock) => sum + (mock.totalQuestions || mock.questions?.length || 0),
+      0
+    ) || 0;
+  }, [tests]);
 
   // Map status for each mock
   const mockStatusMap = useMemo(() => {
@@ -102,12 +118,10 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
   const handleReattempt = async (mockId: string, baseUrl: string) => {
     if (!user || !db) return;
     try {
-      // Clear all buffers
       await deleteDoc(doc(db, 'users', user.uid, 'activeMocks', mockId));
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
       localStorage.removeItem(`test_start_${mockId}`);
-      // Hard redirect to clear engine state
       window.location.href = baseUrl;
     } catch (e) {
       console.error("Reattempt trigger failed", e);
@@ -123,6 +137,11 @@ export const MockTestList = ({ examId, examSlug, categorySlug }: MockTestListPro
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-xl font-headline font-bold flex items-center gap-2">
           <LayoutGrid className="w-5 h-5 text-primary" /> Test Library
+          {!testsLoading && tests && (
+            <span className="text-[10px] md:text-xs text-muted-foreground font-normal ml-2 opacity-60 uppercase tracking-widest hidden sm:inline">
+              ({totalMocks} Series • {formatCompactNumber(totalQuestions)} Questions)
+            </span>
+          )}
         </h2>
         <div className="relative w-full md:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />

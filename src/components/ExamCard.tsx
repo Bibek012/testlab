@@ -1,12 +1,13 @@
 
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Files, HelpCircle, ArrowRight } from "lucide-react";
-import { Exam } from "@/lib/exam-data";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, query, where } from "firebase/firestore";
 
 interface ExamCardProps {
   exam: any; // Using dynamic type for Firestore data
@@ -14,8 +15,40 @@ interface ExamCardProps {
   stateSlug?: string;
 }
 
+const formatCompactNumber = (num: number) => {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1).replace('.0', '') + 'M+';
+  }
+
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1).replace('.0', '') + 'K+';
+  }
+
+  return String(num);
+};
+
 export const ExamCard = ({ exam, categorySlug, stateSlug }: ExamCardProps) => {
-  // Use slug for routing, fallback to ID if slug missing
+  const db = useFirestore();
+
+  // Dynamically fetch mocks for this exam to calculate accurate statistics
+  const mocksQuery = useMemoFirebase(() => 
+    db ? query(
+      collection(db, "mockTests"), 
+      where("examId", "==", exam.id),
+      where("status", "==", "Published")
+    ) : null, 
+  [db, exam.id]);
+
+  const { data: mocks } = useCollection<any>(mocksQuery);
+
+  const totalMocks = mocks?.length || 0;
+  const totalQuestions = useMemo(() => {
+    return mocks?.reduce(
+      (sum, mock) => sum + (mock.totalQuestions || mock.questions?.length || 0),
+      0
+    ) || 0;
+  }, [mocks]);
+
   const examSlug = exam.slug || exam.id;
   const href = stateSlug 
     ? `/exams/state/${stateSlug}/${examSlug}`
@@ -45,11 +78,11 @@ export const ExamCard = ({ exam, categorySlug, stateSlug }: ExamCardProps) => {
         <div className="grid grid-cols-2 gap-4 mb-8">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Files className="w-4 h-4 text-primary" />
-            <span>{exam.testsCount || exam.tests || 0} Mocks</span>
+            <span>{totalMocks} Mocks</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <HelpCircle className="w-4 h-4 text-accent" />
-            <span>{exam.questionsCount || exam.questions || 0} Qs</span>
+            <span>{formatCompactNumber(totalQuestions)} Qs</span>
           </div>
         </div>
 
