@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -9,15 +8,8 @@ import {
   signInWithEmailAndPassword, 
   GoogleAuthProvider, 
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult
+  signInWithRedirect
 } from "firebase/auth";
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  serverTimestamp 
-} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +24,6 @@ export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false);
   
   const auth = useAuth();
-  const db = useFirestore();
   const { user, loading: authLoading } = useUser();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -40,61 +31,13 @@ export default function SignInPage() {
 
   const callbackUrl = searchParams.get("callbackUrl") || "/";
 
-  // Helper to ensure firestore profile exists
-  const ensureUserProfile = async (authUser: any) => {
-    if (!db) return;
-    try {
-      const userRef = doc(db, "users", authUser.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          uid: authUser.uid,
-          email: authUser.email || "",
-          displayName: authUser.displayName || "User",
-          photoURL: authUser.photoURL || "",
-          role: "student",
-          status: "active",
-          subscriptionType: "free",
-          testsAttempted: 0,
-          totalScore: 0,
-          streak: 0,
-          preferredLanguage: "en",
-          createdAt: serverTimestamp(),
-          lastActive: serverTimestamp()
-        });
-      }
-    } catch (e) {
-      console.error("Error creating user profile:", e);
-    }
-  };
-
-  // Handle standard auth state change (e.g. session persistence)
+  // The global listener in useUser handles profile creation and redirect results automatically.
+  // We just need to handle the UI navigation once the user state is set.
   useEffect(() => {
     if (!authLoading && user) {
       router.replace(callbackUrl);
     }
   }, [user, authLoading, router, callbackUrl]);
-
-  // Handle Google Redirect Result (Mobile Flow)
-  useEffect(() => {
-    if (!auth || !db) return;
-    
-    getRedirectResult(auth).then(async (result) => {
-      if (result?.user) {
-        await ensureUserProfile(result.user);
-        toast({
-          title: "Welcome back",
-          description: "Successfully signed in with Google.",
-        });
-        router.replace(callbackUrl);
-      }
-    }).catch((error) => {
-      if (error.code !== "auth/redirect-cancelled-by-user") {
-        console.error("Redirect Result Error:", error);
-      }
-    });
-  }, [auth, db, router, callbackUrl, toast]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,20 +47,19 @@ export default function SignInPage() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       toast({ title: "Welcome back", description: "Successfully signed in." });
-      router.replace(callbackUrl);
+      // Redirect happens via useEffect
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Sign In Error",
         description: error.message || "Failed to sign in. Please check your credentials.",
       });
-    } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    if (!auth || !db) return;
+    if (!auth) return;
 
     try {
       const provider = new GoogleAuthProvider();
@@ -129,22 +71,19 @@ export default function SignInPage() {
 
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+      // Mobile devices are redirected, desktop uses popup for better UX.
+      // Profile creation is handled globally in src/firebase/auth/use-user.tsx
       if (isMobile) {
         await signInWithRedirect(auth, provider);
         return;
       }
 
-      const result = await signInWithPopup(auth, provider);
-      if (result.user) {
-        await ensureUserProfile(result.user);
-      }
-
+      await signInWithPopup(auth, provider);
       toast({
         title: "Welcome back",
         description: "Successfully signed in with Google.",
       });
-
-      router.replace(callbackUrl);
+      // Redirect happens via useEffect
 
     } catch (error: any) {
       console.error("Google Sign-In Error:", error);
@@ -156,7 +95,6 @@ export default function SignInPage() {
           description: error.message,
         });
       }
-    } finally {
       setIsLoading(false);
     }
   };
