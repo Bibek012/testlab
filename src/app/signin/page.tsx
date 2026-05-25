@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth, useUser } from "@/firebase";
+import { useAuth, useUser, useFirestore } from "@/firebase";
 import { 
   signInWithEmailAndPassword, 
   GoogleAuthProvider, 
@@ -12,6 +12,12 @@ import {
   signInWithRedirect,
   getRedirectResult
 } from "firebase/auth";
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  serverTimestamp 
+} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,12 +32,42 @@ export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false);
   
   const auth = useAuth();
+  const db = useFirestore();
   const { user, loading: authLoading } = useUser();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
   const callbackUrl = searchParams.get("callbackUrl") || "/";
+
+  // Helper to ensure firestore profile exists
+  const ensureUserProfile = async (authUser: any) => {
+    if (!db) return;
+    try {
+      const userRef = doc(db, "users", authUser.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          uid: authUser.uid,
+          email: authUser.email || "",
+          displayName: authUser.displayName || "User",
+          photoURL: authUser.photoURL || "",
+          role: "student",
+          status: "active",
+          subscriptionType: "free",
+          testsAttempted: 0,
+          totalScore: 0,
+          streak: 0,
+          preferredLanguage: "en",
+          createdAt: serverTimestamp(),
+          lastActive: serverTimestamp()
+        });
+      }
+    } catch (e) {
+      console.error("Error creating user profile:", e);
+    }
+  };
 
   // Handle standard auth state change (e.g. session persistence)
   useEffect(() => {
@@ -42,10 +78,11 @@ export default function SignInPage() {
 
   // Handle Google Redirect Result (Mobile Flow)
   useEffect(() => {
-    if (!auth) return;
+    if (!auth || !db) return;
     
-    getRedirectResult(auth).then((result) => {
-      if (result) {
+    getRedirectResult(auth).then(async (result) => {
+      if (result?.user) {
+        await ensureUserProfile(result.user);
         toast({
           title: "Welcome back",
           description: "Successfully signed in with Google.",
@@ -53,12 +90,11 @@ export default function SignInPage() {
         router.replace(callbackUrl);
       }
     }).catch((error) => {
-      // Handle potential redirect errors (e.g. user cancelled)
       if (error.code !== "auth/redirect-cancelled-by-user") {
         console.error("Redirect Result Error:", error);
       }
     });
-  }, [auth, router, callbackUrl, toast]);
+  }, [auth, db, router, callbackUrl, toast]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +117,7 @@ export default function SignInPage() {
   };
 
   const handleGoogleSignIn = async () => {
-    if (!auth) return;
+    if (!auth || !db) return;
 
     try {
       const provider = new GoogleAuthProvider();
@@ -98,7 +134,10 @@ export default function SignInPage() {
         return;
       }
 
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      if (result.user) {
+        await ensureUserProfile(result.user);
+      }
 
       toast({
         title: "Welcome back",
@@ -110,7 +149,6 @@ export default function SignInPage() {
     } catch (error: any) {
       console.error("Google Sign-In Error:", error);
 
-      // Ignore popup closed errors
       if (error.code !== "auth/popup-closed-by-user") {
         toast({
           variant: "destructive",
