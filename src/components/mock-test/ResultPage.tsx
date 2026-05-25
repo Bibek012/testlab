@@ -5,6 +5,7 @@ import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Trophy, Target, Zap, ListTree, History, ChevronDown, Calendar } from "lucide-react";
+import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
@@ -61,7 +62,7 @@ export const ResultPage = ({
       const resp = responses[q.id];
       const selectedId = resp?.selectedOptionId ? String(resp.selectedOptionId) : null;
       const correctId = String(q.correctOptionId);
-      
+
       const pos = Number(testData.marksPerQuestion ?? 1);
       const neg = Number(testData.negativeMarks ?? 0);
 
@@ -82,7 +83,7 @@ export const ResultPage = ({
 
     const accuracy = (correct + incorrect > 0) ? (correct / (correct + incorrect)) * 100 : 0;
     const percentage = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
-    
+
     return {
       correct,
       incorrect,
@@ -106,11 +107,11 @@ export const ResultPage = ({
 
   if (viewMode === 'solutions') {
     return (
-      <SolutionInterface 
-        testData={testData} 
-        responses={responses} 
-        userLanguage={userLanguage} 
-        onBack={() => setViewMode('stats')} 
+      <SolutionInterface
+        testData={testData}
+        responses={responses}
+        userLanguage={userLanguage}
+        onBack={() => setViewMode('stats')}
         history={history}
         currentAttemptId={currentAttemptId}
       />
@@ -153,23 +154,37 @@ export const ResultPage = ({
                 {history?.map((h) => {
                   const date = h.completedAt?.toDate ? h.completedAt.toDate() : null;
                   return (
-                    <DropdownMenuItem 
-                      key={h.id} 
-                      className={cn(
-                        "flex items-center justify-between py-3 px-4 cursor-pointer rounded-lg mb-1",
-                        h.id === currentAttemptId ? "bg-primary/20 text-primary" : "hover:bg-white/5"
-                      )}
-                      onClick={() => router.push(`/exams/${category}/${examId}/mock/${mockId}/result/${h.id}`)}
+                    <Link
+                      key={h.id}
+                      href={`/exams/${category}/${examId}/mock/${mockId}/result/${h.id}`}
                     >
-                      <div className="flex flex-col">
-                        <span className="font-bold text-xs">{date ? format(date, "MMM dd, yyyy") : 'Recently'}</span>
-                        <span className="text-[10px] opacity-60">{date ? format(date, "HH:mm") : ''}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-bold">{h.score?.toFixed(1)}</div>
-                        <div className="text-[9px] opacity-60">{h.accuracy?.toFixed(0)}% Acc</div>
-                      </div>
-                    </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className={cn(
+                          "flex items-center justify-between py-3 px-4 cursor-pointer rounded-lg mb-1",
+                          h.id === currentAttemptId
+                            ? "bg-primary/20 text-primary"
+                            : "hover:bg-white/5"
+                        )}
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-bold text-xs">
+                            {date ? format(date, "MMM dd, yyyy") : "Recently"}
+                          </span>
+                          <span className="text-[10px] opacity-60">
+                            {date ? format(date, "HH:mm") : ""}
+                          </span>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-xs font-bold">
+                            {Number(h.score || 0).toFixed(1)}
+                          </div>
+                          <div className="text-[9px] opacity-60">
+                            {Number(h.accuracy || 0).toFixed(0)}% Acc
+                          </div>
+                        </div>
+                      </DropdownMenuItem>
+                    </Link>
                   );
                 })}
               </DropdownMenuContent>
@@ -196,7 +211,7 @@ export const ResultPage = ({
                 <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: 'bold' }} />
-                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
                   <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={32}>
                     {chartData.map((entry, index) => <Cell key={index} fill={entry.color} />)}
                   </Bar>
@@ -214,7 +229,7 @@ export const ResultPage = ({
                 "Your accuracy is trending upwards. To reach the next percentile, focus on reducing time spent on 'Unattempted' questions by practicing 5-minute timed drills."
               </p>
             </div>
-            
+
             <div className="grid gap-3">
               <Button onClick={() => setViewMode('solutions')} className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 font-bold uppercase tracking-widest text-xs gap-2 shadow-xl shadow-primary/20">
                 <ListTree className="w-4 h-4" /> View Detailed Solutions
