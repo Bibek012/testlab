@@ -8,7 +8,9 @@ import { useAuth, useUser } from "@/firebase";
 import { 
   signInWithEmailAndPassword, 
   GoogleAuthProvider, 
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult
 } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +40,26 @@ export default function SignInPage() {
     }
   }, [user, authLoading, router, callbackUrl]);
 
+  // Handle Google Redirect Result (Mobile Flow)
+  useEffect(() => {
+    if (!auth) return;
+    
+    getRedirectResult(auth).then((result) => {
+      if (result) {
+        toast({
+          title: "Welcome back",
+          description: "Successfully signed in with Google.",
+        });
+        router.replace(callbackUrl);
+      }
+    }).catch((error) => {
+      // Handle potential redirect errors (e.g. user cancelled)
+      if (error.code !== "auth/redirect-cancelled-by-user") {
+        console.error("Redirect Result Error:", error);
+      }
+    });
+  }, [auth, router, callbackUrl, toast]);
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth) return;
@@ -60,22 +82,42 @@ export default function SignInPage() {
 
   const handleGoogleSignIn = async () => {
     if (!auth) return;
+
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: "select_account"
+      });
+
       setIsLoading(true);
+
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       await signInWithPopup(auth, provider);
+
       toast({
         title: "Welcome back",
         description: "Successfully signed in with Google.",
       });
+
       router.replace(callbackUrl);
+
     } catch (error: any) {
       console.error("Google Sign-In Error:", error);
-      toast({
-        variant: "destructive",
-        title: "Google Sign In Error",
-        description: error.message,
-      });
+
+      // Ignore popup closed errors
+      if (error.code !== "auth/popup-closed-by-user") {
+        toast({
+          variant: "destructive",
+          title: "Google Sign In Error",
+          description: error.message,
+        });
+      }
     } finally {
       setIsLoading(false);
     }
