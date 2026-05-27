@@ -1,9 +1,14 @@
-
 /**
- * Role-Based Access Control (RBAC) Logic
+ * Role-Based Access Control (RBAC)
  */
 
-export type AdminRole = 'super-admin' | 'admin' | 'content-manager' | 'moderator' | 'support-staff' | 'student';
+export type AdminRole =
+  | "super-admin"
+  | "admin"
+  | "content-manager"
+  | "moderator"
+  | "support-staff"
+  | "student";
 
 export interface PermissionSet {
   canManageSettings: boolean;
@@ -17,8 +22,11 @@ export interface PermissionSet {
   canViewReports: boolean;
 }
 
-export const ROLE_PERMISSIONS: Record<AdminRole, PermissionSet> = {
-  'super-admin': {
+export const ROLE_PERMISSIONS: Record<
+  AdminRole,
+  PermissionSet
+> = {
+  "super-admin": {
     canManageSettings: true,
     canManageAdmins: true,
     canManageUsers: true,
@@ -29,7 +37,8 @@ export const ROLE_PERMISSIONS: Record<AdminRole, PermissionSet> = {
     canViewAnalytics: true,
     canViewReports: true,
   },
-  'admin': {
+
+  admin: {
     canManageSettings: false,
     canManageAdmins: false,
     canManageUsers: true,
@@ -40,7 +49,8 @@ export const ROLE_PERMISSIONS: Record<AdminRole, PermissionSet> = {
     canViewAnalytics: true,
     canViewReports: true,
   },
-  'content-manager': {
+
+  "content-manager": {
     canManageSettings: false,
     canManageAdmins: false,
     canManageUsers: false,
@@ -51,7 +61,8 @@ export const ROLE_PERMISSIONS: Record<AdminRole, PermissionSet> = {
     canViewAnalytics: false,
     canViewReports: false,
   },
-  'moderator': {
+
+  moderator: {
     canManageSettings: false,
     canManageAdmins: false,
     canManageUsers: false,
@@ -62,10 +73,11 @@ export const ROLE_PERMISSIONS: Record<AdminRole, PermissionSet> = {
     canViewAnalytics: true,
     canViewReports: true,
   },
-  'support-staff': {
+
+  "support-staff": {
     canManageSettings: false,
     canManageAdmins: false,
-    canManageUsers: true, // View only usually, but for MVP we use module access
+    canManageUsers: true,
     canManageExams: false,
     canManageMocks: false,
     canUploadContent: false,
@@ -73,7 +85,8 @@ export const ROLE_PERMISSIONS: Record<AdminRole, PermissionSet> = {
     canViewAnalytics: false,
     canViewReports: true,
   },
-  'student': {
+
+  student: {
     canManageSettings: false,
     canManageAdmins: false,
     canManageUsers: false,
@@ -83,13 +96,49 @@ export const ROLE_PERMISSIONS: Record<AdminRole, PermissionSet> = {
     canPublishTests: false,
     canViewAnalytics: false,
     canViewReports: false,
-  }
+  },
 };
 
-export function hasPermission(role: AdminRole, permission: keyof PermissionSet): boolean {
-  return ROLE_PERMISSIONS[role]?.[permission] || false;
+/**
+ * Check permission
+ */
+export function hasPermission(
+  role: string | undefined,
+  permission: keyof PermissionSet
+): boolean {
+  if (!role) return false;
+
+  const normalizedRole =
+    role.toLowerCase() as AdminRole;
+
+  return (
+    ROLE_PERMISSIONS[normalizedRole]?.[
+      permission
+    ] || false
+  );
 }
 
-export function isAdmin(role: AdminRole): boolean {
-  return ['super-admin', 'admin', 'content-manager', 'moderator', 'support-staff'].includes(role);
+/**
+ * Check admin access
+ */
+export function isAdmin(
+  role: string | undefined
+): boolean {
+  if (!role) return false;
+
+  const normalizedRole =
+    role.toLowerCase().trim();
+
+  console.log(
+    "RBAC CHECK ROLE:",
+    normalizedRole
+  );
+
+  return [
+    "super-admin",
+    "admin",
+    "content-manager",
+    "moderator",
+    "support-staff",
+  ].includes(normalizedRole);
 }
