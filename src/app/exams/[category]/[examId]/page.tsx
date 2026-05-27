@@ -13,7 +13,6 @@ import {
   Search, 
   Loader2, 
   Rocket, 
-  Sparkles, 
   ChevronRight,
   Info
 } from "lucide-react";
@@ -64,13 +63,13 @@ export default function ExamDashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen bg-background text-foreground w-full overflow-x-hidden">
       <Navbar />
 
-      {/* Sticky Header - Mobile Optimized */}
-      <div className="sticky top-0 z-50 w-full bg-background/80 backdrop-blur-md border-b border-white/5 pt-20 pb-3 md:pt-24 px-4 md:px-6">
-        <div className="container mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 overflow-hidden">
+      {/* Sticky Header - FIXED LEFT PADDING & ALIGNMENT */}
+      <div className="sticky top-0 z-50 w-full bg-background/80 backdrop-blur-md border-b border-white/5 pt-20 pb-3 px-3 sm:px-4 md:px-6">
+        <div className="w-full max-w-7xl mx-auto flex items-center justify-between gap-3 box-border">
+          <div className="flex items-center gap-2 md:gap-3 overflow-hidden min-w-0">
             <Button 
               variant="ghost" 
               size="icon" 
@@ -80,16 +79,16 @@ export default function ExamDashboardPage() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div className="min-w-0">
-              <h1 className="text-sm md:text-lg font-headline font-bold truncate uppercase tracking-tight">
+              <h1 className="text-xs md:text-lg font-headline font-bold truncate uppercase tracking-tight">
                 {exam.name} <span className="text-primary">Series</span>
               </h1>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mt-0.5">
                 <Badge variant="outline" className="text-[8px] h-4 border-emerald-500/20 text-emerald-400 bg-emerald-500/5 px-1 uppercase">Live Now</Badge>
                 <span className="text-[10px] text-muted-foreground hidden md:inline">Preparation Dashboard</span>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg border border-white/5">
               <Search className="w-4 h-4" />
             </Button>
@@ -97,10 +96,11 @@ export default function ExamDashboardPage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 md:px-6 py-8">
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
+      {/* MAIN CONTENT CONTAINER */}
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-6 md:py-8 box-border">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start w-full">
           {/* Left Column: Test Library */}
-          <div className="lg:col-span-8 space-y-10">
+          <div className="lg:col-span-8 space-y-6 md:space-y-10 w-full min-w-0">
             {/* Minimal Dashboard Overview - Higher Density */}
             <section className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 hidden md:block">
               <div className="flex items-center justify-between mb-6">
@@ -112,8 +112,8 @@ export default function ExamDashboardPage() {
               <PerformanceOverview />
             </section>
 
-            {/* Main Mock Test Library - The Meat */}
-            <section id="library">
+            {/* Main Mock Test Library */}
+            <section id="library" className="w-full">
               <MockTestList 
                 examId={exam.id} 
                 examSlug={exam.slug || exam.id}
@@ -123,7 +123,7 @@ export default function ExamDashboardPage() {
           </div>
 
           {/* Right Column: Sidebar Stats */}
-          <aside className="lg:col-span-4 space-y-6 md:sticky md:top-40">
+          <aside className="lg:col-span-4 space-y-6 md:sticky md:top-40 w-full">
             <DailyGoal />
             
             <section className="p-5 border border-white/5 rounded-2xl bg-gradient-to-br from-white/[0.03] to-transparent">
