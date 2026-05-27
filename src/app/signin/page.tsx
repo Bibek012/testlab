@@ -7,7 +7,7 @@ import { useAuth, useUser } from "@/firebase";
 import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
 } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,21 +59,16 @@ function SignInForm() {
   const handleGoogleSignIn = async () => {
     if (!auth) return;
     setIsLoading(true);
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: "select_account" });
     try {
-      await signInWithPopup(auth, provider);
-      toast({ title: "Welcome!", description: "Signed in with Google." });
-      // useEffect handle karega redirect
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      await signInWithRedirect(auth, provider);
     } catch (error: any) {
-      if (error.code !== "auth/popup-closed-by-user" &&
-          error.code !== "auth/cancelled-popup-request") {
-        toast({
-          variant: "destructive",
-          title: "Google Sign In Error",
-          description: error.message,
-        });
-      }
+      toast({
+        variant: "destructive",
+        title: "Google Sign In Error",
+        description: error.message,
+      });
       setIsLoading(false);
     }
   };
