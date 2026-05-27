@@ -235,100 +235,321 @@ export default function BulkIngestionPipeline() {
     setQueue(prev => prev.map(q => q.id === id ? { ...q, ...updates } : q));
   };
 
-  const processQueue = async () => {
-    if (!db || !user || isProcessing) return;
-    if (!batchConfig.examId) {
-      toast({ variant: "destructive", title: "Config Required", description: "Select target exam." });
-      return;
-    }
+ const processQueue = async () => {
+  if (!db || !user || isProcessing) return;
 
-    setIsProcessing(true);
-    const pending = queue.filter(q => q.status === 'pending' || q.status === 'failed');
+  if (!batchConfig.examId) {
+    toast({
+      variant: "destructive",
+      title: "Config Required",
+      description: "Select target exam."
+    });
+    return;
+  }
 
-    for (const item of pending) {
-      try {
-        updateItem(item.id, { status: 'parsing', progress: 10 });
-        const content = await item.file.text();
-        const json = JSON.parse(content);
+  setIsProcessing(true);
 
-        updateItem(item.id, { status: 'validating', progress: 30 });
-        const validation = validateAndNormalizeMockTest(json);
+  const pending = queue.filter(
+    q => q.status === "pending" || q.status === "failed"
+  );
 
-        if (!validation.success) {
-          throw new Error(validation.error);
-        }
+  for (const item of pending) {
+    try {
+      // =========================
+      // PARSING
+      // =========================
+      updateItem(item.id, {
+        status: "parsing",
+        progress: 10
+      });
 
-        const normalized = validation.data;
-        const questions = normalized.sections.flatMap(s => s.questions);
-        updateItem(item.id, { totalQuestions: normalized.totalQuestions });
+      const content = await item.file.text();
 
-        updateItem(item.id, { status: 'syncing', progress: 50 });
-        const exam = exams?.find(e => e.id === batchConfig.examId);
-        const type = mockTypes?.find(t => t.id === batchConfig.typeId);
-        const sub = subTypes?.find(s => s.id === batchConfig.subTypeId);
+      const json = JSON.parse(content);
 
-        const mockId = item.name.replace('.json', '').toLowerCase().replace(/[^a-z0-9/]/g, '-').replace(/\//g, '-');
-        const mockRef = doc(db, "mockTests", mockId);
+      // =========================
+      // VALIDATION
+      // =========================
+      updateItem(item.id, {
+        status: "validating",
+        progress: 30
+      });
 
-        const mockData = {
-          id: mockId,
-          title: normalized.title,
-          examId: batchConfig.examId,
-          examName: exam?.name || "Global",
-          typeId: batchConfig.typeId || "general",
-          typeName: type?.title || "Full Test",
-          subTypeId: batchConfig.subTypeId || "",
-          subTypeName: sub?.title || "",
-          totalQuestions: normalized.totalQuestions,
-          marksPerQuestion: parseFloat(batchConfig.marksPerQuestion),
-          negativeMarks: parseFloat(batchConfig.negativeMarks),
-          skipMarks: parseFloat(batchConfig.skipMarks || 0),
-          fullMarks: questions.reduce((acc, q) => acc + (q.marks?.positive || 1), 0),
-          durationMinutes: parseInt(batchConfig.durationMinutes) || 90,
-          status: batchConfig.status,
-          isFree: batchConfig.isFree,
-          language: batchConfig.language,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
+      const validation = validateAndNormalizeMockTest(json);
 
-        await setDoc(mockRef, mockData, { merge: true });
+      if (!validation.success) {
+        throw new Error(validation.error);
+      }
 
-        // Sync Sections
-        const sectionsBatch = writeBatch(db);
-        normalized.sections.forEach((sec) => {
-          const secRef = doc(db, "mockTests", mockId, "sections", sec.id);
-          sectionsBatch.set(secRef, { 
-            id: sec.id, 
-            title: sec.title, 
-            questionCount: sec.questions.length 
+      const normalized = validation.data;
+
+      const rawQuestions = normalized.sections.flatMap(
+        (s: any) => s.questions
+      );
+
+      // =========================
+      // NORMALIZE QUESTIONS
+      // =========================
+      const questions = rawQuestions.map(
+        (q: any, index: number) => ({
+          ...q,
+
+          questionNumber: index + 1,
+
+          marksPerQuestion: Number(
+            q.marksPerQuestion ??
+            q.marks ??
+            batchConfig.marksPerQuestion ??
+            1
+          ),
+
+          negativeMarks: Number(
+            q.negativeMarks ??
+            batchConfig.negativeMarks ??
+            0
+          )
+        })
+      );
+
+      // =========================
+      // STATS
+      // =========================
+      const totalQuestions = questions.length;
+
+      const fullMarks = questions.reduce(
+        (acc: number, q: any) =>
+          acc + Number(q.marksPerQuestion || 0),
+        0
+      );
+
+      const totalNegativeMarks = questions.reduce(
+        (acc: number, q: any) =>
+          acc + Number(q.negativeMarks || 0),
+        0
+      );
+
+      updateItem(item.id, {
+        totalQuestions
+      });
+
+      // =========================
+      // SYNCING
+      // =========================
+      updateItem(item.id, {
+        status: "syncing",
+        progress: 50
+      });
+
+      const exam = exams?.find(
+        (e: any) => e.id === batchConfig.examId
+      );
+
+      const type = mockTypes?.find(
+        (t: any) => t.id === batchConfig.typeId
+      );
+
+      const sub = subTypes?.find(
+        (s: any) => s.id === batchConfig.subTypeId
+      );
+
+      // =========================
+      // MOCK ID
+      // =========================
+      const mockId = item.name
+        .replace(".json", "")
+        .toLowerCase()
+        .replace(/[^a-z0-9/]/g, "-")
+        .replace(/\//g, "-");
+
+      const mockRef = doc(db, "mockTests", mockId);
+
+      // =========================
+      // MOCK DATA
+      // =========================
+      const mockData = {
+        id: mockId,
+
+        title: normalized.title,
+
+        examId: batchConfig.examId,
+
+        examName: exam?.name || "Global",
+
+        typeId: batchConfig.typeId || "general",
+
+        typeName: type?.title || "Full Test",
+
+        subTypeId: batchConfig.subTypeId || "",
+
+        subTypeName: sub?.title || "",
+
+        totalQuestions,
+
+        marksPerQuestion: Number(
+          batchConfig.marksPerQuestion
+        ),
+
+        negativeMarks: Number(
+          batchConfig.negativeMarks
+        ),
+
+        skipMarks: Number(
+          batchConfig.skipMarks || 0
+        ),
+
+        fullMarks,
+
+        totalNegativeMarks,
+
+        durationMinutes: Number(
+          batchConfig.durationMinutes
+        ) || 90,
+
+        passingMarks: Number(
+          batchConfig.passingMarks || 33
+        ),
+
+        status: batchConfig.status,
+
+        isFree: batchConfig.isFree,
+
+        language: batchConfig.language,
+
+        difficulty:
+          batchConfig.difficulty || "Intermediate",
+
+        createdAt: serverTimestamp(),
+
+        updatedAt: serverTimestamp()
+      };
+
+      // =========================
+      // SAVE MOCK
+      // =========================
+      await setDoc(
+        mockRef,
+        mockData,
+        { merge: true }
+      );
+
+      // =========================
+      // SAVE SECTIONS
+      // =========================
+      const sectionsBatch = writeBatch(db);
+
+      normalized.sections.forEach((sec: any) => {
+        const secRef = doc(
+          db,
+          "mockTests",
+          mockId,
+          "sections",
+          sec.id
+        );
+
+        sectionsBatch.set(secRef, {
+          id: sec.id,
+
+          title: sec.title,
+
+          questionCount: sec.questions.length
+        });
+      });
+
+      await sectionsBatch.commit();
+
+      // =========================
+      // SAVE QUESTIONS
+      // =========================
+      const CHUNK_SIZE = 50;
+
+      for (
+        let i = 0;
+        i < questions.length;
+        i += CHUNK_SIZE
+      ) {
+        const chunk = questions.slice(
+          i,
+          i + CHUNK_SIZE
+        );
+
+        const qBatch = writeBatch(db);
+
+        chunk.forEach((q: any) => {
+          const qRef = doc(
+            db,
+            "mockTests",
+            mockId,
+            "questions",
+            q.id
+          );
+
+          qBatch.set(qRef, {
+            ...q,
+
+            marksPerQuestion: Number(
+              q.marksPerQuestion ??
+              batchConfig.marksPerQuestion ??
+              1
+            ),
+
+            negativeMarks: Number(
+              q.negativeMarks ??
+              batchConfig.negativeMarks ??
+              0
+            ),
+
+            mockId,
+
+            updatedAt: serverTimestamp()
           });
         });
-        await sectionsBatch.commit();
 
-        // Batch Question Sync
-        const CHUNK_SIZE = 50;
-        for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
-          const chunk = questions.slice(i, i + CHUNK_SIZE);
-          const qBatch = writeBatch(db);
-          chunk.forEach((q) => {
-            const qRef = doc(db, "mockTests", mockId, "questions", q.id);
-            qBatch.set(qRef, { ...q, mockId, updatedAt: serverTimestamp() });
-          });
-          await qBatch.commit();
-          updateItem(item.id, { progress: 50 + Math.floor((i / questions.length) * 40) });
-        }
+        await qBatch.commit();
 
-        updateItem(item.id, { status: 'success', progress: 100 });
-        setStats(prev => ({ ...prev, completed: prev.completed + 1 }));
-      } catch (err: any) {
-        updateItem(item.id, { status: 'failed', error: err.message });
-        setStats(prev => ({ ...prev, failed: prev.failed + 1 }));
+        updateItem(item.id, {
+          progress:
+            50 +
+            Math.floor(
+              (i / questions.length) * 40
+            )
+        });
       }
+
+      // =========================
+      // SUCCESS
+      // =========================
+      updateItem(item.id, {
+        status: "success",
+        progress: 100
+      });
+
+      setStats(prev => ({
+        ...prev,
+        completed: prev.completed + 1
+      }));
+
+    } catch (err: any) {
+
+      console.error(err);
+
+      updateItem(item.id, {
+        status: "failed",
+        error: err.message
+      });
+
+      setStats(prev => ({
+        ...prev,
+        failed: prev.failed + 1
+      }));
     }
-    setIsProcessing(false);
-    toast({ title: "Ingestion Batch Finalized" });
-  };
+  }
+
+  setIsProcessing(false);
+
+  toast({
+    title: "Ingestion Batch Finalized"
+  });
+};
 
   return (
     <div className="space-y-6 md:space-y-8 pb-20 px-4 max-w-[1600px] mx-auto">
