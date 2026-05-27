@@ -26,10 +26,45 @@ export default function MockTestEnginePage() {
   const { user, loading: userLoading } = useUser();
   const db = useFirestore();
 
-  const [step, setStep] = useState<TestStep>('instructions');
-  const [userLanguage, setUserLanguage] = useState<'en' | 'hn'>('en');
-  const [responses, setResponses] = useState<Record<string, UserResponse>>({});
-  const [startTime, setStartTime] = useState<number | null>(null);
+  const [step, setStep] = useState<TestStep>(() => {
+    if (typeof window !== "undefined") {
+      const isActive = localStorage.getItem(`test_active_${mockId}`);
+      const savedProgress = localStorage.getItem(`test_progress_${mockId}`);
+      if (isActive && savedProgress) return 'test';
+    }
+    return 'instructions';
+  });
+
+  const [userLanguage, setUserLanguage] = useState<'en' | 'hn'>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`test_progress_${mockId}`);
+      if (saved) {
+        try { return JSON.parse(saved).userLanguage || 'en'; }
+        catch (_) { return 'en'; }
+      }
+    }
+    return 'en';
+  });
+
+  const [responses, setResponses] = useState<Record<string, UserResponse>>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`test_progress_${mockId}`);
+      if (saved) {
+        try { return JSON.parse(saved).responses || {}; }
+        catch (_) { return {}; }
+      }
+    }
+    return {};
+  });
+
+  const [startTime, setStartTime] = useState<number | null>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`test_start_${mockId}`);
+      if (saved) return parseInt(saved);
+    }
+    return null;
+  });
+
   const [hasResumeData, setHasResumeData] = useState(false);
 
   // Authentication Protection
@@ -110,9 +145,11 @@ export default function MockTestEnginePage() {
 
   const dashboardUrl = `/exams/${category || 'all'}/${examId}`;
 
-  // CHECK CLOUD RESUME DATA
+  // CHECK CLOUD RESUME DATA — only show if NOT already resuming from localStorage
   useEffect(() => {
     if (!user || !db || !mockId) return;
+    const isAlreadyActive = localStorage.getItem(`test_active_${mockId}`);
+    if (isAlreadyActive) return; // localStorage se already resume ho raha hai, cloud popup mat dikhao
 
     const checkResume = async () => {
       try {
@@ -137,6 +174,18 @@ export default function MockTestEnginePage() {
         setResponses(data.responses || {});
         setUserLanguage(data.userLanguage || 'en');
         setStartTime(data.startedAt || Date.now());
+
+        // localStorage bhi sync karo taaki TestInterface timer sahi mile
+        localStorage.setItem(`test_active_${mockId}`, "true");
+        localStorage.setItem(`test_progress_${mockId}`, JSON.stringify(data));
+        if (data.endTime) {
+          localStorage.setItem(`test_end_${mockId}`, data.endTime.toString());
+        }
+        if (data.startedAt) {
+          localStorage.setItem(`test_start_${mockId}`, data.startedAt.toString());
+        }
+
+        setHasResumeData(false);
         setStep('test');
       }
     } catch (e) {
@@ -157,13 +206,12 @@ export default function MockTestEnginePage() {
 
     const attemptId = crypto.randomUUID();
     const endTime = Date.now();
-    
-    // Dynamic Analysis Generation
+
     let correct = 0, incorrect = 0, totalScore = 0;
     testData.questions.forEach(q => {
       const resp = responses[q.id];
       if (!resp?.selectedOptionId) return;
-      
+
       if (resp.selectedOptionId === q.correctOptionId) {
         correct++;
         totalScore += testData.marksPerQuestion;
@@ -184,31 +232,27 @@ export default function MockTestEnginePage() {
         examId: testData.examId,
         examName: testData.examName,
         mockTitle: testData.title,
-        
         score: totalScore,
         totalMarks: testData.fullMarks,
-        
         correct,
         wrong: incorrect,
         unattempted: testData.questions.length - attempted,
-        
         accuracy,
         percentage: (totalScore / testData.fullMarks) * 100,
-        
         timeTakenSeconds: Math.floor((endTime - (startTime || endTime)) / 1000),
         completedAt: serverTimestamp(),
         userLanguage,
         rawResponses: responses
       };
 
-      // 1. Save to User History
       await setDoc(doc(db, "users", user.uid, "mockAttempts", attemptId), attemptData);
-      
-      // 2. Clear Active Session
       await deleteDoc(doc(db, 'users', user.uid, 'activeMocks', mockId));
+
+      // Sab localStorage keys clear karo
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
       localStorage.removeItem(`test_start_${mockId}`);
+      localStorage.removeItem(`test_active_${mockId}`);
 
       router.push(`${dashboardUrl}/mock/${mockId}/result/${attemptId}`);
     } catch (e) {
@@ -225,7 +269,7 @@ export default function MockTestEnginePage() {
     );
   }
 
-  if (!user) return null; // Redirect handled in useEffect
+  if (!user) return null;
 
   if (!testData || testData.questions.length === 0) {
     return (
