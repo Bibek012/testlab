@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, useUser, useFirestore } from "@/firebase";
@@ -17,7 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Rocket, Loader2, Mail, Chrome, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-export default function SignInPage() {
+// ✅ Inner component — useSearchParams yahan use hoga, Suspense ke andar
+function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,8 +32,6 @@ export default function SignInPage() {
 
   const callbackUrl = searchParams.get("callbackUrl") || "/";
 
-  // The global listener in useUser handles profile creation and redirect results automatically.
-  // We just need to handle the UI navigation once the user state is set.
   useEffect(() => {
     if (!authLoading && user) {
       router.replace(callbackUrl);
@@ -47,7 +46,6 @@ export default function SignInPage() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       toast({ title: "Welcome back", description: "Successfully signed in." });
-      // Redirect happens via useEffect
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -71,8 +69,6 @@ export default function SignInPage() {
 
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-      // Mobile devices are redirected, desktop uses popup for better UX.
-      // Profile creation is handled globally in src/firebase/auth/use-user.tsx
       if (isMobile) {
         await signInWithRedirect(auth, provider);
         return;
@@ -83,7 +79,6 @@ export default function SignInPage() {
         title: "Welcome back",
         description: "Successfully signed in with Google.",
       });
-      // Redirect happens via useEffect
 
     } catch (error: any) {
       console.error("Google Sign-In Error:", error);
@@ -198,5 +193,19 @@ export default function SignInPage() {
         </CardFooter>
       </Card>
     </main>
+  );
+}
+
+// ✅ Default export — Suspense boundary ke saath wrap kiya
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-background gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">Loading...</p>
+      </div>
+    }>
+      <SignInForm />
+    </Suspense>
   );
 }
