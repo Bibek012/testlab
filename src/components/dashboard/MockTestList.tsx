@@ -81,7 +81,7 @@ export const MockTestList = ({
   const { data: mockTypes, loading: typesLoading } = useCollection<any>(typesQuery);
 
   // ======================
-  // AUTO SELECT FIRST TYPE (All Mocks हटाने के बाद ज़रूरी)
+  // AUTO SELECT FIRST TYPE
   // ======================
   useEffect(() => {
     if (mockTypes && mockTypes.length > 0 && !selectedTypeId) {
@@ -245,10 +245,10 @@ export const MockTestList = ({
   }
 
   return (
-    <div className="w-full space-y-4 px-3 sm:px-4">
+    <div className="w-full max-w-full overflow-x-hidden space-y-4 px-4 sm:px-6 raw-container">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <h2 className="text-xl font-bold flex items-center gap-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 w-full">
+        <h2 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap">
           <LayoutGrid className="w-4 h-4 text-primary" />
           Test Library
           {!testsLoading && (
@@ -270,17 +270,17 @@ export const MockTestList = ({
         </div>
       </div>
 
-      {/* TYPE TABS (All Mocks Removed) */}
-      <div className="w-full overflow-x-auto hide-scrollbar">
-        <div className="flex min-w-max bg-white/5 p-1 rounded-xl border border-white/5 gap-1">
+      {/* TYPE TABS */}
+      <div className="w-full overflow-x-auto hide-scrollbar flex">
+        <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 gap-1 w-full sm:w-auto">
           {mockTypes?.map((type) => (
             <button
               key={type.id}
               onClick={() => setSelectedTypeId(type.id)}
               className={cn(
-                "px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
+                "flex-1 sm:flex-initial text-center px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
                 selectedTypeId === type.id
-                  ? "bg-background text-primary"
+                  ? "bg-background text-primary shadow-sm"
                   : "text-muted-foreground hover:text-white"
               )}
             >
@@ -293,7 +293,7 @@ export const MockTestList = ({
       {/* SUB TYPES */}
       {selectedTypeId && mockSubTypes.length > 0 && (
         <div className="w-full overflow-x-auto hide-scrollbar">
-          <div className="flex gap-2 min-w-max pb-1">
+          <div className="flex gap-2 min-w-max pb-1 pr-4">
             {mockSubTypes.map((sub: any) => (
               <button
                 key={sub.id}
@@ -317,14 +317,14 @@ export const MockTestList = ({
         </div>
       )}
 
-      {/* MOCK LIST */}
-      <div className="grid grid-cols-1 gap-3">
+      {/* MOCK LIST - FIXED WIDTH GRID */}
+      <div className="w-full grid grid-cols-1 gap-3">
         {testsLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-32 rounded-xl bg-white/5 animate-pulse" />
+            <div key={i} className="h-32 rounded-xl bg-white/5 animate-pulse w-full" />
           ))
         ) : filteredTests.length === 0 ? (
-          <div className="py-12 text-center border border-dashed border-white/10 rounded-xl">
+          <div className="w-full py-12 text-center border border-dashed border-white/10 rounded-xl">
             <FileText className="w-8 h-8 text-muted-foreground opacity-10 mx-auto mb-2" />
             <p className="text-muted-foreground text-[11px] font-medium">
               No mocks available.
@@ -334,7 +334,6 @@ export const MockTestList = ({
           filteredTests.map((test) => {
             const status = mockStatusMap[test.id] || {};
 
-            // CORRECTED MARKS LOGIC (अगर String आ रहा है तो Number में बदला)
             const qCount = Number(test.totalQuestions) || 0;
             const marksPerQ = Number(test.marksPerQuestion) || 1; 
             const totalMarks = test.fullMarks || (qCount * marksPerQ);
@@ -342,7 +341,7 @@ export const MockTestList = ({
             return (
               <div
                 key={test.id}
-                className="w-full bg-card border border-white/5 rounded-xl p-4 hover:border-primary/30 transition-all"
+                className="w-full bg-card border border-white/5 rounded-xl p-4 hover:border-primary/30 transition-all box-border"
               >
                 {/* TOP */}
                 <div className="space-y-2">
@@ -358,7 +357,7 @@ export const MockTestList = ({
                     )}
                   </div>
 
-                  <h3 className="text-base font-bold leading-tight">
+                  <h3 className="text-base font-bold leading-tight break-words">
                     {test.title}
                   </h3>
 
@@ -384,7 +383,7 @@ export const MockTestList = ({
                 <div className="h-px bg-white/5 my-3" />
 
                 {/* BUTTONS */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 w-full">
                   {!user ? (
                     <Button
                       onClick={() => {
@@ -452,10 +451,10 @@ export const MockTestList = ({
 
 function TestLibrarySkeleton() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 px-4 w-full">
       <div className="h-5 w-24 bg-white/5 rounded animate-pulse" />
       <div className="h-10 w-full bg-white/5 rounded-xl animate-pulse" />
-      <div className="space-y-2">
+      <div className="space-y-2 w-full">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-32 w-full bg-white/5 rounded-xl animate-pulse" />
         ))}
