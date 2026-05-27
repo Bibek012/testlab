@@ -3,27 +3,29 @@
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth, useUser, useFirestore } from "@/firebase";
-import { 
-  signInWithEmailAndPassword, 
-  GoogleAuthProvider, 
+import { useAuth, useUser } from "@/firebase";
+import {
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect
+  signInWithRedirect,
 } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import {
+  Card, CardContent, CardHeader, CardTitle,
+  CardDescription, CardFooter,
+} from "@/components/ui/card";
 import { Rocket, Loader2, Mail, Chrome, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-// ✅ Inner component — useSearchParams yahan use hoga, Suspense ke andar
 function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const auth = useAuth();
   const { user, loading: authLoading } = useUser();
   const router = useRouter();
@@ -41,7 +43,6 @@ function SignInForm() {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth) return;
-
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -50,7 +51,7 @@ function SignInForm() {
       toast({
         variant: "destructive",
         title: "Sign In Error",
-        description: error.message || "Failed to sign in. Please check your credentials.",
+        description: error.message || "Failed to sign in.",
       });
       setIsLoading(false);
     }
@@ -58,33 +59,51 @@ function SignInForm() {
 
   const handleGoogleSignIn = async () => {
     if (!auth) return;
+    setIsLoading(true);
+
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
 
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({
-        prompt: "select_account"
-      });
-
-      setIsLoading(true);
-      // Redirect use karo — popup browsers mein block ho jaata hai
-      await signInWithRedirect(auth, provider);
-
-    } catch (error: any) {
-      console.error("Google Sign-In Error:", error);
-      toast({
-        variant: "destructive",
-        title: "Google Sign In Error",
-        description: error.message,
-      });
-      setIsLoading(false);
+      // Pehle popup try karo
+      await signInWithPopup(auth, provider);
+      toast({ title: "Welcome!", description: "Signed in with Google." });
+    } catch (popupError: any) {
+      // Agar popup block hua toh redirect use karo
+      if (
+        popupError.code === "auth/popup-blocked" ||
+        popupError.code === "auth/popup-closed-by-user" ||
+        popupError.code === "auth/cancelled-popup-request"
+      ) {
+        try {
+          await signInWithRedirect(auth, provider);
+          // Redirect hoga — page reload hoga
+        } catch (redirectError: any) {
+          toast({
+            variant: "destructive",
+            title: "Google Sign In Error",
+            description: redirectError.message,
+          });
+          setIsLoading(false);
+        }
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Google Sign In Error",
+          description: popupError.message,
+        });
+        setIsLoading(false);
+      }
     }
   };
 
-  if (authLoading && !user) {
+  if (authLoading) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-background gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">Verifying Identity...</p>
+        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">
+          Verifying Identity...
+        </p>
       </div>
     );
   }
@@ -107,35 +126,27 @@ function SignInForm() {
           <CardTitle className="text-3xl font-headline font-bold">Sign In</CardTitle>
           <CardDescription>Enter your credentials to access your account</CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-4">
           <form onSubmit={handleSignIn} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="john@example.com"
-                required
+                id="email" type="email" placeholder="john@example.com" required
                 className="bg-white/5 border-white/10"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={email} onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                <Link href="#" className="text-xs text-primary hover:underline">
-                  Forgot password?
-                </Link>
+                <Link href="#" className="text-xs text-primary hover:underline">Forgot password?</Link>
               </div>
               <div className="relative">
                 <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  required
+                  id="password" type={showPassword ? "text" : "password"} required
                   className="bg-white/5 border-white/10 pr-10"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={password} onChange={(e) => setPassword(e.target.value)}
                 />
                 <button
                   type="button"
@@ -147,7 +158,9 @@ function SignInForm() {
               </div>
             </div>
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90 font-bold h-12 rounded-xl" disabled={isLoading}>
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <><Mail className="w-4 h-4 mr-2" /> Sign In with Email</>}
+              {isLoading
+                ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                : <><Mail className="w-4 h-4 mr-2" /> Sign In with Email</>}
             </Button>
           </form>
 
@@ -169,12 +182,11 @@ function SignInForm() {
             <Chrome className="w-4 h-4 mr-2" /> Google
           </Button>
         </CardContent>
+
         <CardFooter>
           <div className="text-sm text-center w-full text-muted-foreground">
             Don't have an account?{" "}
-            <Link href="/signup" className="text-primary hover:underline font-semibold">
-              Sign Up
-            </Link>
+            <Link href="/signup" className="text-primary hover:underline font-semibold">Sign Up</Link>
           </div>
         </CardFooter>
       </Card>
@@ -182,7 +194,6 @@ function SignInForm() {
   );
 }
 
-// ✅ Default export — Suspense boundary ke saath wrap kiya
 export default function SignInPage() {
   return (
     <Suspense fallback={
