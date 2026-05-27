@@ -25,19 +25,11 @@ export function initializeFirebase(): {
 
   try {
     cachedApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-    // ✅ experimentalForceLongPolling HATAYA — Vercel pe getRedirectResult tod deta tha
+    // experimentalForceLongPolling HATAYA — Vercel pe redirect auth tod deta tha
     cachedFirestore = getFirestore(cachedApp);
-
     cachedAuth = getAuth(cachedApp);
-
     setLogLevel('error');
-
-    return {
-      firebaseApp: cachedApp,
-      firestore: cachedFirestore,
-      auth: cachedAuth,
-    };
+    return { firebaseApp: cachedApp, firestore: cachedFirestore, auth: cachedAuth };
   } catch (error) {
     console.error('Firebase: Critical Initialization failure:', error);
     return { firebaseApp: null, firestore: null, auth: null };
@@ -47,15 +39,12 @@ export function initializeFirebase(): {
 export function useMemoFirebase<T>(factory: () => T, deps: any[]): T {
   const ref = useRef<T | null>(null);
   const depsRef = useRef<any[]>([]);
-
   const depsChanged = deps.length !== depsRef.current.length ||
     deps.some((dep, i) => dep !== depsRef.current[i]);
-
   if (depsChanged || !ref.current) {
     ref.current = factory();
     depsRef.current = deps;
   }
-
   return ref.current as T;
 }
 
