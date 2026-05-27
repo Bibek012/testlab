@@ -8,7 +8,6 @@ import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
 } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,40 +59,22 @@ function SignInForm() {
   const handleGoogleSignIn = async () => {
     if (!auth) return;
     setIsLoading(true);
-
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
-
     try {
-      // Pehle popup try karo
       await signInWithPopup(auth, provider);
       toast({ title: "Welcome!", description: "Signed in with Google." });
-    } catch (popupError: any) {
-      // Agar popup block hua toh redirect use karo
-      if (
-        popupError.code === "auth/popup-blocked" ||
-        popupError.code === "auth/popup-closed-by-user" ||
-        popupError.code === "auth/cancelled-popup-request"
-      ) {
-        try {
-          await signInWithRedirect(auth, provider);
-          // Redirect hoga — page reload hoga
-        } catch (redirectError: any) {
-          toast({
-            variant: "destructive",
-            title: "Google Sign In Error",
-            description: redirectError.message,
-          });
-          setIsLoading(false);
-        }
-      } else {
+      // useEffect handle karega redirect
+    } catch (error: any) {
+      if (error.code !== "auth/popup-closed-by-user" &&
+          error.code !== "auth/cancelled-popup-request") {
         toast({
           variant: "destructive",
           title: "Google Sign In Error",
-          description: popupError.message,
+          description: error.message,
         });
-        setIsLoading(false);
       }
+      setIsLoading(false);
     }
   };
 
@@ -112,30 +93,24 @@ function SignInForm() {
     <main className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden bg-background">
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] -z-10" />
       <div className="absolute bottom-[10%] right-[-10%] w-[30%] h-[30%] bg-accent/20 rounded-full blur-[120px] -z-10" />
-
       <Card className="w-full max-w-md glass border-white/10 shadow-2xl animate-in fade-in zoom-in duration-300">
         <CardHeader className="space-y-4 text-center">
           <Link href="/" className="inline-flex items-center justify-center gap-2 group mx-auto mb-4">
             <div className="bg-primary p-2 rounded-lg group-hover:rotate-12 transition-transform">
               <Rocket className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-headline font-bold tracking-tighter uppercase">
-              TESTLAB
-            </span>
+            <span className="text-2xl font-headline font-bold tracking-tighter uppercase">TESTLAB</span>
           </Link>
           <CardTitle className="text-3xl font-headline font-bold">Sign In</CardTitle>
           <CardDescription>Enter your credentials to access your account</CardDescription>
         </CardHeader>
-
         <CardContent className="space-y-4">
           <form onSubmit={handleSignIn} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
-                id="email" type="email" placeholder="john@example.com" required
+              <Input id="email" type="email" placeholder="john@example.com" required
                 className="bg-white/5 border-white/10"
-                value={email} onChange={(e) => setEmail(e.target.value)}
-              />
+                value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -143,46 +118,30 @@ function SignInForm() {
                 <Link href="#" className="text-xs text-primary hover:underline">Forgot password?</Link>
               </div>
               <div className="relative">
-                <Input
-                  id="password" type={showPassword ? "text" : "password"} required
+                <Input id="password" type={showPassword ? "text" : "password"} required
                   className="bg-white/5 border-white/10 pr-10"
-                  value={password} onChange={(e) => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
+                  value={password} onChange={(e) => setPassword(e.target.value)} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90 font-bold h-12 rounded-xl" disabled={isLoading}>
-              {isLoading
-                ? <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                : <><Mail className="w-4 h-4 mr-2" /> Sign In with Email</>}
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <><Mail className="w-4 h-4 mr-2" />Sign In with Email</>}
             </Button>
           </form>
-
           <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-white/10" />
-            </div>
+            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-white/10" /></div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
             </div>
           </div>
-
-          <Button
-            variant="outline"
-            className="w-full border-white/10 hover:bg-white/5 h-12 rounded-xl font-bold"
-            onClick={handleGoogleSignIn}
-            disabled={isLoading}
-          >
+          <Button variant="outline" className="w-full border-white/10 hover:bg-white/5 h-12 rounded-xl font-bold"
+            onClick={handleGoogleSignIn} disabled={isLoading}>
             <Chrome className="w-4 h-4 mr-2" /> Google
           </Button>
         </CardContent>
-
         <CardFooter>
           <div className="text-sm text-center w-full text-muted-foreground">
             Don't have an account?{" "}
