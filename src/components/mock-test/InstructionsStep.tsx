@@ -1,11 +1,10 @@
-
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { MockTestData } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronRight, Info, AlertTriangle, Clock, HelpCircle, Target } from "lucide-react";
+import { ChevronRight, Info, AlertTriangle, Clock, HelpCircle, Target, Loader2 } from "lucide-react";
 
 interface Props {
   testData: MockTestData;
@@ -13,9 +12,36 @@ interface Props {
 }
 
 export const InstructionsStep = ({ testData, onNext }: Props) => {
+  const [isCheckingProgress, setIsCheckingProgress] = useState(true);
+
+  // Auto-Resume Logic: रीलोड होने पर अगर एक्टिव टेस्ट मिलता है तो सीधे टेस्ट स्क्रीन पर भेजें
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isTestActive = localStorage.getItem(`test_active_${testData.id}`);
+      const savedProgress = localStorage.getItem(`test_progress_${testData.id}`);
+
+      if (isTestActive && savedProgress) {
+        // अगर टेस्ट पहले से एक्टिव था, तो इंस्ट्रक्शन दिखाए बिना सीधे अगले स्टेप पर भेजें
+        onNext();
+      } else {
+        setIsCheckingProgress(false);
+      }
+    }
+  }, [testData.id, onNext]);
+
   const totalMarks =
-  Number(testData.fullMarks) ||
-  ((testData.questions?.length || 0) * Number(testData.marksPerQuestion || 1));
+    Number(testData.fullMarks) ||
+    ((testData.questions?.length || 0) * Number(testData.marksPerQuestion || 1));
+
+  // जब तक प्रोग्रेस चेक हो रही हो, एक क्लीन और सुंदर लोडर दिखाएं
+  if (isCheckingProgress) {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-[#0b1120] gap-3">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-sm font-medium text-muted-foreground">Checking test status, please wait...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
@@ -84,7 +110,7 @@ export const InstructionsStep = ({ testData, onNext }: Props) => {
               </li>
               <li>Navigating to a Question: To answer a question, you can click on the question number in the Question Palette at the right of your screen.</li>
               <li>Marks per correct answer: +{testData.marksPerQuestion || 1}, Incorrect answer penalty: -{testData.negativeMarks || 0.33}.</li>
-              <li>Do not refresh the page or close the window during the test.</li>
+              <li>Do not refresh the page or close the window during the test. Your progress is autosaved, but accidental reloads may disrupt your concentration.</li>
             </ul>
           </div>
 
