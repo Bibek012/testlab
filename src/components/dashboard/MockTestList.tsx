@@ -3,8 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+
 import {
   Search,
   Play,
@@ -16,6 +15,9 @@ import {
   LayoutGrid,
   RefreshCw,
 } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 import { cn } from "@/lib/utils";
 
@@ -43,11 +45,19 @@ interface MockTestListProps {
 
 const formatCompactNumber = (num: number) => {
   if (num >= 1000000) {
-    return (num / 1000000).toFixed(1).replace(".0", "") + "M+";
+    return (
+      (num / 1000000)
+        .toFixed(1)
+        .replace(".0", "") + "M+"
+    );
   }
 
   if (num >= 1000) {
-    return (num / 1000).toFixed(1).replace(".0", "") + "K+";
+    return (
+      (num / 1000)
+        .toFixed(1)
+        .replace(".0", "") + "K+"
+    );
   }
 
   return String(num);
@@ -70,7 +80,8 @@ export const MockTestList = ({
   const [selectedSubTypeId, setSelectedSubTypeId] =
     useState<string>("all");
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] =
+    useState("");
 
   // =========================
   // FETCH MOCK TYPES
@@ -98,29 +109,6 @@ export const MockTestList = ({
   } = useCollection<any>(typesQuery);
 
   // =========================
-  // FETCH MOCK SUB TYPES
-  // =========================
-
-  const subTypesQuery = useMemoFirebase(
-    () =>
-      db
-        ? query(
-            collection(
-              db,
-              "exams",
-              examId,
-              "mockSubTypes"
-            ),
-            orderBy("order", "asc")
-          )
-        : null,
-    [db, examId]
-  );
-
-  const { data: mockSubTypes } =
-    useCollection<any>(subTypesQuery);
-
-  // =========================
   // FETCH MOCK TESTS
   // =========================
 
@@ -142,47 +130,93 @@ export const MockTestList = ({
   } = useCollection<any>(mocksQuery);
 
   // =========================
+  // GENERATE SUBTYPES
+  // DIRECTLY FROM MOCK TESTS
+  // =========================
+
+  const mockSubTypes = useMemo(() => {
+    if (!tests) return [];
+
+    const filteredTests =
+      selectedTypeId === "all"
+        ? tests
+        : tests.filter(
+            (t) =>
+              t.typeId === selectedTypeId
+          );
+
+    const uniqueMap = new Map();
+
+    filteredTests.forEach((test) => {
+      if (
+        test.subTypeId &&
+        !uniqueMap.has(test.subTypeId)
+      ) {
+        uniqueMap.set(test.subTypeId, {
+          id: test.subTypeId,
+          title:
+            test.subTypeName ||
+            "Untitled",
+        });
+      }
+    });
+
+    return Array.from(uniqueMap.values());
+  }, [tests, selectedTypeId]);
+
+  // =========================
   // ACTIVE SESSIONS
   // =========================
 
-  const activeSessionsQuery = useMemoFirebase(
-    () =>
-      db && user
-        ? query(
-            collection(
-              db,
-              "users",
-              user.uid,
-              "activeMocks"
+  const activeSessionsQuery =
+    useMemoFirebase(
+      () =>
+        db && user
+          ? query(
+              collection(
+                db,
+                "users",
+                user.uid,
+                "activeMocks"
+              )
             )
-          )
-        : null,
-    [db, user?.uid]
-  );
+          : null,
+      [db, user?.uid]
+    );
 
   const { data: activeSessions } =
-    useCollection<any>(activeSessionsQuery);
+    useCollection<any>(
+      activeSessionsQuery
+    );
 
   // =========================
   // ATTEMPTS
   // =========================
 
-  const attemptsQuery = useMemoFirebase(
-    () =>
-      db && user
-        ? query(
-            collection(
-              db,
-              "users",
-              user.uid,
-              "mockAttempts"
-            ),
-            where("examId", "==", examId),
-            orderBy("completedAt", "desc")
-          )
-        : null,
-    [db, user?.uid, examId]
-  );
+  const attemptsQuery =
+    useMemoFirebase(
+      () =>
+        db && user
+          ? query(
+              collection(
+                db,
+                "users",
+                user.uid,
+                "mockAttempts"
+              ),
+              where(
+                "examId",
+                "==",
+                examId
+              ),
+              orderBy(
+                "completedAt",
+                "desc"
+              )
+            )
+          : null,
+      [db, user?.uid, examId]
+    );
 
   const { data: attempts } =
     useCollection<any>(attemptsQuery);
@@ -191,20 +225,23 @@ export const MockTestList = ({
   // STATS
   // =========================
 
-  const totalMocks = tests?.length || 0;
+  const totalMocks =
+    tests?.length || 0;
 
-  const totalQuestions = useMemo(() => {
-    return (
-      tests?.reduce(
-        (sum, mock) =>
-          sum +
-          (mock.totalQuestions ||
-            mock.questions?.length ||
-            0),
-        0
-      ) || 0
-    );
-  }, [tests]);
+  const totalQuestions =
+    useMemo(() => {
+      return (
+        tests?.reduce(
+          (sum, mock) =>
+            sum +
+            (mock.totalQuestions ||
+              mock.questions
+                ?.length ||
+              0),
+          0
+        ) || 0
+      );
+    }, [tests]);
 
   // =========================
   // STATUS MAP
@@ -219,15 +256,20 @@ export const MockTestList = ({
       }
     > = {};
 
-    activeSessions?.forEach((session) => {
-      map[session.mockId] = {
-        ...map[session.mockId],
-        activeSession: session,
-      };
-    });
+    activeSessions?.forEach(
+      (session) => {
+        map[session.mockId] = {
+          ...map[session.mockId],
+          activeSession: session,
+        };
+      }
+    );
 
     attempts?.forEach((attempt) => {
-      if (!map[attempt.mockId]?.latestAttempt) {
+      if (
+        !map[attempt.mockId]
+          ?.latestAttempt
+      ) {
         map[attempt.mockId] = {
           ...map[attempt.mockId],
           latestAttempt: attempt,
@@ -248,16 +290,20 @@ export const MockTestList = ({
     return tests.filter((test) => {
       const matchesType =
         selectedTypeId === "all" ||
-        test.typeId === selectedTypeId;
+        test.typeId ===
+          selectedTypeId;
 
       const matchesSubType =
         selectedSubTypeId === "all" ||
         test.subTypeId ===
           selectedSubTypeId;
 
-      const matchesSearch = test.title
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase());
+      const matchesSearch =
+        test.title
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          );
 
       return (
         matchesType &&
@@ -305,10 +351,11 @@ export const MockTestList = ({
         `test_start_${mockId}`
       );
 
-      window.location.href = baseUrl;
+      window.location.href =
+        baseUrl;
     } catch (e) {
       console.error(
-        "Reattempt trigger failed",
+        "Reattempt failed",
         e
       );
     }
@@ -319,11 +366,11 @@ export const MockTestList = ({
   }
 
   return (
-    <div className="space-y-6 w-full animate-in fade-in duration-500">
+    <div className="space-y-6 w-full">
       {/* HEADER */}
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h2 className="text-xl font-headline font-bold flex items-center gap-2">
+        <h2 className="text-xl font-bold flex items-center gap-2">
           <LayoutGrid className="w-5 h-5 text-primary" />
 
           Test Library
@@ -347,7 +394,9 @@ export const MockTestList = ({
             placeholder="Find specific module..."
             value={searchQuery}
             onChange={(e) =>
-              setSearchQuery(e.target.value)
+              setSearchQuery(
+                e.target.value
+              )
             }
             className="w-full bg-white/5 border border-white/5 rounded-xl h-10 pl-9 pr-4 text-xs outline-none focus:border-primary/40 transition-all"
           />
@@ -360,7 +409,9 @@ export const MockTestList = ({
         <button
           onClick={() => {
             setSelectedTypeId("all");
-            setSelectedSubTypeId("all");
+            setSelectedSubTypeId(
+              "all"
+            );
           }}
           className={cn(
             "flex-1 px-4 py-2 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
@@ -377,13 +428,19 @@ export const MockTestList = ({
           <button
             key={type.id}
             onClick={() => {
-              setSelectedTypeId(type.id);
-              setSelectedSubTypeId("all");
+              setSelectedTypeId(
+                type.id
+              );
+
+              setSelectedSubTypeId(
+                "all"
+              );
             }}
             className={cn(
               "flex-1 px-4 py-2 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
 
-              selectedTypeId === type.id
+              selectedTypeId ===
+                type.id
                 ? "bg-background text-primary shadow-sm"
                 : "text-muted-foreground hover:text-white"
             )}
@@ -396,15 +453,41 @@ export const MockTestList = ({
       {/* SUBTYPE CARDS */}
 
       {selectedTypeId !== "all" &&
-        mockSubTypes && (
-          <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
-            {mockSubTypes
-              .filter(
-                (sub) =>
-                  sub.typeId ===
-                  selectedTypeId
-              )
-              .map((sub) => (
+        mockSubTypes.length > 0 && (
+          <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
+            <button
+              onClick={() =>
+                setSelectedSubTypeId(
+                  "all"
+                )
+              }
+              className={cn(
+                "min-w-[150px] rounded-2xl p-4 text-left border transition-all",
+
+                selectedSubTypeId ===
+                  "all"
+                  ? "bg-primary text-white border-primary"
+                  : "bg-white/5 border-white/5 hover:border-primary/30"
+              )}
+            >
+              <div className="text-base font-bold">
+                All
+              </div>
+
+              <div className="text-xs opacity-70 mt-2">
+                {
+                  tests?.filter(
+                    (t) =>
+                      t.typeId ===
+                      selectedTypeId
+                  ).length
+                }{" "}
+                Tests
+              </div>
+            </button>
+
+            {mockSubTypes.map(
+              (sub: any) => (
                 <button
                   key={sub.id}
                   onClick={() =>
@@ -436,7 +519,8 @@ export const MockTestList = ({
                     Tests
                   </div>
                 </button>
-              ))}
+              )
+            )}
           </div>
         )}
 
@@ -452,34 +536,38 @@ export const MockTestList = ({
               className="h-28 rounded-xl bg-white/5 animate-pulse"
             />
           ))
-        ) : filteredTests.length === 0 ? (
+        ) : filteredTests.length ===
+          0 ? (
           <div className="py-20 text-center border border-dashed border-white/10 rounded-2xl">
             <FileText className="w-10 h-10 text-muted-foreground opacity-10 mx-auto mb-3" />
 
             <p className="text-muted-foreground text-xs font-medium">
-              No mocks available matching
-              filters.
+              No mocks available.
             </p>
           </div>
         ) : (
-          filteredTests.map((test) => (
-            <TestListItem
-              key={test.id}
-              test={test}
-              status={
-                mockStatusMap[test.id]
-              }
-              user={user}
-              router={router}
-              baseUrl={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
-              onReattempt={() =>
-                handleReattempt(
-                  test.id,
-                  `/exams/${categorySlug}/${examSlug}/mock/${test.id}`
-                )
-              }
-            />
-          ))
+          filteredTests.map(
+            (test) => (
+              <TestListItem
+                key={test.id}
+                test={test}
+                status={
+                  mockStatusMap[
+                    test.id
+                  ]
+                }
+                user={user}
+                router={router}
+                baseUrl={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
+                onReattempt={() =>
+                  handleReattempt(
+                    test.id,
+                    `/exams/${categorySlug}/${examSlug}/mock/${test.id}`
+                  )
+                }
+              />
+            )
+          )
         )}
       </div>
     </div>
@@ -494,18 +582,22 @@ function TestListItem({
   user,
   router,
 }: any) {
-  const { activeSession, latestAttempt } =
-    status || {};
+  const {
+    activeSession,
+    latestAttempt,
+  } = status || {};
 
-  const handleLoginRedirect = () => {
-    const callback = encodeURIComponent(
-      window.location.pathname
-    );
+  const handleLoginRedirect =
+    () => {
+      const callback =
+        encodeURIComponent(
+          window.location.pathname
+        );
 
-    router.push(
-      `/signin?callbackUrl=${callback}`
-    );
-  };
+      router.push(
+        `/signin?callbackUrl=${callback}`
+      );
+    };
 
   return (
     <div className="group bg-card border border-white/5 rounded-xl p-4 md:p-5 hover:border-primary/30 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
@@ -540,60 +632,37 @@ function TestListItem({
           <div className="flex items-center gap-1.5">
             <FileText className="w-3 h-3 text-primary/60" />
             <span>
-              {test.totalQuestions} Questions
+              {test.totalQuestions}{" "}
+              Questions
             </span>
           </div>
 
           <div className="flex items-center gap-1.5">
             <Clock className="w-3 h-3 text-accent/60" />
             <span>
-              {test.durationMinutes} Mins
+              {
+                test.durationMinutes
+              }{" "}
+              Mins
             </span>
           </div>
 
           <div className="flex items-center gap-1.5">
             <Target className="w-3 h-3 text-emerald-400/60" />
-            <span>{test.fullMarks} Marks</span>
+            <span>
+              {test.fullMarks} Marks
+            </span>
           </div>
         </div>
-
-        {latestAttempt && !activeSession && (
-          <div className="pt-1">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">
-                Last Score:{" "}
-                <span className="text-accent">
-                  {latestAttempt.score?.toFixed(
-                    1
-                  )}
-                </span>
-              </span>
-
-              <span className="text-[10px] text-muted-foreground">
-                {latestAttempt.accuracy?.toFixed(
-                  0
-                )}
-                % Accuracy
-              </span>
-            </div>
-
-            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-emerald-500"
-                style={{
-                  width: `${latestAttempt.accuracy}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="flex items-center gap-2 pt-3 md:pt-0 border-t md:border-0 border-white/5">
         {!user ? (
           <Button
-            onClick={handleLoginRedirect}
-            className="w-full md:w-auto bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2 shadow-lg shadow-primary/20"
+            onClick={
+              handleLoginRedirect
+            }
+            className="w-full md:w-auto bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2"
           >
             Login to Start
           </Button>
@@ -612,7 +681,9 @@ function TestListItem({
             <Button
               variant="outline"
               className="w-full md:w-auto border-white/10 h-10 rounded-xl text-xs font-bold gap-2"
-              onClick={onReattempt}
+              onClick={
+                onReattempt
+              }
             >
               <History className="w-3.5 h-3.5" />
               Reattempt
@@ -633,7 +704,7 @@ function TestListItem({
             href={baseUrl}
             className="w-full md:w-auto"
           >
-            <Button className="w-full bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2 shadow-lg shadow-primary/20">
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2">
               <Play className="w-4 h-4 fill-current" />
               Start Test
             </Button>
