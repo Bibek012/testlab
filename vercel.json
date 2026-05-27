@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/__/auth/:path*",
+      "destination": "https://studio-338028297-846e4.firebaseapp.com/__/auth/:path*"
+    }
+  ]
+}
