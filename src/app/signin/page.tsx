@@ -66,30 +66,16 @@ function SignInForm() {
       });
 
       setIsLoading(true);
-
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-      if (isMobile) {
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-
-      await signInWithPopup(auth, provider);
-      toast({
-        title: "Welcome back",
-        description: "Successfully signed in with Google.",
-      });
+      // Redirect use karo — popup browsers mein block ho jaata hai
+      await signInWithRedirect(auth, provider);
 
     } catch (error: any) {
       console.error("Google Sign-In Error:", error);
-
-      if (error.code !== "auth/popup-closed-by-user") {
-        toast({
-          variant: "destructive",
-          title: "Google Sign In Error",
-          description: error.message,
-        });
-      }
+      toast({
+        variant: "destructive",
+        title: "Google Sign In Error",
+        description: error.message,
+      });
       setIsLoading(false);
     }
   };
