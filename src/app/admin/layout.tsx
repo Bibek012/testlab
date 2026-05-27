@@ -57,7 +57,14 @@ export default function AdminLayout({
     data: profile,
     loading: profileLoading,
   } = useDoc<any>(profileRef);
-
+  console.log("USER:", user);
+console.log("PROFILE:", profile);
+console.log("PROFILE LOADING:", profileLoading);
+console.log("PROFILE REF:", profileRef);
+  useEffect(() => {
+  console.log("ROLE VALUE:", profile?.role);
+}, [profile]);
+  
   // Authorization state
   const [isAuthorized, setIsAuthorized] =
     useState<boolean | null>(null);
