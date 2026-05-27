@@ -16,8 +16,7 @@ import {
   ChevronRight,
   LayoutGrid,
   AlertCircle,
-  Send,
-  Loader2
+  Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
@@ -93,15 +92,13 @@ export const TestInterface = ({
 }: Props) => {
   const { user } = useUser();
   const db = useFirestore();
-  
-  // States with initial loading fallback from localStorage to prevent data loss on reload
+
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(`test_progress_${testData.id}`);
       if (saved) {
-        try {
-          return JSON.parse(saved).currentQuestionIndex || 0;
-        } catch (_) { return 0; }
+        try { return JSON.parse(saved).currentQuestionIndex || 0; }
+        catch (_) { return 0; }
       }
     }
     return 0;
@@ -111,9 +108,8 @@ export const TestInterface = ({
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(`test_progress_${testData.id}`);
       if (saved) {
-        try {
-          return JSON.parse(saved).userLanguage || initialLang;
-        } catch (_) { return initialLang; }
+        try { return JSON.parse(saved).userLanguage || initialLang; }
+        catch (_) { return initialLang; }
       }
     }
     return initialLang;
@@ -123,25 +119,10 @@ export const TestInterface = ({
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
 
-  // Restore saved responses on mount before initializing timers
-  useEffect(() => {
-    const savedProgress = localStorage.getItem(`test_progress_${testData.id}`);
-    if (savedProgress) {
-      try {
-        const parsed = JSON.parse(savedProgress);
-        if (parsed.responses && Object.keys(parsed.responses).length > 0) {
-          setResponses(parsed.responses);
-        }
-      } catch (e) {
-        console.error("Error restoring responses from localStorage", e);
-      }
-    }
-  }, [testData.id, setResponses]);
-
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
 
-  // Timer Initialization & Status Lock
+  // Timer Initialization
   useEffect(() => {
     let savedEndTime = localStorage.getItem(`test_end_${testData.id}`);
     if (!savedEndTime) {
@@ -149,12 +130,11 @@ export const TestInterface = ({
       localStorage.setItem(`test_end_${testData.id}`, newEndTime.toString());
       savedEndTime = newEndTime.toString();
     }
-    // Flag to tell the instruction page that this test is actively running
     localStorage.setItem(`test_active_${testData.id}`, "true");
     setTargetEndTime(parseInt(savedEndTime));
   }, [testData.id, testData.durationMinutes]);
 
-  // Response Autosave Logic (runs every 5 seconds for higher security)
+  // Autosave every 5 seconds
   useEffect(() => {
     if (isPaused || showSubmitConfirm) return;
 
@@ -176,10 +156,8 @@ export const TestInterface = ({
         endTime: targetEndTime,
       };
 
-      // 1. Fast Cache (Essential for page reloads)
       localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(sessionData));
 
-      // 2. Cloud Persistence
       if (user && db) {
         try {
           await setDoc(doc(db, 'users', user.uid, 'activeMocks', testData.id), {
@@ -195,15 +173,15 @@ export const TestInterface = ({
     return () => clearInterval(saveInterval);
   }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm, targetEndTime]);
 
-  // Individual Question Timing
+  // Per-question time tracking
   useEffect(() => {
     if (isPaused || showSubmitConfirm || !currentQuestion) return;
-    
+
     const qTimer = setInterval(() => {
       setResponses(prev => {
         const qId = currentQuestion.id;
         const existing = prev[qId];
-        
+
         if (!existing) {
           return {
             ...prev,
@@ -247,7 +225,6 @@ export const TestInterface = ({
     setResponses(prev => {
       const qId = currentQuestion.id;
       const resp = prev[qId];
-      // If user hasn't selected anything but clicks Save & Next, mark as not-answered explicitly
       const currentStatus = resp?.selectedOptionId ? 'answered' : 'not-answered';
       return {
         ...prev,
@@ -275,8 +252,8 @@ export const TestInterface = ({
       const newStatus: QuestionStatus = resp?.selectedOptionId ? 'answered-marked-review' : 'marked-review';
       return {
         ...prev,
-        [qId]: { 
-          ...resp, 
+        [qId]: {
+          ...resp,
           questionId: qId,
           selectedOptionId: resp?.selectedOptionId || null,
           status: newStatus,
@@ -302,7 +279,6 @@ export const TestInterface = ({
   };
 
   const handleFinalSubmit = () => {
-    // Clean up local storage keys for this test upon submission
     localStorage.removeItem(`test_progress_${testData.id}`);
     localStorage.removeItem(`test_end_${testData.id}`);
     localStorage.removeItem(`test_start_${testData.id}`);
