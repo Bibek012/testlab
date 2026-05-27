@@ -15,6 +15,7 @@ import {
   useUser,
   useFirestore,
   useDoc,
+  useMemoFirebase,
 } from "@/firebase";
 
 import { doc } from "firebase/firestore";
@@ -39,29 +40,18 @@ export default function AdminLayout({
 
   const db = useFirestore();
 
-  // Simple document reference
-  const profileRef =
-    user && db
-      ? doc(db, "users", user.uid)
-      : null;
+  // Stable Firestore document reference
+  const profileRef = useMemoFirebase(() => {
+    if (!user || !db) return null;
+
+    return doc(db, "users", user.uid);
+  }, [user?.uid, db]);
 
   // Fetch profile
   const {
     data: profile,
     loading: profileLoading,
   } = useDoc<any>(profileRef);
-
-  // Debug logs
-  console.log("USER:", user);
-  console.log("PROFILE:", profile);
-  console.log(
-    "PROFILE LOADING:",
-    profileLoading
-  );
-  console.log(
-    "ROLE:",
-    profile?.role
-  );
 
   // Loading state
   if (authLoading || profileLoading) {
@@ -97,11 +87,6 @@ export default function AdminLayout({
   // Authorization check
   const authorized = isAdmin(
     profile.role
-  );
-
-  console.log(
-    "AUTHORIZED:",
-    authorized
   );
 
   // Unauthorized
