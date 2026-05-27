@@ -84,7 +84,7 @@ export const MockTestList = ({
     useState("");
 
   // =========================
-  // FETCH MOCK TYPES
+  // MOCK TYPES
   // =========================
 
   const typesQuery = useMemoFirebase(
@@ -109,7 +109,7 @@ export const MockTestList = ({
   } = useCollection<any>(typesQuery);
 
   // =========================
-  // FETCH MOCK TESTS
+  // MOCK TESTS
   // =========================
 
   const mocksQuery = useMemoFirebase(
@@ -130,29 +130,26 @@ export const MockTestList = ({
   } = useCollection<any>(mocksQuery);
 
   // =========================
-  // GENERATE SUBTYPES
-  // DIRECTLY FROM MOCK TESTS
+  // SUB TYPES
   // =========================
 
   const mockSubTypes = useMemo(() => {
-    if (!tests) return [];
+    if (!tests || selectedTypeId === "all")
+      return [];
 
-    const filteredTests =
-      selectedTypeId === "all"
-        ? tests
-        : tests.filter(
-            (t) =>
-              t.typeId === selectedTypeId
-          );
+    const typeTests = tests.filter(
+      (t) =>
+        t.typeId === selectedTypeId
+    );
 
-    const uniqueMap = new Map();
+    const map = new Map();
 
-    filteredTests.forEach((test) => {
+    typeTests.forEach((test) => {
       if (
         test.subTypeId &&
-        !uniqueMap.has(test.subTypeId)
+        !map.has(test.subTypeId)
       ) {
-        uniqueMap.set(test.subTypeId, {
+        map.set(test.subTypeId, {
           id: test.subTypeId,
           title:
             test.subTypeName ||
@@ -161,11 +158,11 @@ export const MockTestList = ({
       }
     });
 
-    return Array.from(uniqueMap.values());
+    return Array.from(map.values());
   }, [tests, selectedTypeId]);
 
   // =========================
-  // ACTIVE SESSIONS
+  // ACTIVE MOCKS
   // =========================
 
   const activeSessionsQuery =
@@ -222,7 +219,7 @@ export const MockTestList = ({
     useCollection<any>(attemptsQuery);
 
   // =========================
-  // STATS
+  // TOTALS
   // =========================
 
   const totalMocks =
@@ -235,8 +232,6 @@ export const MockTestList = ({
           (sum, mock) =>
             sum +
             (mock.totalQuestions ||
-              mock.questions
-                ?.length ||
               0),
           0
         ) || 0
@@ -354,10 +349,7 @@ export const MockTestList = ({
       window.location.href =
         baseUrl;
     } catch (e) {
-      console.error(
-        "Reattempt failed",
-        e
-      );
+      console.error(e);
     }
   };
 
@@ -366,22 +358,23 @@ export const MockTestList = ({
   }
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="space-y-5 w-full">
+
       {/* HEADER */}
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+
         <h2 className="text-xl font-bold flex items-center gap-2">
           <LayoutGrid className="w-5 h-5 text-primary" />
 
           Test Library
 
-          {!testsLoading && tests && (
-            <span className="text-[10px] md:text-xs text-muted-foreground font-normal ml-2 opacity-60 uppercase tracking-widest hidden sm:inline">
+          {!testsLoading && (
+            <span className="hidden sm:inline text-[10px] uppercase tracking-widest opacity-60 ml-2">
               ({totalMocks} Series •{" "}
               {formatCompactNumber(
                 totalQuestions
-              )}{" "}
-              Questions)
+              )} Questions)
             </span>
           )}
         </h2>
@@ -406,6 +399,7 @@ export const MockTestList = ({
       {/* TYPE TABS */}
 
       <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 overflow-x-auto hide-scrollbar">
+
         <button
           onClick={() => {
             setSelectedTypeId("all");
@@ -417,7 +411,7 @@ export const MockTestList = ({
             "flex-1 px-4 py-2 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
 
             selectedTypeId === "all"
-              ? "bg-background text-primary shadow-sm"
+              ? "bg-background text-primary"
               : "text-muted-foreground hover:text-white"
           )}
         >
@@ -441,7 +435,7 @@ export const MockTestList = ({
 
               selectedTypeId ===
                 type.id
-                ? "bg-background text-primary shadow-sm"
+                ? "bg-background text-primary"
                 : "text-muted-foreground hover:text-white"
             )}
           >
@@ -450,41 +444,11 @@ export const MockTestList = ({
         ))}
       </div>
 
-      {/* SUBTYPE CARDS */}
+      {/* SUB TYPES */}
 
       {selectedTypeId !== "all" &&
         mockSubTypes.length > 0 && (
-          <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
-            <button
-              onClick={() =>
-                setSelectedSubTypeId(
-                  "all"
-                )
-              }
-              className={cn(
-                "min-w-[150px] rounded-2xl p-4 text-left border transition-all",
-
-                selectedSubTypeId ===
-                  "all"
-                  ? "bg-primary text-white border-primary"
-                  : "bg-white/5 border-white/5 hover:border-primary/30"
-              )}
-            >
-              <div className="text-base font-bold">
-                All
-              </div>
-
-              <div className="text-xs opacity-70 mt-2">
-                {
-                  tests?.filter(
-                    (t) =>
-                      t.typeId ===
-                      selectedTypeId
-                  ).length
-                }{" "}
-                Tests
-              </div>
-            </button>
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
 
             {mockSubTypes.map(
               (sub: any) => (
@@ -496,19 +460,19 @@ export const MockTestList = ({
                     )
                   }
                   className={cn(
-                    "min-w-[170px] rounded-2xl p-4 text-left border transition-all",
+                    "min-w-[120px] max-w-[140px] rounded-xl p-3 text-left border transition-all shrink-0",
 
                     selectedSubTypeId ===
                       sub.id
-                      ? "bg-primary text-white border-primary"
+                      ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
                       : "bg-white/5 border-white/5 hover:border-primary/30"
                   )}
                 >
-                  <div className="text-base font-bold line-clamp-2">
+                  <div className="text-sm font-semibold leading-snug line-clamp-2">
                     {sub.title}
                   </div>
 
-                  <div className="text-xs opacity-70 mt-2">
+                  <div className="text-[10px] opacity-70 mt-1">
                     {
                       tests?.filter(
                         (t) =>
@@ -527,6 +491,7 @@ export const MockTestList = ({
       {/* MOCK LIST */}
 
       <div className="grid grid-cols-1 gap-3">
+
         {testsLoading ? (
           Array.from({
             length: 4,
@@ -539,11 +504,13 @@ export const MockTestList = ({
         ) : filteredTests.length ===
           0 ? (
           <div className="py-20 text-center border border-dashed border-white/10 rounded-2xl">
+
             <FileText className="w-10 h-10 text-muted-foreground opacity-10 mx-auto mb-3" />
 
             <p className="text-muted-foreground text-xs font-medium">
               No mocks available.
             </p>
+
           </div>
         ) : (
           filteredTests.map(
@@ -582,6 +549,7 @@ function TestListItem({
   user,
   router,
 }: any) {
+
   const {
     activeSession,
     latestAttempt,
@@ -601,27 +569,28 @@ function TestListItem({
 
   return (
     <div className="group bg-card border border-white/5 rounded-xl p-4 md:p-5 hover:border-primary/30 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+
       <div className="flex-1 space-y-3">
+
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 shrink-0">
-            {activeSession ? (
-              <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold animate-pulse">
-                Resume Available
-              </Badge>
-            ) : latestAttempt ? (
-              <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">
-                Attempted
-              </Badge>
-            ) : test.isFree ? (
-              <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">
-                Free
-              </Badge>
-            ) : (
-              <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold">
-                Live
-              </Badge>
-            )}
-          </div>
+
+          {activeSession ? (
+            <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold animate-pulse">
+              Resume
+            </Badge>
+          ) : latestAttempt ? (
+            <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">
+              Attempted
+            </Badge>
+          ) : test.isFree ? (
+            <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[8px] h-4 px-1.5 uppercase font-bold">
+              Free
+            </Badge>
+          ) : (
+            <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] h-4 px-1.5 uppercase font-bold">
+              Live
+            </Badge>
+          )}
 
           <h3 className="text-sm md:text-base font-bold leading-tight line-clamp-1">
             {test.title}
@@ -629,21 +598,18 @@ function TestListItem({
         </div>
 
         <div className="flex items-center gap-4 text-[10px] md:text-xs text-muted-foreground">
+
           <div className="flex items-center gap-1.5">
             <FileText className="w-3 h-3 text-primary/60" />
             <span>
-              {test.totalQuestions}{" "}
-              Questions
+              {test.totalQuestions} Questions
             </span>
           </div>
 
           <div className="flex items-center gap-1.5">
             <Clock className="w-3 h-3 text-accent/60" />
             <span>
-              {
-                test.durationMinutes
-              }{" "}
-              Mins
+              {test.durationMinutes} Mins
             </span>
           </div>
 
@@ -654,15 +620,17 @@ function TestListItem({
             </span>
           </div>
         </div>
+
       </div>
 
       <div className="flex items-center gap-2 pt-3 md:pt-0 border-t md:border-0 border-white/5">
+
         {!user ? (
           <Button
             onClick={
               handleLoginRedirect
             }
-            className="w-full md:w-auto bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2"
+            className="w-full md:w-auto bg-primary hover:bg-primary/90 text-white h-10 px-6 rounded-xl text-sm font-bold"
           >
             Login to Start
           </Button>
@@ -671,16 +639,16 @@ function TestListItem({
             href={baseUrl}
             className="w-full md:w-auto"
           >
-            <Button className="w-full bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2">
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white h-10 px-6 rounded-xl text-sm font-bold gap-2">
               <RefreshCw className="w-4 h-4" />
-              Resume Test
+              Resume
             </Button>
           </Link>
         ) : latestAttempt ? (
           <>
             <Button
               variant="outline"
-              className="w-full md:w-auto border-white/10 h-10 rounded-xl text-xs font-bold gap-2"
+              className="border-white/10 h-10 rounded-xl text-xs font-bold gap-2"
               onClick={
                 onReattempt
               }
@@ -691,9 +659,8 @@ function TestListItem({
 
             <Link
               href={`${baseUrl}/result/${latestAttempt.id}`}
-              className="w-full md:w-auto"
             >
-              <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white h-10 rounded-xl text-xs font-bold gap-2">
+              <Button className="bg-emerald-500 hover:bg-emerald-600 text-white h-10 rounded-xl text-xs font-bold gap-2">
                 <TrendingUp className="w-3.5 h-3.5" />
                 Result
               </Button>
@@ -704,7 +671,7 @@ function TestListItem({
             href={baseUrl}
             className="w-full md:w-auto"
           >
-            <Button className="w-full bg-primary hover:bg-primary/90 text-white h-10 md:h-11 px-8 rounded-xl text-sm font-bold gap-2">
+            <Button className="w-full bg-primary hover:bg-primary/90 text-white h-10 px-6 rounded-xl text-sm font-bold gap-2">
               <Play className="w-4 h-4 fill-current" />
               Start Test
             </Button>
@@ -718,11 +685,13 @@ function TestListItem({
 function TestLibrarySkeleton() {
   return (
     <div className="space-y-6">
+
       <div className="h-6 w-32 bg-white/5 rounded animate-pulse" />
 
       <div className="h-12 w-full bg-white/5 rounded-xl animate-pulse" />
 
       <div className="space-y-3">
+
         {Array.from({
           length: 4,
         }).map((_, i) => (
@@ -731,6 +700,7 @@ function TestLibrarySkeleton() {
             className="h-28 w-full bg-white/5 rounded-xl animate-pulse"
           />
         ))}
+
       </div>
     </div>
   );
