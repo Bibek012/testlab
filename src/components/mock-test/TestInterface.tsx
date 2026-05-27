@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -94,16 +93,55 @@ export const TestInterface = ({
 }: Props) => {
   const { user } = useUser();
   const db = useFirestore();
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [currentLang, setCurrentLang] = useState<'en' | 'hn'>(initialLang);
+  
+  // States with initial loading fallback from localStorage to prevent data loss on reload
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`test_progress_${testData.id}`);
+      if (saved) {
+        try {
+          return JSON.parse(saved).currentQuestionIndex || 0;
+        } catch (_) { return 0; }
+      }
+    }
+    return 0;
+  });
+
+  const [currentLang, setCurrentLang] = useState<'en' | 'hn'>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(`test_progress_${testData.id}`);
+      if (saved) {
+        try {
+          return JSON.parse(saved).userLanguage || initialLang;
+        } catch (_) { return initialLang; }
+      }
+    }
+    return initialLang;
+  });
+
   const [isPaused, setIsPaused] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
 
+  // Restore saved responses on mount before initializing timers
+  useEffect(() => {
+    const savedProgress = localStorage.getItem(`test_progress_${testData.id}`);
+    if (savedProgress) {
+      try {
+        const parsed = JSON.parse(savedProgress);
+        if (parsed.responses && Object.keys(parsed.responses).length > 0) {
+          setResponses(parsed.responses);
+        }
+      } catch (e) {
+        console.error("Error restoring responses from localStorage", e);
+      }
+    }
+  }, [testData.id, setResponses]);
+
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find(s => s.id === currentQuestion.sectionId);
 
-  // Timer Initialization
+  // Timer Initialization & Status Lock
   useEffect(() => {
     let savedEndTime = localStorage.getItem(`test_end_${testData.id}`);
     if (!savedEndTime) {
@@ -111,14 +149,21 @@ export const TestInterface = ({
       localStorage.setItem(`test_end_${testData.id}`, newEndTime.toString());
       savedEndTime = newEndTime.toString();
     }
+    // Flag to tell the instruction page that this test is actively running
+    localStorage.setItem(`test_active_${testData.id}`, "true");
     setTargetEndTime(parseInt(savedEndTime));
   }, [testData.id, testData.durationMinutes]);
 
-  // Response Autosave Logic (Firestore + LocalStorage)
+  // Response Autosave Logic (runs every 5 seconds for higher security)
   useEffect(() => {
-    if (!user || !db || isPaused || showSubmitConfirm) return;
+    if (isPaused || showSubmitConfirm) return;
 
     const saveInterval = setInterval(async () => {
+      const startTime = localStorage.getItem(`test_start_${testData.id}`) || Date.now().toString();
+      if (!localStorage.getItem(`test_start_${testData.id}`)) {
+        localStorage.setItem(`test_start_${testData.id}`, startTime);
+      }
+
       const sessionData = {
         mockId: testData.id,
         examId: testData.examId,
@@ -127,39 +172,45 @@ export const TestInterface = ({
         responses,
         userLanguage: currentLang,
         currentQuestionIndex,
-        startedAt: parseInt(localStorage.getItem(`test_start_${testData.id}`) || Date.now().toString()),
+        startedAt: parseInt(startTime),
         endTime: targetEndTime,
-        updatedAt: serverTimestamp()
       };
 
-      // 1. Fast Cache
+      // 1. Fast Cache (Essential for page reloads)
       localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(sessionData));
 
       // 2. Cloud Persistence
-      try {
-        await setDoc(doc(db, 'users', user.uid, 'activeMocks', testData.id), sessionData, { merge: true });
-      } catch (e) {
-        console.warn("Autosave cloud sync deferred", e);
+      if (user && db) {
+        try {
+          await setDoc(doc(db, 'users', user.uid, 'activeMocks', testData.id), {
+            ...sessionData,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        } catch (e) {
+          console.warn("Autosave cloud sync deferred", e);
+        }
       }
-    }, 15000);
+    }, 5000);
 
     return () => clearInterval(saveInterval);
   }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm, targetEndTime]);
 
-  // Individual Question Timing & Record Initialization
+  // Individual Question Timing
   useEffect(() => {
-    if (isPaused || showSubmitConfirm) return;
+    if (isPaused || showSubmitConfirm || !currentQuestion) return;
+    
     const qTimer = setInterval(() => {
       setResponses(prev => {
         const qId = currentQuestion.id;
-        // If first visit, initialize record as 'not-answered'
-        if (!prev[qId]) {
+        const existing = prev[qId];
+        
+        if (!existing) {
           return {
             ...prev,
             [qId]: {
               questionId: qId,
               selectedOptionId: null,
-              status: 'not-answered',
+              status: 'not-visited',
               timeSpentSeconds: 1
             }
           };
@@ -167,14 +218,14 @@ export const TestInterface = ({
         return {
           ...prev,
           [qId]: {
-            ...prev[qId],
-            timeSpentSeconds: (prev[qId]?.timeSpentSeconds || 0) + 1
+            ...existing,
+            timeSpentSeconds: (existing.timeSpentSeconds || 0) + 1
           }
         };
       });
     }, 1000);
     return () => clearInterval(qTimer);
-  }, [currentQuestion.id, isPaused, showSubmitConfirm, setResponses]);
+  }, [currentQuestion?.id, isPaused, showSubmitConfirm, setResponses]);
 
   const handleOptionSelect = useCallback((optionId: string | number) => {
     const numericOptionId = String(optionId);
@@ -190,19 +241,26 @@ export const TestInterface = ({
         }
       };
     });
-  }, [currentQuestion.id, setResponses]);
+  }, [currentQuestion?.id, setResponses]);
 
   const handleSaveAndNext = () => {
     setResponses(prev => {
       const qId = currentQuestion.id;
       const resp = prev[qId];
-      if (!resp) return prev;
-      const newStatus: QuestionStatus = resp.selectedOptionId ? 'answered' : 'not-answered';
+      // If user hasn't selected anything but clicks Save & Next, mark as not-answered explicitly
+      const currentStatus = resp?.selectedOptionId ? 'answered' : 'not-answered';
       return {
         ...prev,
-        [qId]: { ...resp, status: newStatus }
+        [qId]: {
+          ...resp,
+          questionId: qId,
+          selectedOptionId: resp?.selectedOptionId || null,
+          status: resp?.status === 'answered-marked-review' || resp?.status === 'marked-review' ? resp.status : currentStatus,
+          timeSpentSeconds: resp?.timeSpentSeconds || 0
+        }
       };
     });
+
     if (currentQuestionIndex < testData.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
@@ -214,15 +272,22 @@ export const TestInterface = ({
     setResponses(prev => {
       const qId = currentQuestion.id;
       const resp = prev[qId];
-      if (!resp) return prev;
-      const newStatus: QuestionStatus = resp.selectedOptionId ? 'answered-marked-review' : 'marked-review';
+      const newStatus: QuestionStatus = resp?.selectedOptionId ? 'answered-marked-review' : 'marked-review';
       return {
         ...prev,
-        [qId]: { ...resp, status: newStatus }
+        [qId]: { 
+          ...resp, 
+          questionId: qId,
+          selectedOptionId: resp?.selectedOptionId || null,
+          status: newStatus,
+          timeSpentSeconds: resp?.timeSpentSeconds || 0
+        }
       };
     });
     if (currentQuestionIndex < testData.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
+    } else {
+      setShowSubmitConfirm(true);
     }
   };
 
@@ -236,6 +301,15 @@ export const TestInterface = ({
     });
   };
 
+  const handleFinalSubmit = () => {
+    // Clean up local storage keys for this test upon submission
+    localStorage.removeItem(`test_progress_${testData.id}`);
+    localStorage.removeItem(`test_end_${testData.id}`);
+    localStorage.removeItem(`test_start_${testData.id}`);
+    localStorage.removeItem(`test_active_${testData.id}`);
+    onSubmit();
+  };
+
   const sectionProgress = useMemo(() => {
     const sectionQuestions = testData.questions.filter(q => q.sectionId === currentSection?.id);
     const answeredCount = sectionQuestions.filter(q => responses[q.id]?.selectedOptionId !== null).length;
@@ -245,21 +319,23 @@ export const TestInterface = ({
   const stats = useMemo(() => {
     const total = testData.questions.length;
     const attempted = Object.values(responses).filter(r => r.selectedOptionId !== null).length;
-    const marked = Object.values(responses).filter(r => r.status.includes('marked')).length;
+    const marked = Object.values(responses).filter(r => r.status?.includes('marked')).length;
     return { total, attempted, unattempted: total - attempted, marked };
   }, [testData.questions, responses]);
+
+  if (!currentQuestion) return null;
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
       <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-4 md:px-6 shrink-0 z-50">
         <div className="flex items-center gap-3 md:gap-6 overflow-hidden">
-          <div className="hidden sm:flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <Monitor className="w-5 h-5 text-primary" />
             <h1 className="font-headline font-bold text-xs tracking-tight truncate max-w-[120px] lg:max-w-none uppercase">
               {testData.examName}
             </h1>
           </div>
-          {targetEndTime && <TimerDisplay targetEndTime={targetEndTime} onTimeout={onSubmit} />}
+          {targetEndTime && <TimerDisplay targetEndTime={targetEndTime} onTimeout={handleFinalSubmit} />}
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
@@ -269,10 +345,10 @@ export const TestInterface = ({
 
           <Button
             onClick={() => setShowSubmitConfirm(true)}
-            className="hidden sm:flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-9 px-6 text-sm font-bold shadow-lg shadow-emerald-500/20 gap-2"
+            className="flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-9 px-4 md:px-6 text-sm font-bold shadow-lg shadow-emerald-500/20 gap-2"
           >
             <Send className="w-4 h-4" />
-            Submit Test
+            <span className="hidden sm:inline">Submit Test</span>
           </Button>
 
           <Sheet>
@@ -307,7 +383,7 @@ export const TestInterface = ({
               key={section.id}
               onClick={() => {
                 const firstQIndex = testData.questions.findIndex(q => q.sectionId === section.id);
-                setCurrentQuestionIndex(firstQIndex);
+                if (firstQIndex !== -1) setCurrentQuestionIndex(firstQIndex);
               }}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap border shrink-0",
@@ -332,7 +408,7 @@ export const TestInterface = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
               <div className="flex items-center gap-3">
                 <Badge className="bg-primary/20 text-primary border-primary/20 rounded-lg px-3 py-1 text-[10px] md:text-xs">
-                  Question {currentQuestionIndex + 1}
+                  Question {currentQuestionIndex + 1} of {testData.questions.length}
                 </Badge>
               </div>
               <div className="flex items-center justify-between sm:justify-end gap-4">
@@ -357,7 +433,7 @@ export const TestInterface = ({
             <div className="space-y-6 animate-in fade-in duration-300">
               <RichTextRenderer
                 content={(currentQuestion[`${currentLang}_html` as any] || currentQuestion[currentLang as any]) as string}
-                className="text-base md:text-xl font-medium leading-relaxed"
+                className="text-base md:text-xl font-medium leading-relaxed text-white"
               />
 
               {currentQuestion.dom_images?.map((img, i) => (
@@ -366,33 +442,36 @@ export const TestInterface = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-              {currentQuestion.options.map((option) => (
-                <button
-                  key={option.id}
-                  onClick={() => handleOptionSelect(option.id)}
-                  className={cn(
-                    "flex items-start gap-4 p-5 rounded-2xl border text-left transition-all group",
-                    responses[currentQuestion.id]?.selectedOptionId === String(option.id)
-                      ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]"
-                      : "bg-white/5 border-white/5 hover:border-white/20"
-                  )}
-                >
-                  <div className={cn(
-                    "w-6 h-6 rounded-full border flex items-center justify-center shrink-0 text-[10px] font-bold",
-                    responses[currentQuestion.id]?.selectedOptionId === String(option.id)
-                      ? "bg-primary border-primary text-white"
-                      : "border-white/20 text-muted-foreground"
-                  )}>
-                    {String(option.id).split('-').pop()?.toUpperCase() || ''}
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <RichTextRenderer
-                      content={(option[`${currentLang}_html` as any] || option[currentLang as any]) as string}
-                      className="text-sm md:text-base font-medium"
-                    />
-                  </div>
-                </button>
-              ))}
+              {currentQuestion.options.map((option) => {
+                const isSelected = responses[currentQuestion.id]?.selectedOptionId === String(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => handleOptionSelect(option.id)}
+                    className={cn(
+                      "flex items-start gap-4 p-5 rounded-2xl border text-left transition-all group",
+                      isSelected
+                        ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+                        : "bg-white/5 border-white/5 hover:border-white/20"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-6 h-6 rounded-full border flex items-center justify-center shrink-0 text-[10px] font-bold",
+                      isSelected
+                        ? "bg-primary border-primary text-white"
+                        : "border-white/20 text-muted-foreground"
+                    )}>
+                      {String(option.id).split('-').pop()?.toUpperCase() || ''}
+                    </div>
+                    <div className="flex-1 overflow-hidden text-white">
+                      <RichTextRenderer
+                        content={(option[`${currentLang}_html` as any] || option[currentLang as any]) as string}
+                        className="text-sm md:text-base font-medium"
+                      />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -407,7 +486,7 @@ export const TestInterface = ({
         </aside>
       </div>
 
-      <footer className="h-auto border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between px-4 md:px-6 py-4 md:py-0 shrink-0 z-50 gap-4">
+      <footer className="h-auto border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between px-4 md:px-6 py-4 md:py-4 shrink-0 z-50 gap-4">
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto hide-scrollbar">
           <Button
             variant="outline"
@@ -430,7 +509,7 @@ export const TestInterface = ({
             variant="outline"
             disabled={currentQuestionIndex === 0}
             onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
-            className="rounded-xl border-white/10 h-10 px-4"
+            className="rounded-xl border-white/10 h-10 px-4 text-white disabled:opacity-40"
           >
             <ChevronLeft className="w-5 h-5" />
           </Button>
@@ -444,10 +523,11 @@ export const TestInterface = ({
         </div>
       </footer>
 
+      {/* Submission Confirmation Dialog */}
       <Dialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
-        <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 text-white">
           <DialogHeader className="mb-6">
-            <DialogTitle className="font-headline text-2xl flex items-center gap-2">
+            <DialogTitle className="font-headline text-2xl flex items-center gap-2 text-white">
               <AlertCircle className="w-6 h-6 text-amber-400" />
               Final Submission Summary
             </DialogTitle>
@@ -470,7 +550,7 @@ export const TestInterface = ({
                   return (
                     <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center justify-between">
                       <span className="text-sm font-medium">{sec.title[currentLang]}</span>
-                      <div className="text-sm font-bold">{attempted} / {secQs.length} Attempted</div>
+                      <div className="text-sm font-bold text-emerald-400">{attempted} / {secQs.length} Attempted</div>
                     </div>
                   );
                 })}
@@ -479,22 +559,23 @@ export const TestInterface = ({
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-3 mt-8">
-            <Button variant="outline" onClick={() => setShowSubmitConfirm(false)} className="rounded-xl h-12 w-full sm:flex-1 border-white/10">Resume Test</Button>
-            <Button onClick={onSubmit} className="bg-emerald-500 hover:bg-emerald-600 rounded-xl h-12 w-full sm:flex-1 font-bold shadow-lg shadow-emerald-500/20">Final Submit</Button>
+            <Button variant="outline" onClick={() => setShowSubmitConfirm(false)} className="rounded-xl h-12 w-full sm:flex-1 border-white/10 text-white hover:bg-white/5">Resume Test</Button>
+            <Button onClick={handleFinalSubmit} className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-12 w-full sm:flex-1 font-bold shadow-lg shadow-emerald-500/20">Final Submit</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Pause Dialog */}
       <Dialog open={isPaused} onOpenChange={setIsPaused}>
-        <DialogContent className="glass border-white/10 sm:max-w-md w-[95%]">
+        <DialogContent className="glass border-white/10 sm:max-w-md w-[95%] bg-slate-900 text-white">
           <DialogHeader>
-            <DialogTitle className="text-center text-xl font-headline">Test Paused</DialogTitle>
+            <DialogTitle className="text-center text-xl font-headline text-white">Test Paused</DialogTitle>
           </DialogHeader>
           <div className="py-6 text-center text-muted-foreground text-sm">
-            Take a short break. Your progress is saved.
+            Take a short break. Your progress is safely saved.
           </div>
           <DialogFooter className="sm:justify-center">
-            <Button onClick={() => setIsPaused(false)} className="bg-primary rounded-xl w-full h-12 font-bold">Resume Test</Button>
+            <Button onClick={() => setIsPaused(false)} className="bg-primary text-white rounded-xl w-full h-12 font-bold">Resume Test</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
