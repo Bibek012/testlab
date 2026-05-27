@@ -7,7 +7,7 @@ import { useAuth, useUser } from "@/firebase";
 import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithRedirect,
+  signInWithPopup,
 } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,21 +57,37 @@ function SignInForm() {
   };
 
   const handleGoogleSignIn = async () => {
-    if (!auth) return;
-    setIsLoading(true);
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      await signInWithRedirect(auth, provider);
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Google Sign In Error",
-        description: error.message,
-      });
-      setIsLoading(false);
-    }
-  };
+  if (!auth) return;
+
+  setIsLoading(true);
+
+  try {
+    const provider = new GoogleAuthProvider();
+
+    provider.setCustomParameters({
+      prompt: "select_account",
+    });
+
+    await signInWithPopup(auth, provider);
+
+    toast({
+      title: "Welcome",
+      description: "Google sign in successful.",
+    });
+
+    router.replace(callbackUrl);
+  } catch (error: any) {
+    console.error(error);
+
+    toast({
+      variant: "destructive",
+      title: "Google Sign In Error",
+      description: error.message || "Failed to sign in with Google",
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   if (authLoading) {
     return (
