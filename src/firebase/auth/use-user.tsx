@@ -36,18 +36,20 @@ export function useUser() {
   useEffect(() => {
     if (!auth || !db) return;
 
-    // Redirect result handle karo (Google redirect ke baad)
+    // Redirect result pehle check karo
     getRedirectResult(auth)
       .then(async (result) => {
         if (result?.user) {
           await syncUserProfile(db, result.user);
+          setUser(result.user);
+          setLoading(false);
         }
       })
       .catch((err) => {
         console.error('getRedirectResult error:', err);
       });
 
-    // Main auth listener
+    // Main auth state listener
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
         setUser(null);
