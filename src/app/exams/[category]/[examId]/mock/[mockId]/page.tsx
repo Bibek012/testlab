@@ -483,6 +483,7 @@ export default function MockTestEnginePage() {
           responses={responses}
           setResponses={setResponses}
           onSubmit={handleSubmitTest}
+          hydrated={hydrated}
         />
       )}
     </main>
