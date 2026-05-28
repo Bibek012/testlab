@@ -117,7 +117,9 @@ export const MockTestList = ({
     [db, user?.uid, examId]
   );
   const { data: attempts, loading: attemptsLoading } =
-    useCollection<any>(attemptsQuery);
+  useCollection<any>(attemptsQuery);
+  
+  
 
   // ─────────────────────────────────────────────────────────
   // FETCH ACTIVE SESSIONS
@@ -133,6 +135,23 @@ export const MockTestList = ({
   );
   const { data: activeSessions, loading: activeSessionsLoading } =
     useCollection<any>(activeSessionsQuery);
+  const { data: activeSessions, loading: activeSessionsLoading } =
+  useCollection<any>(activeSessionsQuery);
+
+const [statusReady, setStatusReady] = useState(false);
+
+useEffect(() => {
+  if (!user) {
+    setStatusReady(true);
+    return;
+  }
+
+  if (!attemptsLoading && !activeSessionsLoading) {
+    setStatusReady(true);
+  }
+}, [user, attemptsLoading, activeSessionsLoading]);
+
+const statusLoading = !!user && !statusReady;
 
   // ─────────────────────────────────────────────────────────
   // SUB TYPES
@@ -247,20 +266,7 @@ export const MockTestList = ({
   // Isse yeh problem khatam hogi ki data aane se pehle
   // "Start Test" dikhta tha jabki "Resume Test" dikhna chahiye tha.
   // ─────────────────────────────────────────────────────────
-  const [statusReady, setStatusReady] = useState(false);
-
-useEffect(() => {
-  if (!user) {
-    setStatusReady(true);
-    return;
-  }
-
-  if (!attemptsLoading && !activeSessionsLoading) {
-    setStatusReady(true);
-  }
-}, [user, attemptsLoading, activeSessionsLoading]);
-
-const statusLoading = !!user && !statusReady;
+  
 
   return (
     <div className="w-full max-w-full overflow-x-hidden space-y-4 px-4 sm:px-6 raw-container">
