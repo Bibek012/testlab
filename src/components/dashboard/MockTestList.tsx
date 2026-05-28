@@ -12,6 +12,7 @@ import {
   Target,
   LayoutGrid,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -42,12 +43,9 @@ interface MockTestListProps {
 }
 
 const formatCompactNumber = (num: number) => {
-  if (num >= 1000000) {
+  if (num >= 1000000)
     return (num / 1000000).toFixed(1).replace(".0", "") + "M+";
-  }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(1).replace(".0", "") + "K+";
-  }
+  if (num >= 1000) return (num / 1000).toFixed(1).replace(".0", "") + "K+";
   return String(num);
 };
 
@@ -64,9 +62,9 @@ export const MockTestList = ({
   const [selectedSubTypeId, setSelectedSubTypeId] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // ======================
+  // ─────────────────────────────────────────────────────────
   // FETCH TYPES
-  // ======================
+  // ─────────────────────────────────────────────────────────
   const typesQuery = useMemoFirebase(
     () =>
       db
@@ -77,21 +75,18 @@ export const MockTestList = ({
         : null,
     [db, examId]
   );
+  const { data: mockTypes, loading: typesLoading } =
+    useCollection<any>(typesQuery);
 
-  const { data: mockTypes, loading: typesLoading } = useCollection<any>(typesQuery);
-
-  // ======================
-  // AUTO SELECT FIRST TYPE
-  // ======================
   useEffect(() => {
     if (mockTypes && mockTypes.length > 0 && !selectedTypeId) {
       setSelectedTypeId(mockTypes[0].id);
     }
   }, [mockTypes, selectedTypeId]);
 
-  // ======================
+  // ─────────────────────────────────────────────────────────
   // FETCH MOCKS
-  // ======================
+  // ─────────────────────────────────────────────────────────
   const mocksQuery = useMemoFirebase(
     () =>
       db
@@ -103,12 +98,13 @@ export const MockTestList = ({
         : null,
     [db, examId]
   );
-
   const { data: tests, loading: testsLoading } = useCollection<any>(mocksQuery);
 
-  // ======================
+  // ─────────────────────────────────────────────────────────
   // FETCH ATTEMPTS
-  // ======================
+  // BUG 2 FIX: loading state track karo — attempts load hone
+  // se pehle galat "Start Test" button dikhne se rokne ke liye
+  // ─────────────────────────────────────────────────────────
   const attemptsQuery = useMemoFirebase(
     () =>
       db && user
@@ -120,12 +116,14 @@ export const MockTestList = ({
         : null,
     [db, user?.uid, examId]
   );
+  const { data: attempts, loading: attemptsLoading } =
+    useCollection<any>(attemptsQuery);
 
-  const { data: attempts } = useCollection<any>(attemptsQuery);
-
-  // ======================
-  // FETCH ACTIVE MOCKS
-  // ======================
+  // ─────────────────────────────────────────────────────────
+  // FETCH ACTIVE SESSIONS
+  // BUG 2 FIX: loading state track karo — activeSession load
+  // hone se pehle "Resume Test" ki jagah "Start Test" dikhta tha
+  // ─────────────────────────────────────────────────────────
   const activeSessionsQuery = useMemoFirebase(
     () =>
       db && user
@@ -133,20 +131,16 @@ export const MockTestList = ({
         : null,
     [db, user?.uid]
   );
+  const { data: activeSessions, loading: activeSessionsLoading } =
+    useCollection<any>(activeSessionsQuery);
 
-  const { data: activeSessions } = useCollection<any>(activeSessionsQuery);
-
-  // ======================
+  // ─────────────────────────────────────────────────────────
   // SUB TYPES
-  // ======================
+  // ─────────────────────────────────────────────────────────
   const mockSubTypes = useMemo(() => {
-    if (!tests || !selectedTypeId) {
-      return [];
-    }
-
+    if (!tests || !selectedTypeId) return [];
     const typeTests = tests.filter((t) => t.typeId === selectedTypeId);
     const map = new Map();
-
     typeTests.forEach((test) => {
       if (test.subTypeId && !map.has(test.subTypeId)) {
         map.set(test.subTypeId, {
@@ -155,11 +149,9 @@ export const MockTestList = ({
         });
       }
     });
-
     return Array.from(map.values());
   }, [tests, selectedTypeId]);
 
-  // AUTO SELECT FIRST SUBTYPE
   useEffect(() => {
     if (mockSubTypes.length > 0) {
       setSelectedSubTypeId(mockSubTypes[0].id);
@@ -168,40 +160,40 @@ export const MockTestList = ({
     }
   }, [mockSubTypes]);
 
-  // ======================
+  // ─────────────────────────────────────────────────────────
   // FILTERED TESTS
-  // ======================
+  // ─────────────────────────────────────────────────────────
   const filteredTests = useMemo(() => {
     if (!tests) return [];
-
     return tests.filter((test) => {
       const matchesType = test.typeId === selectedTypeId;
-
       const matchesSubType =
         selectedSubTypeId === "all" || test.subTypeId === selectedSubTypeId;
-
       const matchesSearch = test.title
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
-
       return matchesType && matchesSubType && matchesSearch;
     });
   }, [tests, selectedTypeId, selectedSubTypeId, searchQuery]);
 
-  // ======================
+  // ─────────────────────────────────────────────────────────
   // STATUS MAP
-  // ======================
+  // BUG 2 FIX: session.mockId ke saath session.id (document ID)
+  // bhi fallback ke roop mein use karo — agar mockId field kisi
+  // wajah se missing ho toh document ID se mapping ho jaaye
+  // ─────────────────────────────────────────────────────────
   const mockStatusMap = useMemo(() => {
-    const map: Record<
-      string,
-      { latestAttempt?: any; activeSession?: any }
-    > = {};
+    const map: Record<string, { latestAttempt?: any; activeSession?: any }> =
+      {};
 
     activeSessions?.forEach((session) => {
-      map[session.mockId] = {
-        ...map[session.mockId],
-        activeSession: session,
-      };
+      // session.mockId = Firestore document mein saved field
+      // session.id     = document ID (jo hamesha mockId hai)
+      // Dono check karo taaki koi bhi miss na ho
+      const key = session.mockId || session.id;
+      if (key) {
+        map[key] = { ...map[key], activeSession: session };
+      }
     });
 
     attempts?.forEach((attempt) => {
@@ -216,21 +208,26 @@ export const MockTestList = ({
     return map;
   }, [attempts, activeSessions]);
 
-  // ======================
+  // ─────────────────────────────────────────────────────────
   // TOTALS
-  // ======================
+  // ─────────────────────────────────────────────────────────
   const totalMocks = tests?.length || 0;
   const totalQuestions =
     tests?.reduce((sum, mock) => sum + (mock.totalQuestions || 0), 0) || 0;
 
-  // ======================
+  // ─────────────────────────────────────────────────────────
   // REATTEMPT
-  // ======================
+  // BUG 1 FIX (bonus): Pehle handleReattempt mein
+  // test_active localStorage key clear nahi ho rahi thi!
+  // Isliye reattempt karne par bhi page directly 'test' step
+  // par aa jaata tha (poori attempt reset nahi hoti thi).
+  // ─────────────────────────────────────────────────────────
   const handleReattempt = async (mockId: string, baseUrl: string) => {
     if (!db || !user) return;
-
     try {
       await deleteDoc(doc(db, "users", user.uid, "activeMocks", mockId));
+      // FIXED: test_active bhi clear karo
+      localStorage.removeItem(`test_active_${mockId}`);
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
       localStorage.removeItem(`test_start_${mockId}`);
@@ -244,6 +241,14 @@ export const MockTestList = ({
     return <TestLibrarySkeleton />;
   }
 
+  // ─────────────────────────────────────────────────────────
+  // BUG 2 FIX: Jab tak attempts aur activeSessions dono load
+  // nahi ho jaate, buttons ki jagah spinner dikhao.
+  // Isse yeh problem khatam hogi ki data aane se pehle
+  // "Start Test" dikhta tha jabki "Resume Test" dikhna chahiye tha.
+  // ─────────────────────────────────────────────────────────
+  const statusLoading = !!user && (attemptsLoading || activeSessionsLoading);
+
   return (
     <div className="w-full max-w-full overflow-x-hidden space-y-4 px-4 sm:px-6 raw-container">
       {/* HEADER */}
@@ -253,7 +258,8 @@ export const MockTestList = ({
           Test Library
           {!testsLoading && (
             <span className="hidden sm:inline text-[10px] uppercase tracking-widest opacity-60 ml-2">
-              ({totalMocks} Series • {formatCompactNumber(totalQuestions)} Questions)
+              ({totalMocks} Series •{" "}
+              {formatCompactNumber(totalQuestions)} Questions)
             </span>
           )}
         </h2>
@@ -317,11 +323,14 @@ export const MockTestList = ({
         </div>
       )}
 
-      {/* MOCK LIST - FIXED WIDTH GRID */}
+      {/* MOCK LIST */}
       <div className="w-full grid grid-cols-1 gap-3">
         {testsLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-32 rounded-xl bg-white/5 animate-pulse w-full" />
+            <div
+              key={i}
+              className="h-32 rounded-xl bg-white/5 animate-pulse w-full"
+            />
           ))
         ) : filteredTests.length === 0 ? (
           <div className="w-full py-12 text-center border border-dashed border-white/10 rounded-xl">
@@ -333,10 +342,9 @@ export const MockTestList = ({
         ) : (
           filteredTests.map((test) => {
             const status = mockStatusMap[test.id] || {};
-
             const qCount = Number(test.totalQuestions) || 0;
-            const marksPerQ = Number(test.marksPerQuestion) || 1; 
-            const totalMarks = test.fullMarks || (qCount * marksPerQ);
+            const marksPerQ = Number(test.marksPerQuestion) || 1;
+            const totalMarks = test.fullMarks || qCount * marksPerQ;
 
             return (
               <div
@@ -366,12 +374,10 @@ export const MockTestList = ({
                       <FileText className="w-3.5 h-3.5 text-primary/70" />
                       <span>{test.totalQuestions} Questions</span>
                     </div>
-
                     <div className="flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5 text-cyan-400/70" />
                       <span>{test.durationMinutes} Mins</span>
                     </div>
-
                     <div className="flex items-center gap-1">
                       <Target className="w-3.5 h-3.5 text-emerald-400/70" />
                       <span>{totalMarks} Marks</span>
@@ -385,16 +391,28 @@ export const MockTestList = ({
                 {/* BUTTONS */}
                 <div className="flex gap-2 w-full">
                   {!user ? (
+                    // Login nahi hai
                     <Button
                       onClick={() => {
-                        const callback = encodeURIComponent(window.location.pathname);
+                        const callback = encodeURIComponent(
+                          window.location.pathname
+                        );
                         router.push(`/signin?callbackUrl=${callback}`);
                       }}
                       className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold"
                     >
                       Login to Start
                     </Button>
+                  ) : statusLoading ? (
+                    // ─────────────────────────────────────────────
+                    // BUG 2 FIX: Data load hone tak spinner dikhao
+                    // Isse "Start Test" galat nahi dikhega
+                    // ─────────────────────────────────────────────
+                    <div className="w-full h-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    </div>
                   ) : status.activeSession ? (
+                    // Active session hai — Resume dikhao
                     <Link
                       href={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
                       className="w-full"
@@ -405,6 +423,7 @@ export const MockTestList = ({
                       </Button>
                     </Link>
                   ) : status.latestAttempt ? (
+                    // Attempt complete hua — Reattempt + Result dikhao
                     <>
                       <Button
                         variant="outline"
@@ -418,7 +437,6 @@ export const MockTestList = ({
                       >
                         Reattempt
                       </Button>
-
                       <Link
                         href={`/exams/${categorySlug}/${examSlug}/mock/${test.id}/result/${status.latestAttempt?.id}`}
                         className="flex-1"
@@ -429,6 +447,7 @@ export const MockTestList = ({
                       </Link>
                     </>
                   ) : (
+                    // Koi bhi session/attempt nahi — Start dikhao
                     <Link
                       href={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
                       className="w-full"
@@ -456,7 +475,10 @@ function TestLibrarySkeleton() {
       <div className="h-10 w-full bg-white/5 rounded-xl animate-pulse" />
       <div className="space-y-2 w-full">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-32 w-full bg-white/5 rounded-xl animate-pulse" />
+          <div
+            key={i}
+            className="h-32 w-full bg-white/5 rounded-xl animate-pulse"
+          />
         ))}
       </div>
     </div>
