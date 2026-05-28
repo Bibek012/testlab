@@ -296,8 +296,9 @@ export default function MockTestEnginePage() {
           );
         }
 
-        setHasResumeData(false);
-        setStep("test");
+        setHydrated(true);
+setHasResumeData(false);
+setStep("test");
       }
     } catch (e) {
       console.error("Resume handoff failed", e);
@@ -316,7 +317,8 @@ export default function MockTestEnginePage() {
     localStorage.removeItem(`test_end_${mockId}`);
     localStorage.removeItem(`test_start_${mockId}`);
     setResponses({});
-    setHasResumeData(false);
+setHydrated(true);
+setHasResumeData(false);
   };
 
   // ─────────────────────────────────────────────────────────
@@ -327,6 +329,7 @@ export default function MockTestEnginePage() {
     const now = Date.now();
     setStartTime(now);
     localStorage.setItem(`test_start_${mockId}`, now.toString());
+    localStorage.setItem(`test_active_${mockId}`, "true");
     setStep("test");
   };
 
