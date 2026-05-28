@@ -49,6 +49,24 @@ const formatCompactNumber = (num: number) => {
   return String(num);
 };
 
+// SKELETON COMPONENT (Upar shift kiya taaki initialization se pehle reference error na aaye)
+function TestLibrarySkeleton() {
+  return (
+    <div className="space-y-4 px-4 w-full">
+      <div className="h-5 w-24 bg-white/5 rounded animate-pulse" />
+      <div className="h-10 w-full bg-white/5 rounded-xl animate-pulse" />
+      <div className="space-y-2 w-full">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-32 w-full bg-white/5 rounded-xl animate-pulse"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export const MockTestList = ({
   examId,
   examSlug,
@@ -102,8 +120,6 @@ export const MockTestList = ({
 
   // ─────────────────────────────────────────────────────────
   // FETCH ATTEMPTS
-  // BUG 2 FIX: loading state track karo — attempts load hone
-  // se pehle galat "Start Test" button dikhne se rokne ke liye
   // ─────────────────────────────────────────────────────────
   const attemptsQuery = useMemoFirebase(
     () =>
@@ -117,14 +133,10 @@ export const MockTestList = ({
     [db, user?.uid, examId]
   );
   const { data: attempts, loading: attemptsLoading } =
-  useCollection<any>(attemptsQuery);
-  
-  
+    useCollection<any>(attemptsQuery);
 
   // ─────────────────────────────────────────────────────────
-  // FETCH ACTIVE SESSIONS
-  // BUG 2 FIX: loading state track karo — activeSession load
-  // hone se pehle "Resume Test" ki jagah "Start Test" dikhta tha
+  // FETCH ACTIVE SESSIONS (FIXED: Duplicate declarations removed)
   // ─────────────────────────────────────────────────────────
   const activeSessionsQuery = useMemoFirebase(
     () =>
@@ -133,25 +145,24 @@ export const MockTestList = ({
         : null,
     [db, user?.uid]
   );
+  
   const { data: activeSessions, loading: activeSessionsLoading } =
     useCollection<any>(activeSessionsQuery);
-  const { data: activeSessions, loading: activeSessionsLoading } =
-  useCollection<any>(activeSessionsQuery);
 
-const [statusReady, setStatusReady] = useState(false);
+  const [statusReady, setStatusReady] = useState(false);
 
-useEffect(() => {
-  if (!user) {
-    setStatusReady(true);
-    return;
-  }
+  useEffect(() => {
+    if (!user) {
+      setStatusReady(true);
+      return;
+    }
 
-  if (!attemptsLoading && !activeSessionsLoading) {
-    setStatusReady(true);
-  }
-}, [user, attemptsLoading, activeSessionsLoading]);
+    if (!attemptsLoading && !activeSessionsLoading) {
+      setStatusReady(true);
+    }
+  }, [user, attemptsLoading, activeSessionsLoading]);
 
-const statusLoading = !!user && !statusReady;
+  const statusLoading = !!user && !statusReady;
 
   // ─────────────────────────────────────────────────────────
   // SUB TYPES
@@ -197,18 +208,12 @@ const statusLoading = !!user && !statusReady;
 
   // ─────────────────────────────────────────────────────────
   // STATUS MAP
-  // BUG 2 FIX: session.mockId ke saath session.id (document ID)
-  // bhi fallback ke roop mein use karo — agar mockId field kisi
-  // wajah se missing ho toh document ID se mapping ho jaaye
   // ─────────────────────────────────────────────────────────
   const mockStatusMap = useMemo(() => {
     const map: Record<string, { latestAttempt?: any; activeSession?: any }> =
       {};
 
     activeSessions?.forEach((session) => {
-      // session.mockId = Firestore document mein saved field
-      // session.id     = document ID (jo hamesha mockId hai)
-      // Dono check karo taaki koi bhi miss na ho
       const key = session.mockId || session.id;
       if (key) {
         map[key] = { ...map[key], activeSession: session };
@@ -236,16 +241,11 @@ const statusLoading = !!user && !statusReady;
 
   // ─────────────────────────────────────────────────────────
   // REATTEMPT
-  // BUG 1 FIX (bonus): Pehle handleReattempt mein
-  // test_active localStorage key clear nahi ho rahi thi!
-  // Isliye reattempt karne par bhi page directly 'test' step
-  // par aa jaata tha (poori attempt reset nahi hoti thi).
   // ─────────────────────────────────────────────────────────
   const handleReattempt = async (mockId: string, baseUrl: string) => {
     if (!db || !user) return;
     try {
       await deleteDoc(doc(db, "users", user.uid, "activeMocks", mockId));
-      // FIXED: test_active bhi clear karo
       localStorage.removeItem(`test_active_${mockId}`);
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
@@ -259,14 +259,6 @@ const statusLoading = !!user && !statusReady;
   if (typesLoading && !mockTypes) {
     return <TestLibrarySkeleton />;
   }
-
-  // ─────────────────────────────────────────────────────────
-  // BUG 2 FIX: Jab tak attempts aur activeSessions dono load
-  // nahi ho jaate, buttons ki jagah spinner dikhao.
-  // Isse yeh problem khatam hogi ki data aane se pehle
-  // "Start Test" dikhta tha jabki "Resume Test" dikhna chahiye tha.
-  // ─────────────────────────────────────────────────────────
-  
 
   return (
     <div className="w-full max-w-full overflow-x-hidden space-y-4 px-4 sm:px-6 raw-container">
@@ -410,7 +402,6 @@ const statusLoading = !!user && !statusReady;
                 {/* BUTTONS */}
                 <div className="flex gap-2 w-full">
                   {!user ? (
-                    // Login nahi hai
                     <Button
                       onClick={() => {
                         const callback = encodeURIComponent(
@@ -423,15 +414,10 @@ const statusLoading = !!user && !statusReady;
                       Login to Start
                     </Button>
                   ) : statusLoading ? (
-                    // ─────────────────────────────────────────────
-                    // BUG 2 FIX: Data load hone tak spinner dikhao
-                    // Isse "Start Test" galat nahi dikhega
-                    // ─────────────────────────────────────────────
                     <div className="w-full h-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center">
                       <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     </div>
                   ) : status.activeSession ? (
-                    // Active session hai — Resume dikhao
                     <Link
                       href={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
                       className="w-full"
@@ -442,7 +428,6 @@ const statusLoading = !!user && !statusReady;
                       </Button>
                     </Link>
                   ) : status.latestAttempt ? (
-                    // Attempt complete hua — Reattempt + Result dikhao
                     <>
                       <Button
                         variant="outline"
@@ -466,7 +451,6 @@ const statusLoading = !!user && !statusReady;
                       </Link>
                     </>
                   ) : (
-                    // Koi bhi session/attempt nahi — Start dikhao
                     <Link
                       href={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
                       className="w-full"
@@ -486,20 +470,3 @@ const statusLoading = !!user && !statusReady;
     </div>
   );
 };
-
-function TestLibrarySkeleton() {
-  return (
-    <div className="space-y-4 px-4 w-full">
-      <div className="h-5 w-24 bg-white/5 rounded animate-pulse" />
-      <div className="h-10 w-full bg-white/5 rounded-xl animate-pulse" />
-      <div className="space-y-2 w-full">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-32 w-full bg-white/5 rounded-xl animate-pulse"
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
