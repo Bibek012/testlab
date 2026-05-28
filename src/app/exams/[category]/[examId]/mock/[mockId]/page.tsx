@@ -2,19 +2,24 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import {
-  MockTestData,
-  UserResponse
-} from "@/lib/mock-test-engine-data";
+import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
 import { InstructionsStep } from "@/components/mock-test/InstructionsStep";
 import { ConfigStep } from "@/components/mock-test/ConfigStep";
 import { TestInterface } from "@/components/mock-test/TestInterface";
 import { Loader2, AlertCircle } from "lucide-react";
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase";
-import { doc, setDoc, deleteDoc, serverTimestamp, collection, query, getDoc } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  deleteDoc,
+  serverTimestamp,
+  collection,
+  query,
+  getDoc,
+} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 
-export type TestStep = 'instructions' | 'config' | 'test';
+export type TestStep = "instructions" | "config" | "test";
 
 export default function MockTestEnginePage() {
   const params = useParams();
@@ -26,48 +31,76 @@ export default function MockTestEnginePage() {
   const { user, loading: userLoading } = useUser();
   const db = useFirestore();
 
-  const [step, setStep] = useState<TestStep>(() => {
-    if (typeof window !== "undefined") {
-      const isActive = localStorage.getItem(`test_active_${mockId}`);
-      const savedProgress = localStorage.getItem(`test_progress_${mockId}`);
-      if (isActive && savedProgress) return 'test';
-    }
-    return 'instructions';
-  });
+  // ─────────────────────────────────────────────────────────
+  // BUG 1 FIX:
+  // Pehle yahan lazy initializer tha jo mockId use karta tha:
+  //   useState<TestStep>(() => {
+  //     const isActive = localStorage.getItem(`test_active_${mockId}`)
+  //     ...
+  //   })
+  //
+  // Problem: Next.js mein useParams() se aane wala mockId
+  // component ke FIRST render par kabhi kabhi "undefined" hota hai
+  // (SSR + hydration timing). Lazy initializer sirf ONCE chalta hai
+  // — isliye jab mockId undefined hota hai, "test_active_undefined"
+  // check hota hai jo null return karta hai, aur step hamesha
+  // 'instructions' pe aa jaata tha.
+  //
+  // FIX: step ko 'instructions' se initialize karo, aur ek alag
+  // useEffect mein — jab mockId actually available ho — localStorage
+  // check karke sahi step set karo.
+  // ─────────────────────────────────────────────────────────
+  const [step, setStep] = useState<TestStep>("instructions");
+  const [stepInitialized, setStepInitialized] = useState(false);
 
-  const [userLanguage, setUserLanguage] = useState<'en' | 'hn'>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(`test_progress_${mockId}`);
-      if (saved) {
-        try { return JSON.parse(saved).userLanguage || 'en'; }
-        catch (_) { return 'en'; }
+  useEffect(() => {
+    if (!mockId || stepInitialized) return;
+    const isActive = localStorage.getItem(`test_active_${mockId}`);
+    const savedProgress = localStorage.getItem(`test_progress_${mockId}`);
+    if (isActive && savedProgress) {
+      setStep("test");
+    }
+    setStepInitialized(true);
+  }, [mockId, stepInitialized]);
+
+  // ─────────────────────────────────────────────────────────
+  // BUG 1 FIX (continued):
+  // responses, startTime, aur userLanguage bhi pehle lazy
+  // initializer se load ho rahe the — wahi problem thi: mockId
+  // undefined hone par localStorage se kuch nahi milta tha.
+  //
+  // Ab inhe bhi separate useEffect mein mockId milne ke baad load
+  // karo.
+  // ─────────────────────────────────────────────────────────
+  const [responses, setResponses] = useState<Record<string, UserResponse>>({});
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [userLanguage, setUserLanguage] = useState<"en" | "hn">("en");
+
+  useEffect(() => {
+    if (!mockId) return;
+    const saved = localStorage.getItem(`test_progress_${mockId}`);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed.responses && Object.keys(parsed.responses).length > 0) {
+        setResponses(parsed.responses);
       }
-    }
-    return 'en';
-  });
+      if (parsed.userLanguage) setUserLanguage(parsed.userLanguage);
+    } catch (_) {}
+  }, [mockId]);
 
-  const [responses, setResponses] = useState<Record<string, UserResponse>>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(`test_progress_${mockId}`);
-      if (saved) {
-        try { return JSON.parse(saved).responses || {}; }
-        catch (_) { return {}; }
-      }
-    }
-    return {};
-  });
+  useEffect(() => {
+    if (!mockId) return;
+    const saved = localStorage.getItem(`test_start_${mockId}`);
+    if (saved) setStartTime(parseInt(saved));
+  }, [mockId]);
 
-  const [startTime, setStartTime] = useState<number | null>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(`test_start_${mockId}`);
-      if (saved) return parseInt(saved);
-    }
-    return null;
-  });
-
+  // Resume state
   const [hasResumeData, setHasResumeData] = useState(false);
 
-  // Authentication Protection
+  // ─────────────────────────────────────────────────────────
+  // AUTH PROTECTION
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!userLoading && !user) {
       const callback = encodeURIComponent(window.location.pathname);
@@ -75,16 +108,34 @@ export default function MockTestEnginePage() {
     }
   }, [user, userLoading, router]);
 
-  // FETCH CORE DATA
-  const mockRef = useMemoFirebase(() => db ? doc(db, "mockTests", mockId) : null, [db, mockId]);
+  // ─────────────────────────────────────────────────────────
+  // FIRESTORE DATA FETCH
+  // ─────────────────────────────────────────────────────────
+  const mockRef = useMemoFirebase(
+    () => (db ? doc(db, "mockTests", mockId) : null),
+    [db, mockId]
+  );
   const { data: mockMetadata, loading: mockLoading } = useDoc<any>(mockRef);
 
-  const sectionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "sections")) : null, [db, mockId]);
-  const { data: sections, loading: sectionsLoading } = useCollection<any>(sectionsQuery);
+  const sectionsQuery = useMemoFirebase(
+    () =>
+      db ? query(collection(db, "mockTests", mockId, "sections")) : null,
+    [db, mockId]
+  );
+  const { data: sections, loading: sectionsLoading } =
+    useCollection<any>(sectionsQuery);
 
-  const questionsQuery = useMemoFirebase(() => db ? query(collection(db, "mockTests", mockId, "questions")) : null, [db, mockId]);
-  const { data: questions, loading: questionsLoading } = useCollection<any>(questionsQuery);
+  const questionsQuery = useMemoFirebase(
+    () =>
+      db ? query(collection(db, "mockTests", mockId, "questions")) : null,
+    [db, mockId]
+  );
+  const { data: questions, loading: questionsLoading } =
+    useCollection<any>(questionsQuery);
 
+  // ─────────────────────────────────────────────────────────
+  // testData ASSEMBLE
+  // ─────────────────────────────────────────────────────────
   const testData = useMemo<MockTestData | null>(() => {
     if (!mockMetadata || !questions) return null;
 
@@ -96,25 +147,36 @@ export default function MockTestEnginePage() {
       durationMinutes: mockMetadata.durationMinutes || 90,
       marksPerQuestion: Number(mockMetadata.marksPerQuestion || 1),
       negativeMarks: Number(mockMetadata.negativeMarks || 0),
-      fullMarks: Number(mockMetadata.fullMarks) || (questions.length * Number(mockMetadata.marksPerQuestion || 1)),
+      fullMarks:
+        Number(mockMetadata.fullMarks) ||
+        questions.length * Number(mockMetadata.marksPerQuestion || 1),
 
-      sections: (sections && sections.length > 0) ? (sections || []).map((section: any, index: number) => ({
-        ...section,
-        id: section.id || `section_${index}`,
-        title: section.title || { en: `Section ${index + 1}`, hn: `अनुभाग ${index + 1}` },
-        questionCount: section.questionCount || 0,
-      })) : [{ id: 'default', title: { en: 'General', hn: 'सामान्य' } }],
+      sections:
+        sections && sections.length > 0
+          ? sections.map((section: any, index: number) => ({
+              ...section,
+              id: section.id || `section_${index}`,
+              title: section.title || {
+                en: `Section ${index + 1}`,
+                hn: `अनुभाग ${index + 1}`,
+              },
+              questionCount: section.questionCount || 0,
+            }))
+          : [{ id: "default", title: { en: "General", hn: "सामान्य" } }],
 
-      questions: (questions || [])
+      questions: questions
         .filter((q: any) => q && (q.question || q.en || q.en_html))
         .map((q: any, index: number) => {
           const base = q.question || q;
           const sol = q.explanation || q.solution || { en: "", hn: "" };
 
-          const options = (Array.isArray(q.options) ? q.options : []).map((opt: any, optIndex: number) => ({
-            ...opt,
-            id: opt.id !== undefined ? String(opt.id) : String(optIndex + 1),
-          }));
+          const options = (Array.isArray(q.options) ? q.options : []).map(
+            (opt: any, optIndex: number) => ({
+              ...opt,
+              id:
+                opt.id !== undefined ? String(opt.id) : String(optIndex + 1),
+            })
+          );
 
           return {
             ...q,
@@ -126,89 +188,149 @@ export default function MockTestEnginePage() {
             order: q.order || index + 1,
             sectionId: q.sectionId || "default",
             options,
-            correctOptionId: String(q.correctOptionId || q.raw_answer_id || q.answer || ""),
+            correctOptionId: String(
+              q.correctOptionId || q.raw_answer_id || q.answer || ""
+            ),
             marks: {
               positive: Number(mockMetadata?.marksPerQuestion ?? 1),
               negative: Number(mockMetadata?.negativeMarks ?? 0.33),
               skip: Number(q?.marks?.skip ?? 0),
             },
-            explanation: typeof sol === 'object' ? {
-              en: sol.en || "",
-              hn: sol.hn || "",
-              en_html: sol.en_html || "",
-              hn_html: sol.hn_html || ""
-            } : { en: sol, hn: "" },
+            explanation:
+              typeof sol === "object"
+                ? {
+                    en: sol.en || "",
+                    hn: sol.hn || "",
+                    en_html: sol.en_html || "",
+                    hn_html: sol.hn_html || "",
+                  }
+                : { en: sol, hn: "" },
           };
-        }).sort((a, b) => (a.order || 0) - (b.order || 0))
+        })
+        .sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
     };
   }, [mockMetadata, sections, questions]);
 
-  const dashboardUrl = `/exams/${category || 'all'}/${examId}`;
+  const dashboardUrl = `/exams/${category || "all"}/${examId}`;
 
-  // CHECK CLOUD RESUME DATA — only show if NOT already resuming from localStorage
+  // ─────────────────────────────────────────────────────────
+  // BUG 2 FIX (Cloud Resume Check):
+  // Jab user tab close karta hai ya computer band ho jaata hai,
+  // localStorage clear ho sakta hai (dusre device/browser pe
+  // nahi hoga), lekin Firestore mein activeMocks document rehta hai.
+  //
+  // Pehle: agar localStorage mein test_active tha, toh
+  // checkResume() hi nahi chalta tha — toh cloud se resume ka
+  // pata nahi chalta tha.
+  //
+  // Ab: hamesha Firestore check karo. Agar wahan session mila
+  // aur localStorage mein nahi hai, toh resume modal dikhao.
+  // Agar localStorage mein bhi hai, toh directly 'test' step pe
+  // le jao (useEffect #1 se handle ho raha hai).
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user || !db || !mockId) return;
-    const isAlreadyActive = localStorage.getItem(`test_active_${mockId}`);
-    if (isAlreadyActive) return; // localStorage se already resume ho raha hai, cloud popup mat dikhao
 
-    const checkResume = async () => {
+    const checkCloudResume = async () => {
       try {
-        const sessionRef = doc(db, 'users', user.uid, 'activeMocks', mockId);
+        const sessionRef = doc(db, "users", user.uid, "activeMocks", mockId);
         const snap = await getDoc(sessionRef);
-        if (snap.exists()) {
-          setHasResumeData(true);
-        }
-      } catch (e) { }
+        if (!snap.exists()) return;
+
+        // Agar localStorage mein already active hai, toh modal mat dikhao
+        // step useEffect pehle se 'test' set kar chuka hoga
+        const isLocallyActive = localStorage.getItem(`test_active_${mockId}`);
+        if (isLocallyActive) return;
+
+        // Cloud mein session hai par local mein nahi — resume modal dikhao
+        setHasResumeData(true);
+      } catch (e) {}
     };
-    checkResume();
+
+    checkCloudResume();
   }, [user, db, mockId]);
 
+  // ─────────────────────────────────────────────────────────
+  // RESUME: Cloud session se data leke test shuru karo
+  // ─────────────────────────────────────────────────────────
   const handleResume = async () => {
     if (!user || !db || !testData) return;
     try {
-      const sessionRef = doc(db, 'users', user.uid, 'activeMocks', mockId);
+      const sessionRef = doc(db, "users", user.uid, "activeMocks", mockId);
       const snap = await getDoc(sessionRef);
 
       if (snap.exists()) {
         const data = snap.data();
+
+        // Cloud se responses, language, aur timer restore karo
         setResponses(data.responses || {});
-        setUserLanguage(data.userLanguage || 'en');
+        setUserLanguage(data.userLanguage || "en");
         setStartTime(data.startedAt || Date.now());
 
-        // localStorage bhi sync karo taaki TestInterface timer sahi mile
+        // localStorage bhi sync karo taaki TestInterface sahi kaam kare
         localStorage.setItem(`test_active_${mockId}`, "true");
         localStorage.setItem(`test_progress_${mockId}`, JSON.stringify(data));
         if (data.endTime) {
-          localStorage.setItem(`test_end_${mockId}`, data.endTime.toString());
+          localStorage.setItem(
+            `test_end_${mockId}`,
+            data.endTime.toString()
+          );
         }
         if (data.startedAt) {
-          localStorage.setItem(`test_start_${mockId}`, data.startedAt.toString());
+          localStorage.setItem(
+            `test_start_${mockId}`,
+            data.startedAt.toString()
+          );
         }
 
         setHasResumeData(false);
-        setStep('test');
+        setStep("test");
       }
     } catch (e) {
       console.error("Resume handoff failed", e);
     }
   };
 
-  const handleStartTest = (lang: 'en' | 'hn') => {
+  // Fresh start — cloud session delete karo aur naya test shuru karo
+  const handleFreshStart = async () => {
+    if (user && db) {
+      try {
+        await deleteDoc(doc(db, "users", user.uid, "activeMocks", mockId));
+      } catch (_) {}
+    }
+    localStorage.removeItem(`test_active_${mockId}`);
+    localStorage.removeItem(`test_progress_${mockId}`);
+    localStorage.removeItem(`test_end_${mockId}`);
+    localStorage.removeItem(`test_start_${mockId}`);
+    setResponses({});
+    setHasResumeData(false);
+  };
+
+  // ─────────────────────────────────────────────────────────
+  // START TEST
+  // ─────────────────────────────────────────────────────────
+  const handleStartTest = (lang: "en" | "hn") => {
     setUserLanguage(lang);
     const now = Date.now();
     setStartTime(now);
     localStorage.setItem(`test_start_${mockId}`, now.toString());
-    setStep('test');
+    setStep("test");
   };
 
+  // ─────────────────────────────────────────────────────────
+  // SUBMIT TEST
+  // ─────────────────────────────────────────────────────────
   const handleSubmitTest = async () => {
     if (!user || !db || !testData) return;
 
     const attemptId = crypto.randomUUID();
     const endTime = Date.now();
 
-    let correct = 0, incorrect = 0, totalScore = 0;
-    testData.questions.forEach(q => {
+    let correct = 0,
+      incorrect = 0,
+      totalScore = 0;
+
+    testData.questions.forEach((q) => {
       const resp = responses[q.id];
       if (!resp?.selectedOptionId) return;
 
@@ -239,16 +361,21 @@ export default function MockTestEnginePage() {
         unattempted: testData.questions.length - attempted,
         accuracy,
         percentage: (totalScore / testData.fullMarks) * 100,
-        timeTakenSeconds: Math.floor((endTime - (startTime || endTime)) / 1000),
+        timeTakenSeconds: Math.floor(
+          (endTime - (startTime || endTime)) / 1000
+        ),
         completedAt: serverTimestamp(),
         userLanguage,
-        rawResponses: responses
+        rawResponses: responses,
       };
 
-      await setDoc(doc(db, "users", user.uid, "mockAttempts", attemptId), attemptData);
-      await deleteDoc(doc(db, 'users', user.uid, 'activeMocks', mockId));
+      await setDoc(
+        doc(db, "users", user.uid, "mockAttempts", attemptId),
+        attemptData
+      );
+      await deleteDoc(doc(db, "users", user.uid, "activeMocks", mockId));
 
-      // Sab localStorage keys clear karo
+      // Sab localStorage keys saaf karo
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
       localStorage.removeItem(`test_start_${mockId}`);
@@ -260,11 +387,16 @@ export default function MockTestEnginePage() {
     }
   };
 
+  // ─────────────────────────────────────────────────────────
+  // LOADING STATE
+  // ─────────────────────────────────────────────────────────
   if (userLoading || mockLoading || sectionsLoading || questionsLoading) {
     return (
       <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">Warming Engine...</p>
+        <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">
+          Warming Engine...
+        </p>
       </div>
     );
   }
@@ -276,32 +408,62 @@ export default function MockTestEnginePage() {
       <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4 p-6 text-center">
         <AlertCircle className="w-12 h-12 text-destructive" />
         <h2 className="text-2xl font-bold">Module Data Missing</h2>
-        <Button onClick={() => router.push(dashboardUrl)}>Return to Dashboard</Button>
+        <Button onClick={() => router.push(dashboardUrl)}>
+          Return to Dashboard
+        </Button>
       </div>
     );
   }
 
   return (
     <main className="min-h-screen bg-[#0b1120] text-foreground">
-      {hasResumeData && step === 'instructions' && (
+      {/* ─────────────────────────────────────────────────────
+          BUG 2 FIX: Resume Modal
+          Jab cloud mein session milta hai par local mein nahi,
+          yeh modal dikhta hai. User choose kar sakta hai:
+          Resume (cloud se data restore) ya Start Fresh (naya test).
+          ───────────────────────────────────────────────────── */}
+      {hasResumeData && step === "instructions" && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="glass border-white/10 p-8 rounded-[2.5rem] max-w-md w-full text-center space-y-6">
             <Loader2 className="w-12 h-12 text-primary mx-auto animate-pulse" />
-            <h2 className="text-2xl font-headline font-bold">Resume Previous?</h2>
+            <h2 className="text-2xl font-headline font-bold">
+              Resume Previous Attempt?
+            </h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              We found an active session for <strong>{testData.title}</strong>. Continue where you left off?
+              We found an active session for{" "}
+              <strong>{testData.title}</strong>. Continue where you left off?
             </p>
             <div className="flex flex-col gap-3">
-              <Button onClick={handleResume} className="w-full h-12 bg-primary">Resume Attempt</Button>
-              <Button onClick={() => setHasResumeData(false)} variant="outline" className="w-full h-12">Start Fresh</Button>
+              <Button
+                onClick={handleResume}
+                className="w-full h-12 bg-primary"
+              >
+                Resume Attempt
+              </Button>
+              <Button
+                onClick={handleFreshStart}
+                variant="outline"
+                className="w-full h-12"
+              >
+                Start Fresh
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {step === 'instructions' && <InstructionsStep testData={testData} onNext={() => setStep('config')} />}
-      {step === 'config' && <ConfigStep testData={testData} onBack={() => setStep('instructions')} onStart={handleStartTest} />}
-      {step === 'test' && (
+      {step === "instructions" && (
+        <InstructionsStep testData={testData} onNext={() => setStep("config")} />
+      )}
+      {step === "config" && (
+        <ConfigStep
+          testData={testData}
+          onBack={() => setStep("instructions")}
+          onStart={handleStartTest}
+        />
+      )}
+      {step === "test" && (
         <TestInterface
           testData={testData}
           userLanguage={userLanguage}
