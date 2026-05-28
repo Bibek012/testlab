@@ -54,6 +54,7 @@ interface Props {
     React.SetStateAction<Record<string, UserResponse>>
   >;
   onSubmit: () => void;
+  hydrated: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -125,6 +126,7 @@ export const TestInterface = ({
   responses,
   setResponses,
   onSubmit,
+  hydrated,
 }: Props) => {
   const { user } = useUser();
   const db = useFirestore();
@@ -156,7 +158,12 @@ export const TestInterface = ({
       const saved = localStorage.getItem(`test_progress_${testData.id}`);
       if (saved) {
         try {
-          return JSON.parse(saved).currentQuestionIndex || 0;
+          const parsed = JSON.parse(saved);
+
+return Math.min(
+  parsed.currentQuestionIndex || 0,
+  testData.questions.length - 1
+);
         } catch (_) {
           return 0;
         }
@@ -212,6 +219,7 @@ export const TestInterface = ({
   // AUTOSAVE — har 5 second mein localStorage + Firestore mein
   // ─────────────────────────────────────────────────────────
   useEffect(() => {
+     if (!hydrated) return;
     if (isPaused || showSubmitConfirm) return;
 
     const saveInterval = setInterval(async () => {
@@ -414,12 +422,8 @@ export const TestInterface = ({
   // FINAL SUBMIT — localStorage saaf karo, parent ko call karo
   // ─────────────────────────────────────────────────────────
   const handleFinalSubmit = () => {
-    localStorage.removeItem(`test_progress_${testData.id}`);
-    localStorage.removeItem(`test_end_${testData.id}`);
-    localStorage.removeItem(`test_start_${testData.id}`);
-    localStorage.removeItem(`test_active_${testData.id}`);
-    onSubmit();
-  };
+  onSubmit();
+};
 
   // ─────────────────────────────────────────────────────────
   // COMPUTED VALUES
