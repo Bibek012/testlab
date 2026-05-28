@@ -53,15 +53,7 @@ export default function MockTestEnginePage() {
   const [step, setStep] = useState<TestStep>("instructions");
   const [stepInitialized, setStepInitialized] = useState(false);
 
-  useEffect(() => {
-    if (!mockId || stepInitialized) return;
-    const isActive = localStorage.getItem(`test_active_${mockId}`);
-    const savedProgress = localStorage.getItem(`test_progress_${mockId}`);
-    if (isActive && savedProgress) {
-      setStep("test");
-    }
-    setStepInitialized(true);
-  }, [mockId, stepInitialized]);
+ 
 
   // ─────────────────────────────────────────────────────────
   // BUG 1 FIX (continued):
@@ -75,25 +67,46 @@ export default function MockTestEnginePage() {
   const [responses, setResponses] = useState<Record<string, UserResponse>>({});
   const [startTime, setStartTime] = useState<number | null>(null);
   const [userLanguage, setUserLanguage] = useState<"en" | "hn">("en");
+  const [hydrated, setHydrated] = useState(false);
+
+  
 
   useEffect(() => {
-    if (!mockId) return;
-    const saved = localStorage.getItem(`test_progress_${mockId}`);
-    if (!saved) return;
+  if (!mockId || stepInitialized) return;
+
+  const isActive = localStorage.getItem(`test_active_${mockId}`);
+  const savedProgress = localStorage.getItem(`test_progress_${mockId}`);
+  const savedStart = localStorage.getItem(`test_start_${mockId}`);
+
+  if (isActive && savedProgress) {
     try {
-      const parsed = JSON.parse(saved);
-      if (parsed.responses && Object.keys(parsed.responses).length > 0) {
+      const parsed = JSON.parse(savedProgress);
+
+      if (parsed.responses) {
         setResponses(parsed.responses);
       }
-      if (parsed.userLanguage) setUserLanguage(parsed.userLanguage);
-    } catch (_) {}
-  }, [mockId]);
 
-  useEffect(() => {
-    if (!mockId) return;
-    const saved = localStorage.getItem(`test_start_${mockId}`);
-    if (saved) setStartTime(parseInt(saved));
-  }, [mockId]);
+      if (parsed.userLanguage) {
+        setUserLanguage(parsed.userLanguage);
+      }
+
+      if (savedStart) {
+        setStartTime(parseInt(savedStart));
+      }
+
+      setHydrated(true);
+      setStep("test");
+
+    } catch (e) {
+      console.error("Restore failed", e);
+      setHydrated(true);
+    }
+  } else {
+    setHydrated(true);
+  }
+
+  setStepInitialized(true);
+}, [mockId, stepInitialized]);
 
   // Resume state
   const [hasResumeData, setHasResumeData] = useState(false);
