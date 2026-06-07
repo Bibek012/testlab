@@ -1,100 +1,140 @@
 "use client";
 
 import React from "react";
-import { MockTestData } from "@/lib/mock-test-engine-data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronRight, Info, AlertTriangle, Clock, HelpCircle, Target } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle2, FileText, Info } from "lucide-react";
 
-interface Props {
-  testData: MockTestData;
-  onNext: () => void;
+interface InstructionsStepProps {
+  testData: any;
+  userLanguage: "en" | "hn";
+  onStart: () => void;
 }
 
-export const InstructionsStep = ({ testData, onNext }: Props) => {
-  const totalMarks =
-    Number(testData.fullMarks) ||
-    ((testData.questions?.length || 0) * Number(testData.marksPerQuestion || 1));
+export default function InstructionsStep({ testData, userLanguage, onStart }: InstructionsStepProps) {
+  const isHindi = userLanguage === "hn";
+
+  const totalQuestions = testData?.questions?.length || testData?.totalQuestions || 0;
+  const durationMinutes = testData?.durationMinutes || 0;
+  const marksPerQuestion = testData?.marksPerQuestion || 1;
+  
+  // Dynamic Score Fallback
+  const totalMarks = testData?.fullMarks || testData?.totalScore || (totalQuestions * marksPerQuestion);
+
+  // FIX: Negative Marks Layout Glitch Standardizer (Jaise 0.333 -> 0.33)
+  const rawNegative = testData?.negativeMarks;
+  const formattedNegativeMarks = React.useMemo(() => {
+    const num = Number(rawNegative);
+    if (isNaN(num) || num === 0) return "0";
+    
+    // Agar value 0.3 ya 0.33 ke zone me h, toh strictly standard 0.33 dikhao
+    if (num > 0.3 && num < 0.34) return "0.33";
+    
+    // Baaki values ke liye maximum 2 decimal places tak clean standard formatting numeric round lagao
+    return parseFloat(num.toFixed(2)).toString();
+  }, [rawNegative]);
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
-      <Card className="glass border-white/10 shadow-2xl overflow-hidden rounded-[2rem]">
-        <CardHeader className="bg-white/5 border-b border-white/5 p-8">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-xs font-bold text-accent uppercase tracking-widest mb-1">General Instructions</p>
-              <CardTitle className="text-3xl font-headline font-bold">{testData.title}</CardTitle>
-            </div>
-            <div className="bg-primary/20 p-3 rounded-2xl">
-              <Info className="w-6 h-6 text-primary" />
-            </div>
-          </div>
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 animate-in fade-in duration-300">
+      {/* TEST TITLE CORNER HEADER */}
+      <div className="text-center md:text-left space-y-2">
+        <h1 className="text-2xl md:text-3xl font-headline font-bold text-white">
+          {testData?.title || (isHindi ? "परीक्षा निर्देश" : "Exam Instructions")}
+        </h1>
+        <p className="text-muted-foreground text-sm uppercase tracking-wider font-semibold text-primary">
+          {testData?.examName}
+        </p>
+      </div>
+
+      {/* QUICK STATS METRICS GRID */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard 
+          icon={<FileText className="w-5 h-5 text-primary" />} 
+          label={isHindi ? "कुल प्रश्न" : "Total Questions"} 
+          value={totalQuestions} 
+        />
+        <StatCard 
+          icon={<Clock className="w-5 h-5 text-cyan-400" />} 
+          label={isHindi ? "कुल समय" : "Total Duration"} 
+          value={`${durationMinutes} ${isHindi ? "मिनट" : "Mins"}`} 
+        />
+        <StatCard 
+          icon={<CheckCircle2 className="w-5 h-5 text-emerald-400" />} 
+          label={isHindi ? "सकारात्मक अंक" : "Correct Mark"} 
+          value={`+${marksPerQuestion}`} 
+        />
+        <StatCard 
+          icon={<AlertCircle className="w-5 h-5 text-rose-400" />} 
+          label={isHindi ? "नकारात्मक अंक" : "Negative Mark"} 
+          value={`-${formattedNegativeMarks}`} // Fixed Output here
+        />
+      </div>
+
+      {/* DETAILED INSTRUCTIONS VECTOR CARD */}
+      <Card className="glass border-white/10 bg-slate-900/50">
+        <CardHeader className="border-b border-white/5 py-4">
+          <CardTitle className="text-base font-bold flex items-center gap-2 text-white">
+            <Info className="w-4 h-4 text-accent" />
+            {isHindi ? "कृपया निर्देशों को ध्यान से पढ़ें" : "Please Read the Instructions Carefully"}
+          </CardTitle>
         </CardHeader>
-
-        <CardContent className="p-8 space-y-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Questions</p>
-              <div className="flex items-center gap-2 text-xl font-bold">
-                <HelpCircle className="w-5 h-5 text-primary" />
-                {testData.questions.length}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Duration</p>
-              <div className="flex items-center gap-2 text-xl font-bold">
-                <Clock className="w-5 h-5 text-accent" />
-                {testData.durationMinutes}m
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Max Marks</p>
-              <div className="flex items-center gap-2 text-xl font-bold">
-                <Target className="w-5 h-5 text-emerald-400" />
-                {totalMarks}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Negative Marks</p>
-              <div className="flex items-center gap-2 text-xl font-bold text-rose-400">
-                <AlertTriangle className="w-5 h-5" />
-                {testData.negativeMarks || 0.33}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4 text-sm text-muted-foreground leading-relaxed h-[300px] overflow-y-auto pr-4 scrollbar-thin">
-            <h4 className="text-foreground font-bold text-base">Please read the following instructions carefully:</h4>
-            <ul className="space-y-3 list-disc pl-5">
-              <li>The clock will be set at the server. The countdown timer at the top right corner of screen will display the remaining time available for you to complete the examination.</li>
-              <li>When the timer reaches zero, the examination will end by itself. You will not be required to end or submit your examination.</li>
-              <li>The Question Palette displayed on the right side of screen will show the status of each question using one of the following symbols:</li>
-              <li className="list-none flex items-center gap-3">
-                <div className="w-5 h-5 rounded bg-slate-700"></div> You have not visited the question yet.
-              </li>
-              <li className="list-none flex items-center gap-3">
-                <div className="w-5 h-5 rounded bg-rose-500"></div> You have not answered the question.
-              </li>
-              <li className="list-none flex items-center gap-3">
-                <div className="w-5 h-5 rounded bg-emerald-500"></div> You have answered the question.
-              </li>
-              <li className="list-none flex items-center gap-3">
-                <div className="w-5 h-5 rounded bg-indigo-500"></div> You have NOT answered the question, but have marked the question for review.
-              </li>
-              <li>Navigating to a Question: To answer a question, you can click on the question number in the Question Palette at the right of your screen.</li>
-              <li>Marks per correct answer: +{testData.marksPerQuestion || 1}, Incorrect answer penalty: -{testData.negativeMarks || 0.33}.</li>
-              <li>Do not refresh the page or close the window during the test. Your progress is autosaved, but accidental reloads may disrupt your concentration.</li>
+        <CardContent className="p-6 text-sm text-slate-300 space-y-4 leading-relaxed">
+          {isHindi ? (
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>इस परीक्षा में कुल <span className="text-white font-bold">{totalQuestions}</span> बहुविकल्पीय प्रश्न शामिल हैं, जिसके लिए अधिकतम अंक <span className="text-accent font-bold">{totalMarks}</span> निर्धारित हैं।</li>
+              <li>परीक्षा को पूरा करने के लिए आपको <span className="text-white font-bold">{durationMinutes} मिनट</span> का समय दिया जाएगा।</li>
+              <li>प्रत्येक सही उत्तर के लिए आपको <span className="text-emerald-400 font-bold">+{marksPerQuestion}</span> अंक दिए जाएंगे।</li>
+              <li>प्रत्येक गलत उत्तर के लिए <span className="text-rose-400 font-bold">-{formattedNegativeMarks}</span> अंक की कटौती की जाएगी। बिना प्रयास किए गए प्रश्नों के लिए कोई अंक नहीं काटा जाएगा।</li>
+              <li>आप परीक्षा के दौरान किसी भी समय प्रश्न पैलेट का उपयोग करके किसी भी प्रश्न पर नेविगेट कर सकते हैं।</li>
+              <li>सुनिश्चित करें कि समय समाप्त होने से पहले आप अपने सभी उत्तरों की जांच कर लें। समय समाप्त होने पर टेस्ट ऑटो-सबमिट हो जाएगा।</li>
             </ul>
-          </div>
-
-          <div className="pt-8 border-t border-white/5 flex justify-end">
-            <Button size="lg" onClick={onNext} className="bg-primary hover:bg-primary/90 text-white rounded-xl px-10 h-14 font-bold gap-2">
-              Next Step
-              <ChevronRight className="w-5 h-5" />
-            </Button>
-          </div>
+          ) : (
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>This test contains a total of <span className="text-white font-bold">{totalQuestions}</span> multiple-choice questions with maximum evaluation marks of <span className="text-accent font-bold">{totalMarks}</span>.</li>
+              <li>The clock/timer is set for a strict sequence window of <span className="text-white font-bold">{durationMinutes} minutes</span>.</li>
+              <li>Every correct response updates your metric scoreboard by <span className="text-emerald-400 font-bold">+{marksPerQuestion}</span> mark.</li>
+              <li>Every wrong attempt will deduct <span className="text-rose-400 font-bold">-{formattedNegativeMarks}</span> from your accumulated score. No marks are penalized for unattempted packets.</li>
+              <li>You can easily jump onto any indexing node directly from the right-side dashboard navigation palette panel frame.</li>
+              <li>Ensure steady network coverage. The assessment portal auto-commits everything synchronously once the allocation window countdown hits zero.</li>
+            </ul>
+          )}
         </CardContent>
       </Card>
+
+      {/* START EXAM TRAILING BUTTON TRAY */}
+      <div className="flex justify-center pt-2">
+        <Button 
+          onClick={onStart} 
+          className="w-full sm:w-64 bg-primary hover:bg-primary/90 text-white font-bold h-12 rounded-xl text-sm gap-2 shadow-xl shadow-primary/20 transition-all duration-200 group"
+        >
+          {isHindi ? "परीक्षा शुरू करें" : "Start Mock Exam"}
+          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+        </Button>
+      </div>
     </div>
   );
-};
+}
+
+// Internal reusable lightweight stat vector components
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+  return (
+    <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
+      <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">{label}</p>
+        <p className="text-sm font-black text-white mt-0.5 font-mono">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+// Lightweight inner icon placeholder frame adjustments for complete standard nextjs hydration compatibility
+function Clock({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+    </svg>
+  );
+}
