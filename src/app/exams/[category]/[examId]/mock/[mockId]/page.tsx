@@ -31,85 +31,75 @@ export default function MockTestEnginePage() {
   const { user, loading: userLoading } = useUser();
   const db = useFirestore();
 
-  // ─────────────────────────────────────────────────────────
-  // BUG 1 FIX:
-  // Pehle yahan lazy initializer tha jo mockId use karta tha:
-  //   useState<TestStep>(() => {
-  //     const isActive = localStorage.getItem(`test_active_${mockId}`)
-  //     ...
-  //   })
-  //
-  // Problem: Next.js mein useParams() se aane wala mockId
-  // component ke FIRST render par kabhi kabhi "undefined" hota hai
-  // (SSR + hydration timing). Lazy initializer sirf ONCE chalta hai
-  // — isliye jab mockId undefined hota hai, "test_active_undefined"
-  // check hota hai jo null return karta hai, aur step hamesha
-  // 'instructions' pe aa jaata tha.
-  //
-  // FIX: step ko 'instructions' se initialize karo, aur ek alag
-  // useEffect mein — jab mockId actually available ho — localStorage
-  // check karke sahi step set karo.
-  // ─────────────────────────────────────────────────────────
+  // ─── STEP STATE ───
+  // "instructions" se start karo. Separate useEffect mein mockId milne ke baad
+  // localStorage check karke sahi step set karo.
   const [step, setStep] = useState<TestStep>("instructions");
   const [stepInitialized, setStepInitialized] = useState(false);
 
- 
-
-  // ─────────────────────────────────────────────────────────
-  // BUG 1 FIX (continued):
-  // responses, startTime, aur userLanguage bhi pehle lazy
-  // initializer se load ho rahe the — wahi problem thi: mockId
-  // undefined hone par localStorage se kuch nahi milta tha.
-  //
-  // Ab inhe bhi separate useEffect mein mockId milne ke baad load
-  // karo.
-  // ─────────────────────────────────────────────────────────
+  // ─── SESSION DATA STATE ───
   const [responses, setResponses] = useState<Record<string, UserResponse>>({});
   const [startTime, setStartTime] = useState<number | null>(null);
   const [userLanguage, setUserLanguage] = useState<"en" | "hn">("en");
+  
+  // hydrated = true means localStorage restore ho chuka hai.
+  // TestInterface ko tab hi render karo jab hydrated = true ho.
   const [hydrated, setHydrated] = useState(false);
 
-  
+  // Resume modal ke liye — cloud mein session mila par local mein nahi
+  const [hasResumeData, setHasResumeData] = useState(false);
 
+  // ─────────────────────────────────────────────────────────
+  // STEP 1: localStorage se restore karo
+  // mockId aur stepInitialized dono dependency mein hain.
+  // Pehli baar chalega jab mockId available ho.
+  // ─────────────────────────────────────────────────────────
   useEffect(() => {
-  if (!mockId || stepInitialized) return;
+    if (!mockId || stepInitialized) return;
 
-  const isActive = localStorage.getItem(`test_active_${mockId}`);
-  const savedProgress = localStorage.getItem(`test_progress_${mockId}`);
-  const savedStart = localStorage.getItem(`test_start_${mockId}`);
+    const isActive = localStorage.getItem(`test_active_${mockId}`);
+    const savedProgress = localStorage.getItem(`test_progress_${mockId}`);
+    const savedStart = localStorage.getItem(`test_start_${mockId}`);
 
-  if (isActive && savedProgress) {
-    try {
-      const parsed = JSON.parse(savedProgress);
+    if (isActive === "true" && savedProgress) {
+      try {
+        const parsed = JSON.parse(savedProgress);
 
-      if (parsed.responses) {
-        setResponses(parsed.responses);
+        // Responses restore karo — yeh critical hai
+        if (parsed.responses && Object.keys(parsed.responses).length > 0) {
+          setResponses(parsed.responses);
+        }
+
+        // Language restore karo
+        if (parsed.userLanguage) {
+          setUserLanguage(parsed.userLanguage);
+        }
+
+        // Start time restore karo
+        if (savedStart) {
+          setStartTime(parseInt(savedStart, 10));
+        } else if (parsed.startedAt) {
+          setStartTime(parsed.startedAt);
+        }
+
+        setHydrated(true);
+        // Sab state set ho jaane ke baad step change karo
+        setStep("test");
+      } catch (e) {
+        console.error("localStorage restore failed:", e);
+        // Restore fail hui — clean state se start karo
+        localStorage.removeItem(`test_active_${mockId}`);
+        localStorage.removeItem(`test_progress_${mockId}`);
+        localStorage.removeItem(`test_end_${mockId}`);
+        localStorage.removeItem(`test_start_${mockId}`);
+        setHydrated(true);
       }
-
-      if (parsed.userLanguage) {
-        setUserLanguage(parsed.userLanguage);
-      }
-
-      if (savedStart) {
-        setStartTime(parseInt(savedStart));
-      }
-
-      setHydrated(true);
-      setStep("test");
-
-    } catch (e) {
-      console.error("Restore failed", e);
+    } else {
       setHydrated(true);
     }
-  } else {
-    setHydrated(true);
-  }
 
-  setStepInitialized(true);
-}, [mockId, stepInitialized]);
-
-  // Resume state
-  const [hasResumeData, setHasResumeData] = useState(false);
+    setStepInitialized(true);
+  }, [mockId, stepInitialized]);
 
   // ─────────────────────────────────────────────────────────
   // AUTH PROTECTION
@@ -227,41 +217,33 @@ export default function MockTestEnginePage() {
   const dashboardUrl = `/exams/${category || "all"}/${examId}`;
 
   // ─────────────────────────────────────────────────────────
-  // BUG 2 FIX (Cloud Resume Check):
-  // Jab user tab close karta hai ya computer band ho jaata hai,
-  // localStorage clear ho sakta hai (dusre device/browser pe
-  // nahi hoga), lekin Firestore mein activeMocks document rehta hai.
-  //
-  // Pehle: agar localStorage mein test_active tha, toh
-  // checkResume() hi nahi chalta tha — toh cloud se resume ka
-  // pata nahi chalta tha.
-  //
-  // Ab: hamesha Firestore check karo. Agar wahan session mila
-  // aur localStorage mein nahi hai, toh resume modal dikhao.
-  // Agar localStorage mein bhi hai, toh directly 'test' step pe
-  // le jao (useEffect #1 se handle ho raha hai).
+  // STEP 2: Cloud resume check
+  // Sirf tab check karo jab localStorage mein active session nahi hai.
+  // Agar cloud mein session hai aur local mein nahi — resume modal dikhao.
   // ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user || !db || !mockId) return;
+    if (!user || !db || !mockId || !stepInitialized) return;
+
+    // Agar localStorage mein already active hai, cloud check skip karo
+    // (localStorage effect already step="test" set kar chuka hoga)
+    const isLocallyActive = localStorage.getItem(`test_active_${mockId}`);
+    if (isLocallyActive === "true") return;
 
     const checkCloudResume = async () => {
       try {
         const sessionRef = doc(db, "users", user.uid, "activeMocks", mockId);
         const snap = await getDoc(sessionRef);
-        if (!snap.exists()) return;
-
-        // Agar localStorage mein already active hai, toh modal mat dikhao
-        // step useEffect pehle se 'test' set kar chuka hoga
-        const isLocallyActive = localStorage.getItem(`test_active_${mockId}`);
-        if (isLocallyActive) return;
-
-        // Cloud mein session hai par local mein nahi — resume modal dikhao
-        setHasResumeData(true);
-      } catch (e) {}
+        if (snap.exists()) {
+          // Cloud mein session hai par local mein nahi — resume modal dikhao
+          setHasResumeData(true);
+        }
+      } catch (e) {
+        console.warn("Cloud resume check failed:", e);
+      }
     };
 
     checkCloudResume();
-  }, [user, db, mockId]);
+  }, [user, db, mockId, stepInitialized]);
 
   // ─────────────────────────────────────────────────────────
   // RESUME: Cloud session se data leke test shuru karo
@@ -275,19 +257,14 @@ export default function MockTestEnginePage() {
       if (snap.exists()) {
         const data = snap.data();
 
-        // Cloud se responses, language, aur timer restore karo
-        setResponses(data.responses || {});
-        setUserLanguage(data.userLanguage || "en");
-        setStartTime(data.startedAt || Date.now());
-
-        // localStorage bhi sync karo taaki TestInterface sahi kaam kare
+        // localStorage sync karo
         localStorage.setItem(`test_active_${mockId}`, "true");
-        localStorage.setItem(`test_progress_${mockId}`, JSON.stringify(data));
+        localStorage.setItem(
+          `test_progress_${mockId}`,
+          JSON.stringify(data)
+        );
         if (data.endTime) {
-          localStorage.setItem(
-            `test_end_${mockId}`,
-            data.endTime.toString()
-          );
+          localStorage.setItem(`test_end_${mockId}`, data.endTime.toString());
         }
         if (data.startedAt) {
           localStorage.setItem(
@@ -296,16 +273,20 @@ export default function MockTestEnginePage() {
           );
         }
 
+        // State restore karo
+        setResponses(data.responses || {});
+        setUserLanguage(data.userLanguage || "en");
+        setStartTime(data.startedAt || Date.now());
         setHydrated(true);
-setHasResumeData(false);
-setStep("test");
+        setHasResumeData(false);
+        setStep("test");
       }
     } catch (e) {
-      console.error("Resume handoff failed", e);
+      console.error("Resume handoff failed:", e);
     }
   };
 
-  // Fresh start — cloud session delete karo aur naya test shuru karo
+  // Fresh start
   const handleFreshStart = async () => {
     if (user && db) {
       try {
@@ -317,8 +298,9 @@ setStep("test");
     localStorage.removeItem(`test_end_${mockId}`);
     localStorage.removeItem(`test_start_${mockId}`);
     setResponses({});
-setHydrated(true);
-setHasResumeData(false);
+    setHydrated(true);
+    setHasResumeData(false);
+    // step "instructions" pe hi rehega
   };
 
   // ─────────────────────────────────────────────────────────
@@ -330,6 +312,7 @@ setHasResumeData(false);
     setStartTime(now);
     localStorage.setItem(`test_start_${mockId}`, now.toString());
     localStorage.setItem(`test_active_${mockId}`, "true");
+    setHydrated(true);
     setStep("test");
   };
 
@@ -391,7 +374,6 @@ setHasResumeData(false);
       );
       await deleteDoc(doc(db, "users", user.uid, "activeMocks", mockId));
 
-      // Sab localStorage keys saaf karo
       localStorage.removeItem(`test_progress_${mockId}`);
       localStorage.removeItem(`test_end_${mockId}`);
       localStorage.removeItem(`test_start_${mockId}`);
@@ -399,7 +381,7 @@ setHasResumeData(false);
 
       router.push(`${dashboardUrl}/mock/${mockId}/result/${attemptId}`);
     } catch (e) {
-      console.error("Critical submission failure", e);
+      console.error("Critical submission failure:", e);
     }
   };
 
@@ -433,12 +415,9 @@ setHasResumeData(false);
 
   return (
     <main className="min-h-screen bg-[#0b1120] text-foreground">
-      {/* ─────────────────────────────────────────────────────
-          BUG 2 FIX: Resume Modal
-          Jab cloud mein session milta hai par local mein nahi,
-          yeh modal dikhta hai. User choose kar sakta hai:
-          Resume (cloud se data restore) ya Start Fresh (naya test).
-          ───────────────────────────────────────────────────── */}
+      {/* ─── RESUME MODAL ───
+          Cloud mein session mila par local mein nahi.
+          User choose kare: Resume ya Start Fresh. */}
       {hasResumeData && step === "instructions" && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="glass border-white/10 p-8 rounded-[2.5rem] max-w-md w-full text-center space-y-6">
@@ -479,7 +458,9 @@ setHasResumeData(false);
           onStart={handleStartTest}
         />
       )}
-      {step === "test" && (
+      {/* TestInterface sirf tab render karo jab hydrated = true ho
+          taaki responses aur currentQuestionIndex sahi se load ho jayein */}
+      {step === "test" && hydrated && (
         <TestInterface
           testData={testData}
           userLanguage={userLanguage}
@@ -488,6 +469,15 @@ setHasResumeData(false);
           onSubmit={handleSubmitTest}
           hydrated={hydrated}
         />
+      )}
+      {/* Hydration loading state */}
+      {step === "test" && !hydrated && (
+        <div className="min-h-screen bg-[#0b1120] flex flex-col items-center justify-center gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
+          <p className="text-muted-foreground animate-pulse text-xs font-bold uppercase tracking-widest">
+            Restoring Session...
+          </p>
+        </div>
       )}
     </main>
   );
