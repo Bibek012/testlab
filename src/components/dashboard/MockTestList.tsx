@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -49,7 +49,6 @@ const formatCompactNumber = (num: number) => {
   return String(num);
 };
 
-// SKELETON COMPONENT (Upar shift kiya taaki initialization se pehle reference error na aaye)
 function TestLibrarySkeleton() {
   return (
     <div className="space-y-4 px-4 w-full">
@@ -136,7 +135,9 @@ export const MockTestList = ({
     useCollection<any>(attemptsQuery);
 
   // ─────────────────────────────────────────────────────────
-  // FETCH ACTIVE SESSIONS (FIXED: Duplicate declarations removed)
+  // FETCH ACTIVE SESSIONS
+  // activeMocks subcollection mein Firestore session documents hain.
+  // Yeh tab bhi rehte hain jab user tab close kar de.
   // ─────────────────────────────────────────────────────────
   const activeSessionsQuery = useMemoFirebase(
     () =>
@@ -145,10 +146,13 @@ export const MockTestList = ({
         : null,
     [db, user?.uid]
   );
-  
   const { data: activeSessions, loading: activeSessionsLoading } =
     useCollection<any>(activeSessionsQuery);
 
+  // ─────────────────────────────────────────────────────────
+  // STATUS READY — jab tak attempts aur activeSessions load na ho
+  // tab tak loader dikhao (sirf logged-in users ke liye)
+  // ─────────────────────────────────────────────────────────
   const [statusReady, setStatusReady] = useState(false);
 
   useEffect(() => {
@@ -156,7 +160,6 @@ export const MockTestList = ({
       setStatusReady(true);
       return;
     }
-
     if (!attemptsLoading && !activeSessionsLoading) {
       setStatusReady(true);
     }
@@ -208,20 +211,31 @@ export const MockTestList = ({
 
   // ─────────────────────────────────────────────────────────
   // STATUS MAP
+  // Key insight: activeMocks document ID = mockId hai.
+  // session.id = Firestore document ID = mockId
+  // session.mockId = explicitly saved field = mockId
+  // Dono same hain. Reliable key: session.id (document ID)
+  //
+  // FIX: Pehle activeSession check karo, phir latestAttempt.
+  // Agar activeSession hai toh "Resume" dikhao chahe attempt bhi ho.
   // ─────────────────────────────────────────────────────────
   const mockStatusMap = useMemo(() => {
     const map: Record<string, { latestAttempt?: any; activeSession?: any }> =
       {};
 
+    // Active sessions — document ID hi mockId hai
     activeSessions?.forEach((session) => {
-      const key = session.mockId || session.id;
+      // session.id = Firestore doc ID = mockId
+      // session.mockId = explicitly stored field = same value
+      const key = session.id; // document ID use karo — always reliable
       if (key) {
         map[key] = { ...map[key], activeSession: session };
       }
     });
 
+    // Latest attempts — har mock ke liye sirf pehla (latest) attempt
     attempts?.forEach((attempt) => {
-      if (!map[attempt.mockId]?.latestAttempt) {
+      if (attempt.mockId && !map[attempt.mockId]?.latestAttempt) {
         map[attempt.mockId] = {
           ...map[attempt.mockId],
           latestAttempt: attempt,
@@ -240,20 +254,20 @@ export const MockTestList = ({
     tests?.reduce((sum, mock) => sum + (mock.totalQuestions || 0), 0) || 0;
 
   // ─────────────────────────────────────────────────────────
-  // REATTEMPT
+  // REATTEMPT — cloud session delete karo, localStorage clear karo
   // ─────────────────────────────────────────────────────────
   const handleReattempt = async (mockId: string, baseUrl: string) => {
     if (!db || !user) return;
     try {
       await deleteDoc(doc(db, "users", user.uid, "activeMocks", mockId));
-      localStorage.removeItem(`test_active_${mockId}`);
-      localStorage.removeItem(`test_progress_${mockId}`);
-      localStorage.removeItem(`test_end_${mockId}`);
-      localStorage.removeItem(`test_start_${mockId}`);
-      window.location.href = baseUrl;
     } catch (e) {
-      console.error(e);
+      console.warn("Cloud session delete failed:", e);
     }
+    localStorage.removeItem(`test_active_${mockId}`);
+    localStorage.removeItem(`test_progress_${mockId}`);
+    localStorage.removeItem(`test_end_${mockId}`);
+    localStorage.removeItem(`test_start_${mockId}`);
+    window.location.href = baseUrl;
   };
 
   if (typesLoading && !mockTypes) {
@@ -356,6 +370,7 @@ export const MockTestList = ({
             const qCount = Number(test.totalQuestions) || 0;
             const marksPerQ = Number(test.marksPerQuestion) || 1;
             const totalMarks = test.fullMarks || qCount * marksPerQ;
+            const testUrl = `/exams/${categorySlug}/${examSlug}/mock/${test.id}`;
 
             return (
               <div
@@ -399,7 +414,7 @@ export const MockTestList = ({
                 {/* DIVIDER */}
                 <div className="h-px bg-white/5 my-3" />
 
-                {/* BUTTONS */}
+                {/* BUTTONS — Priority: activeSession > latestAttempt > fresh start */}
                 <div className="flex gap-2 w-full">
                   {!user ? (
                     <Button
@@ -418,25 +433,22 @@ export const MockTestList = ({
                       <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     </div>
                   ) : status.activeSession ? (
-                    <Link
-                      href={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
-                      className="w-full"
-                    >
-                      <Button className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold gap-1.5">
+                    // ─── ACTIVE SESSION HAI — Resume dikhao ───
+                    // Yeh tab dikhega jab:
+                    // 1. User test ke beech mein tha aur tab close kar diya
+                    // 2. User ne refresh kiya (localStorage se restore hoga page.tsx mein)
+                    <Link href={testUrl} className="w-full">
+                      <Button className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold gap-1.5">
                         <RefreshCw className="w-3.5 h-3.5" />
                         Resume Test
                       </Button>
                     </Link>
                   ) : status.latestAttempt ? (
+                    // ─── ATTEMPT HAI, ACTIVE SESSION NAHI — Reattempt/Result ───
                     <>
                       <Button
                         variant="outline"
-                        onClick={() =>
-                          handleReattempt(
-                            test.id,
-                            `/exams/${categorySlug}/${examSlug}/mock/${test.id}`
-                          )
-                        }
+                        onClick={() => handleReattempt(test.id, testUrl)}
                         className="flex-1 h-10 rounded-xl border-white/10 text-xs font-bold"
                       >
                         Reattempt
@@ -451,10 +463,8 @@ export const MockTestList = ({
                       </Link>
                     </>
                   ) : (
-                    <Link
-                      href={`/exams/${categorySlug}/${examSlug}/mock/${test.id}`}
-                      className="w-full"
-                    >
+                    // ─── FRESH START ───
+                    <Link href={testUrl} className="w-full">
                       <Button className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold gap-1.5">
                         <Play className="w-3.5 h-3.5 fill-current" />
                         Start Test
