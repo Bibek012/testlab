@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, ArrowRight, CheckCircle2, FileText, Info, Clock } from "lucide-react";
 
 interface InstructionsStepProps {
   testData: any;
@@ -21,16 +20,18 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
   // Dynamic Max Score fallback calculation
   const totalMarks = testData?.fullMarks || testData?.totalScore || (totalQuestions * marksPerQuestion);
 
-  // Negative Marks Fraction Normalizer Logic (Jaise 0.3333 -> 0.33)
-  const formattedNegativeMarks = useMemo(() => {
-    const num = Number(testData?.negativeMarks);
-    if (isNaN(num) || num === 0) return "0";
-    
-    // Agar number 0.3 ya 0.33 ke zone me hai, toh strictly standard 0.33 layout show karein
-    if (num > 0.3 && num < 0.34) return "0.33";
-    
-    return parseFloat(num.toFixed(2)).toString();
-  }, [testData?.negativeMarks]);
+  // Loose but Loop-proof Negative Marks Fraction Normalizer
+  let formattedNegativeMarks = "0.33";
+  const num = Number(testData?.negativeMarks);
+  if (!isNaN(num)) {
+    if (num === 0) {
+      formattedNegativeMarks = "0";
+    } else if (num > 0.3 && num < 0.34) {
+      formattedNegativeMarks = "0.33";
+    } else {
+      formattedNegativeMarks = parseFloat(num.toFixed(2)).toString();
+    }
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 animate-in fade-in duration-300">
@@ -44,13 +45,10 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
         </p>
       </div>
 
-      {/* QUICK METRICS GRID */}
+      {/* QUICK METRICS GRID (Pure HTML/CSS to avoid undefined icon crashes) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Total Questions Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
-          <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
-            <FileText className="w-5 h-5 text-primary" />
-          </div>
           <div className="min-w-0">
             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
               {isHindi ? "कुल प्रश्न" : "Total Questions"}
@@ -61,9 +59,6 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
 
         {/* Duration Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
-          <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
-            <Clock className="w-5 h-5 text-cyan-400" />
-          </div>
           <div className="min-w-0">
             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
               {isHindi ? "कुल समय" : "Total Duration"}
@@ -72,11 +67,8 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
           </div>
         </div>
 
-        {/* Positive Marks Card */}
+        {/* Correct Mark Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
-          <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-          </div>
           <div className="min-w-0">
             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
               {isHindi ? "सकारात्मक अंक" : "Correct Mark"}
@@ -85,11 +77,8 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
           </div>
         </div>
 
-        {/* Negative Marks Card */}
+        {/* Negative Mark Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
-          <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
-            <AlertCircle className="w-5 h-5 text-rose-400" />
-          </div>
           <div className="min-w-0">
             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
               {isHindi ? "नकारात्मक अंक" : "Negative Mark"}
@@ -102,8 +91,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
       {/* INSTRUCTIONS DETAILS TEXT VIEW CARD */}
       <Card className="glass border-white/10 bg-slate-900/50">
         <CardHeader className="border-b border-white/5 py-4">
-          <CardTitle className="text-base font-bold flex items-center gap-2 text-white">
-            <Info className="w-4 h-4 text-accent" />
+          <CardTitle className="text-base font-bold text-white">
             {isHindi ? "कृपया निर्देशों को ध्यान से पढ़ें" : "Please Read the Instructions Carefully"}
           </CardTitle>
         </CardHeader>
@@ -134,10 +122,9 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
       <div className="flex justify-center pt-2">
         <Button 
           onClick={onStart} 
-          className="w-full sm:w-64 bg-primary hover:bg-primary/90 text-white font-bold h-12 rounded-xl text-sm gap-2 shadow-xl shadow-primary/20 transition-all duration-200 group"
+          className="w-full sm:w-64 bg-primary hover:bg-primary/90 text-white font-bold h-12 rounded-xl text-sm shadow-xl shadow-primary/20 transition-all duration-200"
         >
           {isHindi ? "परीक्षा शुरू करें" : "Start Mock Exam"}
-          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </Button>
       </div>
     </div>
