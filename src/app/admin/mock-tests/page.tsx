@@ -11,9 +11,6 @@ import {
   List,
   Copy,
   Loader2,
-  ChevronRight,
-  PlusCircle,
-  FolderPlus,
   MoreVertical,
   Send,
   Eye,
@@ -39,6 +36,7 @@ import {
   serverTimestamp,
   writeBatch,
   getDocs,
+  where,
 } from "firebase/firestore";
 
 import { Button } from "@/components/ui/button";
@@ -119,7 +117,6 @@ export default function MockTestManagementPage() {
     setDeletingId(mock.id);
 
     try {
-      // Delete questions and sections subcollections first
       const questionsRef = collection(db, "mockTests", mock.id, "questions");
       const qsSnap = await getDocs(questionsRef);
       const sectionsRef = collection(db, "mockTests", mock.id, "sections");
@@ -132,7 +129,6 @@ export default function MockTestManagementPage() {
 
       await batch.commit();
 
-      // Recalculate exam stats
       try {
         const allMocksSnapshot = await getDocs(query(collection(db, "mockTests")));
         const remainingMocks = allMocksSnapshot.docs.filter(
@@ -243,72 +239,85 @@ export default function MockTestManagementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filteredMocks.map((mock: any) => (
-                  <tr key={mock.id} className="hover:bg-white/[0.01] transition-colors group">
-                    <td className="py-4 px-6">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-foreground text-base max-w-[220px] truncate block">
-                          {mock.title}
-                        </span>
-                        <span className="text-[10px] text-primary font-bold uppercase tracking-widest">{mock.examName || 'Unmapped'}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-center font-mono">{mock.marksPerQuestion || 1}</td>
-                    <td className="py-4 px-6 text-center font-bold text-accent">{mock.fullMarks || 0}</td>
-                    <td className="py-4 px-6">
-                      <Badge className={cn("h-6", mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20")}>
-                        {mock.status}
-                      </Badge>
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10"><MoreVertical className="w-4 h-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuPortal>
-                            <DropdownMenuContent align="end" className="glass border-white/10 w-48">
-                              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
-                              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => window.open(`/exams/all/${mock.examId}`, '_blank')}><Eye className="w-3.5 h-3.5" /> Preview</DropdownMenuItem>
-                              <DropdownMenuItem className="text-destructive gap-2 cursor-pointer focus:bg-rose-500/10" onClick={() => handleDeleteMock(mock)}><Trash2 className="w-3.5 h-3.5" /> Delete Forever</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenuPortal>
-                        </DropdownMenu>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredMocks.map((mock: any) => {
+                  // Fallback calculation directly inside render view frame so it never shows 0
+                  const renderTotalScore = mock.fullMarks && mock.fullMarks > 0 
+                    ? mock.fullMarks 
+                    : (Number(mock.totalQuestions || 0) * Number(mock.marksPerQuestion || 1));
+
+                  return (
+                    <tr key={mock.id} className="hover:bg-white/[0.01] transition-colors group">
+                      <td className="py-4 px-6">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-foreground text-base max-w-[220px] truncate block">
+                            {mock.title}
+                          </span>
+                          <span className="text-[10px] text-primary font-bold uppercase tracking-widest">{mock.examName || 'Unmapped'}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 text-center font-mono">{mock.marksPerQuestion || 1}</td>
+                      <td className="py-4 px-6 text-center font-bold text-accent">{renderTotalScore}</td>
+                      <td className="py-4 px-6">
+                        <Badge className={cn("h-6", mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border-amber-500/20")}>
+                          {mock.status}
+                        </Badge>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-white/10"><MoreVertical className="w-4 h-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuPortal>
+                              <DropdownMenuContent align="end" className="glass border-white/10 w-48">
+                                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => handleDuplicateMock(mock)}><Copy className="w-3.5 h-3.5" /> Duplicate</DropdownMenuItem>
+                                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => window.open(`/exams/all/${mock.examId}`, '_blank')}><Eye className="w-3.5 h-3.5" /> Preview</DropdownMenuItem>
+                                <DropdownMenuItem className="text-destructive gap-2 cursor-pointer focus:bg-rose-500/10" onClick={() => handleDeleteMock(mock)}><Trash2 className="w-3.5 h-3.5" /> Delete Forever</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenuPortal>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredMocks.map((mock: any) => (
-            <Card key={mock.id} className="glass border-white/10 p-6 flex flex-col gap-4 group hover:border-primary/40 transition-all duration-300 shadow-xl">
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                  <h3 className="font-bold text-lg leading-tight group-hover:text-primary transition-colors line-clamp-1">{mock.title}</h3>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{mock.examName}</p>
-                </div>
-                <Badge className={cn("h-6", mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400")}>{mock.status}</Badge>
-              </div>
+          {filteredMocks.map((mock: any) => {
+            const renderTotalScoreGrid = mock.fullMarks && mock.fullMarks > 0 
+              ? mock.fullMarks 
+              : (Number(mock.totalQuestions || 0) * Number(mock.marksPerQuestion || 1));
 
-              <div className="grid grid-cols-2 gap-4 py-3 border-y border-white/5">
-                <div className="space-y-1"><p className="text-[10px] text-muted-foreground uppercase font-bold">Max Score</p><p className="text-xl font-bold">{mock.fullMarks}</p></div>
-                <div className="space-y-1 border-l border-white/5 pl-4"><p className="text-[10px] text-muted-foreground uppercase font-bold">Time (m)</p><p className="text-xl font-bold">{mock.durationMinutes}</p></div>
-              </div>
-
-              <div className="flex justify-between items-center mt-auto pt-2">
-                <div className="text-[10px] font-bold text-muted-foreground uppercase">{mock.totalQuestions} Questions</div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock)}><Trash2 className="w-4 h-4" /></Button>
+            return (
+              <Card key={mock.id} className="glass border-white/10 p-6 flex flex-col gap-4 group hover:border-primary/40 transition-all duration-300 shadow-xl">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <h3 className="font-bold text-lg leading-tight group-hover:text-primary transition-colors line-clamp-1">{mock.title}</h3>
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">{mock.examName}</p>
+                  </div>
+                  <Badge className={cn("h-6", mock.status === 'Published' ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400")}>{mock.status}</Badge>
                 </div>
-              </div>
-            </Card>
-          ))}
+
+                <div className="grid grid-cols-2 gap-4 py-3 border-y border-white/5">
+                  <div className="space-y-1"><p className="text-[10px] text-muted-foreground uppercase font-bold">Max Score</p><p className="text-xl font-bold">{renderTotalScoreGrid}</p></div>
+                  <div className="space-y-1 border-l border-white/5 pl-4"><p className="text-[10px] text-muted-foreground uppercase font-bold">Time (m)</p><p className="text-xl font-bold">{mock.durationMinutes}</p></div>
+                </div>
+
+                <div className="flex justify-between items-center mt-auto pt-2">
+                  <div className="text-[10px] font-bold text-muted-foreground uppercase">{mock.totalQuestions} Questions</div>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-white/10" onClick={() => { setEditingItem(mock); setIsModalOpen(true); }}><Edit2 className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl hover:bg-rose-500/10 text-rose-400" onClick={() => handleDeleteMock(mock)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -365,6 +374,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
     [db, formData.examId, formData.typeId]);
   const { data: subTypes } = useCollection<any>(subTypesQuery);
 
+  // FIX: Pre-fill editing item states securely including totalQuestions
   useEffect(() => {
     if (editingItem) {
       setFormData({
@@ -376,7 +386,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         subTypeId: editingItem.subTypeId || "",
         subTypeName: editingItem.subTypeName || "",
         durationMinutes: editingItem.durationMinutes || 90,
-        totalQuestions: editingItem.totalQuestions || 0,
+        totalQuestions: editingItem.totalQuestions || 0, // Fill accurately from old document tracking
         marksPerQuestion: editingItem.marksPerQuestion || 1,
         negativeMarks: editingItem.negativeMarks || 0.33,
         skipMarks: editingItem.skipMarks || 0,
@@ -405,18 +415,14 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       const text = await file.text();
       const parsed = JSON.parse(text);
 
-      // Support both structure types for quick question count
       const questions = parsed?.sections?.flatMap((s: any) => s.questions || []) || parsed?.questions || [];
 
-      // Auto update form state with detected metrics
       setFormData((prev: any) => ({
         ...prev,
         title: parsed.title || prev.title,
         totalQuestions: questions.length,
-        fullMarks: questions.length * Number(prev.marksPerQuestion || 1)
       }));
 
-      // Run strict validation for normalization
       const validation = validateAndNormalizeMockTest(parsed);
 
       if (validation.success) {
@@ -485,16 +491,18 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
       const selectedType = mockTypes?.find(t => t.id === formData.typeId);
       const selectedSubType = subTypes?.find(s => s.id === formData.subTypeId);
 
-      const fullMarks =
-        formData.totalQuestions *
-        formData.marksPerQuestion;
+      // Strict calculations checking that values never fallback to zero strings
+      const computedTotalQuestions = Number(formData.totalQuestions || 0);
+      const computedMarksPerQ = Number(formData.marksPerQuestion || 1);
+      const fullMarks = computedTotalQuestions * computedMarksPerQ;
 
       const mockData = {
         ...formData,
+        totalQuestions: computedTotalQuestions,
         examName: selectedExam?.name || "",
         typeName: selectedType?.title || "",
         subTypeName: selectedSubType?.title || "",
-        fullMarks,
+        fullMarks: fullMarks,
         slug: formData.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
         updatedAt: serverTimestamp(),
       };
@@ -506,7 +514,6 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
         const mockRef = await addDoc(collection(db, "mockTests"), { ...mockData, createdAt: serverTimestamp() });
 
         if (validatedData) {
-          // Sync Sections
           const secBatch = writeBatch(db);
           validatedData.sections.forEach(sec => {
             const secRef = doc(db, "mockTests", mockRef.id, "sections", sec.id);
@@ -514,7 +521,6 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
           });
           await secBatch.commit();
 
-          // Sync Questions
           const questions = validatedData.sections.flatMap(s => s.questions);
           const CHUNK_SIZE = 50;
           for (let i = 0; i < questions.length; i += CHUNK_SIZE) {
@@ -530,7 +536,6 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
                   negative: formData.negativeMarks,
                   skipped: formData.skipMarks
                 },
-
                 mockId: mockRef.id,
                 updatedAt: serverTimestamp()
               });
@@ -539,7 +544,6 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
           }
         }
 
-        // Update Exam Counters
         const allMocks = await getDocs(query(collection(db, "mockTests")));
         const related = allMocks.docs.filter(d => d.data()?.examId === formData.examId);
         let totalQs = 0;
@@ -596,7 +600,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
             {isAddingType ? (
               <div className="flex gap-1">
                 <Input size="sm" className="h-11 text-xs bg-white/10" value={newTypeName} onChange={(e) => setNewTypeName(e.target.value)} placeholder="Name..." />
-                <Button size="sm" onClick={handleAddType} className="h-11 w-11 p-0"><PlusCircle className="w-4 h-4" /></Button>
+                <Button size="sm" onClick={handleAddType} className="h-11 w-11 p-0"><Plus className="w-4 h-4" /></Button>
               </div>
             ) : (
               <Select value={formData.typeId} onValueChange={(v) => setFormData({ ...formData, typeId: v, subTypeId: "" })} disabled={!formData.examId}>
@@ -616,7 +620,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
             {isAddingSubType ? (
               <div className="flex gap-1">
                 <Input size="sm" className="h-11 text-xs bg-white/10" value={newSubTypeName} onChange={(e) => setNewSubTypeName(e.target.value)} placeholder="Subject name..." />
-                <Button size="sm" onClick={handleAddSubType} className="h-11 w-11 p-0 bg-accent hover:bg-accent/90"><PlusCircle className="w-4 h-4" /></Button>
+                <Button size="sm" onClick={handleAddSubType} className="h-11 w-11 p-0 bg-accent hover:bg-accent/90"><Plus className="w-4 h-4" /></Button>
               </div>
             ) : (
               <Select value={formData.subTypeId} onValueChange={(v) => setFormData({ ...formData, subTypeId: v })} disabled={!formData.typeId}>
@@ -654,7 +658,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
           <div className="md:col-span-2 grid grid-cols-3 gap-4 pt-2 border-t border-white/5 mt-2">
             <div className="space-y-1.5">
               <Label className="text-[10px] uppercase font-bold text-muted-foreground">Positive (+)</Label>
-              <Input type="number" step="0.1" className="bg-white/5 border-white/10 h-11" value={formData.marksPerQuestion} onChange={(e) => setFormData({ ...formData, marksPerQuestion: parseFloat(e.target.value) || 0, fullMarks: formData.totalQuestions * (parseFloat(e.target.value) || 0) })} />
+              <Input type="number" step="0.1" className="bg-white/5 border-white/10 h-11" value={formData.marksPerQuestion} onChange={(e) => setFormData({ ...formData, marksPerQuestion: parseFloat(e.target.value) || 0 })} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-[10px] uppercase font-bold text-muted-foreground">Negative (-)</Label>
@@ -680,7 +684,7 @@ function MockTestModal({ isOpen, onClose, editingItem, exams }: any) {
               className="bg-white/5 border-white/10 h-11 opacity-80 cursor-not-allowed"
             />
             <p className="text-[10px] text-muted-foreground">
-              Auto-detected from uploaded JSON file
+              Auto-detected or pre-filled from saved metrics
             </p>
           </div>
 
