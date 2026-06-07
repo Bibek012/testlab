@@ -53,25 +53,35 @@ interface Props {
   onSubmit: () => void;
 }
 
-// FIX: Mobile Responsive Timer Component
+// ─── LIVE COUNTDOWN COMPONENT (FIXED DEPENDENCY) ───
 const TimerDisplay = React.memo(
   ({ targetEndTime, onTimeout }: { targetEndTime: number; onTimeout: () => void }) => {
     const [timeLeft, setTimeLeft] = useState<number>(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
+      if (!targetEndTime) return;
+
       const tick = () => {
         const remaining = Math.max(0, Math.floor((targetEndTime - Date.now()) / 1000));
         setTimeLeft(remaining);
+        
         if (remaining <= 0) {
           if (timerRef.current) clearInterval(timerRef.current);
           onTimeout();
         }
       };
-      tick();
+
+      tick(); // Immediate execute on mount/refresh
+      
+      // Clear any existing active intervals before starting a fresh one
+      if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(tick, 1000);
-      return () => { if (timerRef.current) clearInterval(timerRef.current); };
-    }, [targetEndTime, onTimeout]);
+
+      return () => {
+        if (timerRef.current) clearInterval(timerRef.current);
+      };
+    }, [targetEndTime, onTimeout]); // Added proper targetEndTime reactive tracking
 
     const formatTime = (s: number) => {
       const h = Math.floor(s / 3600);
@@ -81,7 +91,7 @@ const TimerDisplay = React.memo(
     };
 
     return (
-      <div className="flex items-center gap-1 bg-white/5 rounded-xl px-2 py-1 sm:px-4 sm:py-1.5 border border-white/5 shrink-0 max-w-max">
+      <div className="flex items-center gap-1 bg-white/5 rounded-xl px-2.5 py-1 sm:px-4 sm:py-1.5 border border-white/5 shrink-0">
         <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
         <span className={cn("text-[13px] sm:text-sm font-mono font-bold tracking-tight", timeLeft < 300 ? "text-rose-500 animate-pulse" : "text-accent")}>
           {formatTime(timeLeft)}
@@ -130,19 +140,18 @@ export const TestInterface = ({
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find((s) => s.id === currentQuestion?.sectionId);
 
-  // TIMER INIT
+  // ─── INSTANT TIMER UNFREEZE ENGINE ON MOUNT/REFRESH ───
   useEffect(() => {
-    const existing = localStorage.getItem(`test_end_${testData.id}`);
+    const savedProgress = localStorage.getItem(`test_progress_${testData.id}`);
     let remainingSeconds = testData.durationMinutes * 60;
 
-    if (existing) {
+    if (savedProgress) {
       try {
-        const savedProgress = localStorage.getItem(`test_progress_${testData.id}`);
-        if (savedProgress) {
-          const parsed = JSON.parse(savedProgress);
-          if (typeof parsed.timeLeftSeconds === "number") {
-            remainingSeconds = parsed.timeLeftSeconds;
-          }
+        const parsed = JSON.parse(savedProgress);
+        if (typeof parsed.timeLeftSeconds === "number") {
+          remainingSeconds = parsed.timeLeftSeconds;
+        } else if (parsed.endTime) {
+          remainingSeconds = Math.max(0, Math.floor((parsed.endTime - Date.now()) / 1000));
         }
       } catch (_) {}
     }
@@ -153,6 +162,8 @@ export const TestInterface = ({
     }
 
     const calculatedEndTime = Date.now() + remainingSeconds * 1000;
+    
+    // Direct synchronous updates to fire execution loops immediately
     setTargetEndTime(calculatedEndTime);
     localStorage.setItem(`test_end_${testData.id}`, String(calculatedEndTime));
     localStorage.setItem(`test_active_${testData.id}`, "true");
@@ -163,7 +174,7 @@ export const TestInterface = ({
     return Math.max(0, Math.floor((targetEndTime - Date.now()) / 1000));
   }, [targetEndTime, testData.durationMinutes]);
 
-  // BEFOREUNLOAD CRASH PROTECTION
+  // BEFOREUNLOAD CRASH SAFETY NET
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (!targetEndTime) return;
@@ -191,7 +202,7 @@ export const TestInterface = ({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [testData, responses, currentLang, currentQuestionIndex, targetEndTime, getRemainingSeconds]);
 
-  // AUTOSAVE BACKGROUND LOOP
+  // AUTOSAVE CLOUD ROUTINE
   useEffect(() => {
     if (!targetEndTime) return;
     if (isPaused || showSubmitConfirm) return;
@@ -231,7 +242,7 @@ export const TestInterface = ({
     return () => clearInterval(interval);
   }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm, targetEndTime, getRemainingSeconds]);
 
-  // Per-Question Time Spent Tracker
+  // PER-QUESTION COUNTER LABS
   useEffect(() => {
     if (isPaused || showSubmitConfirm || !currentQuestion) return;
     const timer = setInterval(() => {
@@ -337,22 +348,20 @@ export const TestInterface = ({
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
-      {/* HEADER: RESPONSIVE FIXED SPACE GRIDS */}
+      {/* RESPONSIVE FLUID SPACER HEADER */}
       <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-3 md:px-6 shrink-0 z-50 gap-2">
         <div className="flex items-center gap-2 overflow-hidden shrink min-w-0">
           <Monitor className="w-4 h-4 text-primary shrink-0 hidden sm:inline" />
-          {/* Mobile par exam title truncation limit strictly apply kari hai */}
           <h1 className="font-headline font-bold text-xs tracking-tight truncate max-w-[80px] xs:max-w-[120px] sm:max-w-xs md:max-w-none uppercase">
             {testData.examName}
           </h1>
         </div>
 
-        {/* TIMER CONTAINER MIDDLE AREA */}
-        <div className="shrink-0 flex items-center gap-1">
+        {/* TIMER AND CONTROL FLOW */}
+        <div className="shrink-0 flex items-center gap-1.5">
           {targetEndTime && (
             <TimerDisplay targetEndTime={targetEndTime} onTimeout={handleFinalSubmit} />
           )}
-          {/* Pause Button for mobile became icon button to save layout size */}
           <Button variant="ghost" size="icon" onClick={() => setIsPaused(true)}
             className="text-muted-foreground hover:text-white h-8 w-8 sm:h-9 sm:w-auto sm:px-3 shrink-0">
             <Pause className="w-4 h-4 sm:mr-2" />
@@ -360,7 +369,7 @@ export const TestInterface = ({
           </Button>
         </div>
 
-        {/* TOPBAR ACTIONS */}
+        {/* TOPBAR CONTROLS RIGHT */}
         <div className="flex items-center gap-1.5 shrink-0">
           <Button onClick={() => setShowSubmitConfirm(true)}
             className="flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-4 text-xs sm:text-sm font-bold shadow-lg shadow-emerald-500/20 items-center justify-center sm:gap-2 shrink-0">
@@ -389,7 +398,7 @@ export const TestInterface = ({
         </div>
       </header>
 
-      {/* SECTION TABS */}
+      {/* SECTION SELECTION ROWS */}
       <div className="bg-slate-900/30 border-b border-white/5 flex items-center justify-between px-4 md:px-6 py-2 shrink-0 z-40">
         <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {testData.sections.map((section) => (
@@ -414,7 +423,7 @@ export const TestInterface = ({
         </div>
       </div>
 
-      {/* MAIN CONTENT AREA */}
+      {/* BODY FRAME PANEL */}
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 overflow-y-auto bg-slate-900/10 custom-scrollbar p-4 md:p-10">
           <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-32 md:pb-20">
@@ -488,7 +497,7 @@ export const TestInterface = ({
         </aside>
       </div>
 
-      {/* FOOTER */}
+      {/* FOOTER ACTIONS BAR */}
       <footer className="h-auto border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between px-4 md:px-6 py-4 shrink-0 z-50 gap-4">
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto hide-scrollbar">
           <Button variant="outline" onClick={handleMarkForReview}
@@ -514,7 +523,7 @@ export const TestInterface = ({
         </div>
       </footer>
 
-      {/* SUBMIT DIALOG */}
+      {/* SUBMIT MODAL */}
       <Dialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
         <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 text-white">
           <DialogHeader className="mb-6">
@@ -558,7 +567,7 @@ export const TestInterface = ({
         </DialogContent>
       </Dialog>
 
-      {/* PAUSE DIALOG */}
+      {/* PAUSE MODAL */}
       <Dialog open={isPaused} onOpenChange={setIsPaused}>
         <DialogContent className="glass border-white/10 sm:max-w-md w-[95%] bg-slate-900 text-white">
           <DialogHeader>
