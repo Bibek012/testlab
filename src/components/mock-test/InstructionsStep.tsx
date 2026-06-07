@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, ArrowRight, CheckCircle2, FileText, Info } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle2, FileText, Info, Clock } from "lucide-react";
 
 interface InstructionsStepProps {
   testData: any;
@@ -18,15 +18,15 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
   const durationMinutes = testData?.durationMinutes || 0;
   const marksPerQuestion = testData?.marksPerQuestion || 1;
   
-  // Dynamic Max Score fallbacks calculation
+  // Dynamic Max Score fallback calculation
   const totalMarks = testData?.fullMarks || testData?.totalScore || (totalQuestions * marksPerQuestion);
 
-  // FIX: Isolated Hook to normalize fractional digits safely (Punctuation & Syntax Error Guard)
+  // Negative Marks Fraction Normalizer Logic (Jaise 0.3333 -> 0.33)
   const formattedNegativeMarks = useMemo(() => {
     const num = Number(testData?.negativeMarks);
     if (isNaN(num) || num === 0) return "0";
     
-    // Agar number 0.3 ya 0.33 ke loop chain me h, strictly convert to 0.33 string
+    // Agar number 0.3 ya 0.33 ke zone me hai, toh strictly standard 0.33 layout show karein
     if (num > 0.3 && num < 0.34) return "0.33";
     
     return parseFloat(num.toFixed(2)).toString();
@@ -34,7 +34,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 animate-in fade-in duration-300">
-      {/* HEADER SECTION */}
+      {/* HEADER TITLE */}
       <div className="text-center md:text-left space-y-2">
         <h1 className="text-2xl md:text-3xl font-headline font-bold text-white">
           {testData?.title || (isHindi ? "परीक्षा निर्देश" : "Exam Instructions")}
@@ -44,8 +44,9 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
         </p>
       </div>
 
-      {/* QUICK METRICS METADATA ROW */}
+      {/* QUICK METRICS GRID */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Total Questions Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
           <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
             <FileText className="w-5 h-5 text-primary" />
@@ -58,11 +59,10 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
           </div>
         </div>
 
+        {/* Duration Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
           <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5 text-cyan-400">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
+            <Clock className="w-5 h-5 text-cyan-400" />
           </div>
           <div className="min-w-0">
             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
@@ -72,6 +72,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
           </div>
         </div>
 
+        {/* Positive Marks Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
           <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
@@ -84,6 +85,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
           </div>
         </div>
 
+        {/* Negative Marks Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
           <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
             <AlertCircle className="w-5 h-5 text-rose-400" />
@@ -97,7 +99,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
         </div>
       </div>
 
-      {/* DETAILED GUIDELINES TEXT VIEW */}
+      {/* INSTRUCTIONS DETAILS TEXT VIEW CARD */}
       <Card className="glass border-white/10 bg-slate-900/50">
         <CardHeader className="border-b border-white/5 py-4">
           <CardTitle className="text-base font-bold flex items-center gap-2 text-white">
@@ -128,7 +130,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
         </CardContent>
       </Card>
 
-      {/* FOOTER ACTION START TRIGGER */}
+      {/* START TRIGGERS BUTTON TRAY */}
       <div className="flex justify-center pt-2">
         <Button 
           onClick={onStart} 
