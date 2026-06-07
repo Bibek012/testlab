@@ -63,7 +63,7 @@ export const TestInterface = ({
   const { user } = useUser();
   const db = useFirestore();
 
-  // ─── MAIN APP STATES ───
+  // ─── MAIN ENGINE STATES ───
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
     if (typeof window === "undefined") return 0;
     try {
@@ -88,14 +88,35 @@ export const TestInterface = ({
   const [isPaused, setIsPaused] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   
-  // Master state for time tracking (Seconds remaining)
-  const [timeLeft, setTimeLeft] = useState<number>(testData.durationMinutes * 60);
+  // UI text state to display timer safely without flickering
+  const [displayTime, setDisplayTime] = useState("00:00:00");
 
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find((s) => s.id === currentQuestion?.sectionId);
 
-  // ─── 1. TIMER INITIALIZATION ON MOUNT (LOOP-PROOF) ───
+  // ─── CRITICAL TIMING REFS (RACE CONDITION ELIMINATOR) ───
+  const timeRef = useRef<number>(testData.durationMinutes * 60);
+  const isInitialized = useRef(false);
+  const onSubmitRef = useRef(onSubmit);
+
+  // Keep onSubmit reference fresh without resetting intervals
   useEffect(() => {
+    onSubmitRef.current = onSubmit;
+  }, [onSubmit]);
+
+  // Utility to convert seconds into HH:MM:SS format string
+  const formatTimeStr = (totalSecs: number) => {
+    const h = Math.floor(totalSecs / 3600);
+    const m = Math.floor((totalSecs % 3600) / 60);
+    const s = totalSecs % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  // ─── 1. TIMER PACKET INITIALIZATION ON MOUNT ───
+  useEffect(() => {
+    if (isInitialized.current) return;
+    isInitialized.current = true;
+
     const savedProgress = localStorage.getItem(`test_progress_${testData.id}`);
     let remainingSeconds = testData.durationMinutes * 60;
 
@@ -111,36 +132,38 @@ export const TestInterface = ({
     }
 
     if (remainingSeconds <= 0) {
-      onSubmit();
+      onSubmitRef.current();
       return;
     }
 
-    setTimeLeft(remainingSeconds);
+    timeRef.current = remainingSeconds;
+    setDisplayTime(formatTimeStr(remainingSeconds));
     localStorage.setItem(`test_active_${testData.id}`, "true");
   }, [testData.id, testData.durationMinutes]);
 
-  // ─── 2. MASTER UNIFIED CLOCK INTERVAL (1 INTERACTION FOR TICK & PER-QUESTION TIME) ───
+  // ─── 2. ABSOLUTE CLOCK INTERVAL ENGINE (STRICT SINGLE SUBSCRIPTION) ───
   useEffect(() => {
     if (isPaused || showSubmitConfirm || !currentQuestion) return;
 
-    const masterClock = setInterval(() => {
-      // Decrease Main Timer
-      setTimeLeft((prevTime) => {
-        if (prevTime <= 1) {
-          clearInterval(masterClock);
-          onSubmit();
-          return 0;
-        }
-        return prevTime - 1;
-      });
+    const timer = setInterval(() => {
+      // Direct mutable countdown calculation to prevent asynchronous render overlaps
+      if (timeRef.current <= 1) {
+        timeRef.current = 0;
+        clearInterval(timer);
+        onSubmitRef.current();
+        return;
+      }
 
-      // Increase individual question time spend safely without overwrite
-      setResponses((prevResponses) => {
+      timeRef.current -= 1;
+      setDisplayTime(formatTimeStr(timeRef.current));
+
+      // Question active time calculation safely handled via operational callback
+      setResponses((prev) => {
         const qId = currentQuestion.id;
-        const existing = prevResponses[qId];
+        const existing = prev[qId];
         if (existing) {
           return {
-            ...prevResponses,
+            ...prev,
             [qId]: {
               ...existing,
               timeSpentSeconds: (existing.timeSpentSeconds || 0) + 1,
@@ -148,7 +171,7 @@ export const TestInterface = ({
           };
         }
         return {
-          ...prevResponses,
+          ...prev,
           [qId]: {
             questionId: qId,
             selectedOptionId: null,
@@ -159,10 +182,10 @@ export const TestInterface = ({
       });
     }, 1000);
 
-    return () => clearInterval(masterClock);
-  }, [currentQuestion?.id, isPaused, showSubmitConfirm, setResponses, onSubmit]);
+    return () => clearInterval(timer); // Clear loop securely on every dependency change
+  }, [currentQuestion?.id, isPaused, showSubmitConfirm, setResponses]);
 
-  // ─── 3. SYNCHRONOUS BEFOREUNLOAD BACKUP ───
+  // ─── 3. SYNCHRONOUS BEFOREUNLOAD BACKUP DATA ENGINE ───
   useEffect(() => {
     const handleBeforeUnload = () => {
       const startTime = localStorage.getItem(`test_start_${testData.id}`) || String(Date.now());
@@ -176,7 +199,7 @@ export const TestInterface = ({
         userLanguage: currentLang,
         currentQuestionIndex,
         startedAt: parseInt(startTime, 10),
-        timeLeftSeconds: timeLeft, // Saves perfect frozen timestamp reference
+        timeLeftSeconds: timeRef.current, // Frozen reference matching ref counter exactly
       };
 
       localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(sessionData));
@@ -184,9 +207,9 @@ export const TestInterface = ({
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [testData, responses, currentLang, currentQuestionIndex, timeLeft]);
+  }, [testData, responses, currentLang, currentQuestionIndex]);
 
-  // ─── 4. AUTOSAVE BACKGROUND CLOUD SYNC LOOP ───
+  // ─── 4. AUTOSAVE PIPELINE WITH 5 SECONDS DEBOUNCED ENGINE ───
   useEffect(() => {
     if (isPaused || showSubmitConfirm) return;
 
@@ -202,7 +225,7 @@ export const TestInterface = ({
         userLanguage: currentLang,
         currentQuestionIndex,
         startedAt: parseInt(startTime, 10),
-        timeLeftSeconds: timeLeft,
+        timeLeftSeconds: timeRef.current,
       };
 
       localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(sessionData));
@@ -215,21 +238,13 @@ export const TestInterface = ({
             { merge: true }
           );
         } catch (e) {
-          console.warn("Autosave Firestore delayed:", e);
+          console.warn("Cloud autosave pipeline delay:", e);
         }
       }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm, timeLeft]);
-
-  // ─── UTILITY HELPERS ───
-  const formatTime = (s: number) => {
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  };
+  }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm]);
 
   const handleOptionSelect = useCallback(
     (optionId: string | number) => {
@@ -302,7 +317,7 @@ export const TestInterface = ({
     });
   };
 
-  const handleFinalSubmit = () => onSubmit();
+  const handleFinalSubmit = () => onSubmitRef.current();
 
   const sectionProgress = useMemo(() => {
     const sqs = testData.questions.filter((q) => q.sectionId === currentSection?.id);
@@ -330,12 +345,12 @@ export const TestInterface = ({
           </h1>
         </div>
 
-        {/* TIMER AND PAUSE CONTROLS INTEGRATED */}
+        {/* TIMER AND CONTROLS FLOW SEAMLESS DISPLAY */}
         <div className="shrink-0 flex items-center gap-1.5">
           <div className="flex items-center gap-1 bg-white/5 rounded-xl px-2.5 py-1 sm:px-4 sm:py-1.5 border border-white/5 shrink-0">
             <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
-            <span className={cn("text-[13px] sm:text-sm font-mono font-bold tracking-tight", timeLeft < 300 ? "text-rose-500 animate-pulse" : "text-accent")}>
-              {formatTime(timeLeft)}
+            <span className="text-[13px] sm:text-sm font-mono font-bold tracking-tight text-accent">
+              {displayTime}
             </span>
           </div>
 
@@ -346,7 +361,7 @@ export const TestInterface = ({
           </Button>
         </div>
 
-        {/* TOPBAR CONTROLS RIGHT */}
+        {/* RIGHT TOPBAR */}
         <div className="flex items-center gap-1.5 shrink-0">
           <Button onClick={() => setShowSubmitConfirm(true)}
             className="flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-4 text-xs sm:text-sm font-bold shadow-lg shadow-emerald-500/20 items-center justify-center sm:gap-2 shrink-0">
@@ -359,7 +374,7 @@ export const TestInterface = ({
               <Button variant="ghost" size="icon" className="lg:hidden text-muted-foreground hover:text-white h-8 w-8 shrink-0">
                 <LayoutGrid className="w-4 h-4" />
               </Button>
-            </SheetTrigger>
+            </Trigger>
             <SheetContent side="right" className="p-0 bg-[#0f172a] border-white/5 w-[85%] sm:w-[350px]">
               <SheetHeader className="p-4 border-b border-white/5 text-left">
                 <SheetTitle className="text-sm font-bold flex items-center gap-2">
