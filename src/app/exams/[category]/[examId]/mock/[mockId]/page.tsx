@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MockTestData, UserResponse } from "@/lib/mock-test-engine-data";
-import { InstructionsStep } from "@/components/mock-test/InstructionsStep";
+import InstructionsStep from "@/components/mock-test/InstructionsStep";
 import { ConfigStep } from "@/components/mock-test/ConfigStep";
 import { TestInterface } from "@/components/mock-test/TestInterface";
 import { Loader2, AlertCircle } from "lucide-react";
@@ -43,8 +43,6 @@ export default function MockTestEnginePage() {
   const [hasResumeData, setHasResumeData] = useState(false);
 
   // ─── localStorage restore ───
-  // mockId milne ke baad ek baar chalo.
-  // Sab state pehle set karo, phir step change karo.
   useEffect(() => {
     if (!mockId || stepInitialized) return;
     setStepInitialized(true);
@@ -62,7 +60,6 @@ export default function MockTestEnginePage() {
         else if (parsed.startedAt) setStartTime(parsed.startedAt);
         setStep("test");
       } catch (e) {
-        // Corrupt data — saaf karo
         localStorage.removeItem(`test_active_${mockId}`);
         localStorage.removeItem(`test_progress_${mockId}`);
         localStorage.removeItem(`test_end_${mockId}`);
@@ -161,7 +158,6 @@ export default function MockTestEnginePage() {
   const dashboardUrl = `/exams/${category || "all"}/${examId}`;
 
   // ─── Cloud resume check ───
-  // Sirf tab check karo jab localStorage mein active session nahi hai
   useEffect(() => {
     if (!user || !db || !mockId || !stepInitialized) return;
     const isLocallyActive = localStorage.getItem(`test_active_${mockId}`);
@@ -183,7 +179,6 @@ export default function MockTestEnginePage() {
       const snap = await getDoc(doc(db, "users", user.uid, "activeMocks", mockId));
       if (snap.exists()) {
         const data = snap.data();
-        // localStorage sync karo taaki TestInterface sahi kaam kare
         localStorage.setItem(`test_active_${mockId}`, "true");
         localStorage.setItem(`test_progress_${mockId}`, JSON.stringify(data));
         if (data.endTime) localStorage.setItem(`test_end_${mockId}`, String(data.endTime));
@@ -301,7 +296,11 @@ export default function MockTestEnginePage() {
       )}
 
       {step === "instructions" && (
-        <InstructionsStep testData={testData} onNext={() => setStep("config")} />
+        <InstructionsStep 
+          testData={testData} 
+          userLanguage={userLanguage} 
+          onStart={() => setStep("config")} 
+        />
       )}
       {step === "config" && (
         <ConfigStep testData={testData} onBack={() => setStep("instructions")} onStart={handleStartTest} />
