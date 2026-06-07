@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, ArrowRight, CheckCircle2, FileText, Info } from "lucide-react";
@@ -18,25 +18,23 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
   const durationMinutes = testData?.durationMinutes || 0;
   const marksPerQuestion = testData?.marksPerQuestion || 1;
   
-  // Dynamic Score Fallback
+  // Dynamic Max Score fallbacks calculation
   const totalMarks = testData?.fullMarks || testData?.totalScore || (totalQuestions * marksPerQuestion);
 
-  // FIX: Negative Marks Layout Glitch Standardizer (Jaise 0.333 -> 0.33)
-  const rawNegative = testData?.negativeMarks;
-  const formattedNegativeMarks = React.useMemo(() => {
-    const num = Number(rawNegative);
+  // FIX: Isolated Hook to normalize fractional digits safely (Punctuation & Syntax Error Guard)
+  const formattedNegativeMarks = useMemo(() => {
+    const num = Number(testData?.negativeMarks);
     if (isNaN(num) || num === 0) return "0";
     
-    // Agar value 0.3 ya 0.33 ke zone me h, toh strictly standard 0.33 dikhao
+    // Agar number 0.3 ya 0.33 ke loop chain me h, strictly convert to 0.33 string
     if (num > 0.3 && num < 0.34) return "0.33";
     
-    // Baaki values ke liye maximum 2 decimal places tak clean standard formatting numeric round lagao
     return parseFloat(num.toFixed(2)).toString();
-  }, [rawNegative]);
+  }, [testData?.negativeMarks]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 animate-in fade-in duration-300">
-      {/* TEST TITLE CORNER HEADER */}
+      {/* HEADER SECTION */}
       <div className="text-center md:text-left space-y-2">
         <h1 className="text-2xl md:text-3xl font-headline font-bold text-white">
           {testData?.title || (isHindi ? "परीक्षा निर्देश" : "Exam Instructions")}
@@ -46,31 +44,60 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
         </p>
       </div>
 
-      {/* QUICK STATS METRICS GRID */}
+      {/* QUICK METRICS METADATA ROW */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard 
-          icon={<FileText className="w-5 h-5 text-primary" />} 
-          label={isHindi ? "कुल प्रश्न" : "Total Questions"} 
-          value={totalQuestions} 
-        />
-        <StatCard 
-          icon={<Clock className="w-5 h-5 text-cyan-400" />} 
-          label={isHindi ? "कुल समय" : "Total Duration"} 
-          value={`${durationMinutes} ${isHindi ? "मिनट" : "Mins"}`} 
-        />
-        <StatCard 
-          icon={<CheckCircle2 className="w-5 h-5 text-emerald-400" />} 
-          label={isHindi ? "सकारात्मक अंक" : "Correct Mark"} 
-          value={`+${marksPerQuestion}`} 
-        />
-        <StatCard 
-          icon={<AlertCircle className="w-5 h-5 text-rose-400" />} 
-          label={isHindi ? "नकारात्मक अंक" : "Negative Mark"} 
-          value={`-${formattedNegativeMarks}`} // Fixed Output here
-        />
+        <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
+            <FileText className="w-5 h-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
+              {isHindi ? "कुल प्रश्न" : "Total Questions"}
+            </p>
+            <p className="text-sm font-black text-white mt-0.5 font-mono">{totalQuestions}</p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-5 h-5 text-cyan-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
+              {isHindi ? "कुल समय" : "Total Duration"}
+            </p>
+            <p className="text-sm font-black text-white mt-0.5 font-mono">{`${durationMinutes} ${isHindi ? "मिनट" : "Mins"}`}</p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
+              {isHindi ? "सकारात्मक अंक" : "Correct Mark"}
+            </p>
+            <p className="text-sm font-black text-white mt-0.5 font-mono">+{marksPerQuestion}</p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
+            <AlertCircle className="w-5 h-5 text-rose-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">
+              {isHindi ? "नकारात्मक अंक" : "Negative Mark"}
+            </p>
+            <p className="text-sm font-black text-white mt-0.5 font-mono">-{formattedNegativeMarks}</p>
+          </div>
+        </div>
       </div>
 
-      {/* DETAILED INSTRUCTIONS VECTOR CARD */}
+      {/* DETAILED GUIDELINES TEXT VIEW */}
       <Card className="glass border-white/10 bg-slate-900/50">
         <CardHeader className="border-b border-white/5 py-4">
           <CardTitle className="text-base font-bold flex items-center gap-2 text-white">
@@ -101,7 +128,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
         </CardContent>
       </Card>
 
-      {/* START EXAM TRAILING BUTTON TRAY */}
+      {/* FOOTER ACTION START TRIGGER */}
       <div className="flex justify-center pt-2">
         <Button 
           onClick={onStart} 
@@ -112,29 +139,5 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
         </Button>
       </div>
     </div>
-  );
-}
-
-// Internal reusable lightweight stat vector components
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
-  return (
-    <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
-      <div className="p-2 bg-white/5 rounded-lg shrink-0 border border-white/10">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider truncate">{label}</p>
-        <p className="text-sm font-black text-white mt-0.5 font-mono">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-// Lightweight inner icon placeholder frame adjustments for complete standard nextjs hydration compatibility
-function Clock({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-    </svg>
   );
 }
