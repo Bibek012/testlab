@@ -6,11 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface InstructionsStepProps {
   testData: any;
-  userLanguage: "en" | "hn";
+  userLanguage?: "en" | "hn"; // Undefined fallback safely handled
   onStart: () => void;
 }
 
-export default function InstructionsStep({ testData, userLanguage, onStart }: InstructionsStepProps) {
+export default function InstructionsStep({ testData, userLanguage = "en", onStart }: InstructionsStepProps) {
   const isHindi = userLanguage === "hn";
 
   const totalQuestions = testData?.questions?.length || testData?.totalQuestions || 0;
@@ -45,7 +45,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
         </p>
       </div>
 
-      {/* QUICK METRICS GRID (Pure HTML/CSS to avoid undefined icon crashes) */}
+      {/* QUICK METRICS GRID */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Total Questions Card */}
         <div className="bg-white/5 border border-white/5 p-4 rounded-xl flex items-center gap-3">
@@ -124,7 +124,7 @@ export default function InstructionsStep({ testData, userLanguage, onStart }: In
           onClick={onStart} 
           className="w-full sm:w-64 bg-primary hover:bg-primary/90 text-white font-bold h-12 rounded-xl text-sm shadow-xl shadow-primary/20 transition-all duration-200"
         >
-          {isHindi ? "परीक्षा शुरू करें" : "Start Mock Exam"}
+          {isHindi ? "आगे बढ़ें" : "Proceed Next"}
         </Button>
       </div>
     </div>
