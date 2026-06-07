@@ -87,24 +87,20 @@ export const TestInterface = ({
 
   const [isPaused, setIsPaused] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  
-  // UI text state to display timer safely without flickering
   const [displayTime, setDisplayTime] = useState("00:00:00");
 
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find((s) => s.id === currentQuestion?.sectionId);
 
-  // ─── CRITICAL TIMING REFS (RACE CONDITION ELIMINATOR) ───
+  // ─── TIMING CONTROL REFERENCES ───
   const timeRef = useRef<number>(testData.durationMinutes * 60);
   const isInitialized = useRef(false);
   const onSubmitRef = useRef(onSubmit);
 
-  // Keep onSubmit reference fresh without resetting intervals
   useEffect(() => {
     onSubmitRef.current = onSubmit;
   }, [onSubmit]);
 
-  // Utility to convert seconds into HH:MM:SS format string
   const formatTimeStr = (totalSecs: number) => {
     const h = Math.floor(totalSecs / 3600);
     const m = Math.floor((totalSecs % 3600) / 60);
@@ -112,7 +108,7 @@ export const TestInterface = ({
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
 
-  // ─── 1. TIMER PACKET INITIALIZATION ON MOUNT ───
+  // ─── TIMER STEP LOCK ON MOUNT ───
   useEffect(() => {
     if (isInitialized.current) return;
     isInitialized.current = true;
@@ -141,12 +137,11 @@ export const TestInterface = ({
     localStorage.setItem(`test_active_${testData.id}`, "true");
   }, [testData.id, testData.durationMinutes]);
 
-  // ─── 2. ABSOLUTE CLOCK INTERVAL ENGINE (STRICT SINGLE SUBSCRIPTION) ───
+  // ─── CLOCK RUNNING INTERVAL ───
   useEffect(() => {
     if (isPaused || showSubmitConfirm || !currentQuestion) return;
 
     const timer = setInterval(() => {
-      // Direct mutable countdown calculation to prevent asynchronous render overlaps
       if (timeRef.current <= 1) {
         timeRef.current = 0;
         clearInterval(timer);
@@ -157,7 +152,6 @@ export const TestInterface = ({
       timeRef.current -= 1;
       setDisplayTime(formatTimeStr(timeRef.current));
 
-      // Question active time calculation safely handled via operational callback
       setResponses((prev) => {
         const qId = currentQuestion.id;
         const existing = prev[qId];
@@ -182,10 +176,10 @@ export const TestInterface = ({
       });
     }, 1000);
 
-    return () => clearInterval(timer); // Clear loop securely on every dependency change
+    return () => clearInterval(timer);
   }, [currentQuestion?.id, isPaused, showSubmitConfirm, setResponses]);
 
-  // ─── 3. SYNCHRONOUS BEFOREUNLOAD BACKUP DATA ENGINE ───
+  // ─── BEFORE UNLOAD HANDLER ───
   useEffect(() => {
     const handleBeforeUnload = () => {
       const startTime = localStorage.getItem(`test_start_${testData.id}`) || String(Date.now());
@@ -199,7 +193,7 @@ export const TestInterface = ({
         userLanguage: currentLang,
         currentQuestionIndex,
         startedAt: parseInt(startTime, 10),
-        timeLeftSeconds: timeRef.current, // Frozen reference matching ref counter exactly
+        timeLeftSeconds: timeRef.current,
       };
 
       localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(sessionData));
@@ -209,7 +203,7 @@ export const TestInterface = ({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [testData, responses, currentLang, currentQuestionIndex]);
 
-  // ─── 4. AUTOSAVE PIPELINE WITH 5 SECONDS DEBOUNCED ENGINE ───
+  // ─── AUTOSAVE DATABASE CONTROL ───
   useEffect(() => {
     if (isPaused || showSubmitConfirm) return;
 
@@ -238,7 +232,7 @@ export const TestInterface = ({
             { merge: true }
           );
         } catch (e) {
-          console.warn("Cloud autosave pipeline delay:", e);
+          console.warn("Autosave pipeline delay:", e);
         }
       }
     }, 5000);
@@ -336,7 +330,7 @@ export const TestInterface = ({
 
   return (
     <div className="h-screen flex flex-col bg-[#0b1120] overflow-hidden">
-      {/* RESPONSIVE FLUID SPACER HEADER */}
+      {/* HEADER BAR */}
       <header className="h-14 md:h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-3 md:px-6 shrink-0 z-50 gap-2">
         <div className="flex items-center gap-2 overflow-hidden shrink min-w-0">
           <Monitor className="w-4 h-4 text-primary shrink-0 hidden sm:inline" />
@@ -345,7 +339,7 @@ export const TestInterface = ({
           </h1>
         </div>
 
-        {/* TIMER AND CONTROLS FLOW SEAMLESS DISPLAY */}
+        {/* TIMER SECTION */}
         <div className="shrink-0 flex items-center gap-1.5">
           <div className="flex items-center gap-1 bg-white/5 rounded-xl px-2.5 py-1 sm:px-4 sm:py-1.5 border border-white/5 shrink-0">
             <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
@@ -361,7 +355,7 @@ export const TestInterface = ({
           </Button>
         </div>
 
-        {/* RIGHT TOPBAR */}
+        {/* TOPBAR ACTIONS */}
         <div className="flex items-center gap-1.5 shrink-0">
           <Button onClick={() => setShowSubmitConfirm(true)}
             className="flex bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl h-8 w-8 sm:h-9 sm:w-auto p-0 sm:px-4 text-xs sm:text-sm font-bold shadow-lg shadow-emerald-500/20 items-center justify-center sm:gap-2 shrink-0">
@@ -374,7 +368,7 @@ export const TestInterface = ({
               <Button variant="ghost" size="icon" className="lg:hidden text-muted-foreground hover:text-white h-8 w-8 shrink-0">
                 <LayoutGrid className="w-4 h-4" />
               </Button>
-            </Trigger>
+            </SheetTrigger>
             <SheetContent side="right" className="p-0 bg-[#0f172a] border-white/5 w-[85%] sm:w-[350px]">
               <SheetHeader className="p-4 border-b border-white/5 text-left">
                 <SheetTitle className="text-sm font-bold flex items-center gap-2">
@@ -415,7 +409,7 @@ export const TestInterface = ({
         </div>
       </div>
 
-      {/* MAIN CONTENT AREA */}
+      {/* CONTAINER PACK BODY */}
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 overflow-y-auto bg-slate-900/10 custom-scrollbar p-4 md:p-10">
           <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-32 md:pb-20">
