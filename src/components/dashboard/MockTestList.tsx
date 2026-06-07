@@ -1,482 +1,151 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-
-import {
-  Search,
-  Play,
-  FileText,
-  Clock,
-  Target,
-  LayoutGrid,
-  RefreshCw,
-  Loader2,
-} from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-
-import { cn } from "@/lib/utils";
-
-import {
-  useUser,
-  useFirestore,
-  useCollection,
-  useMemoFirebase,
-} from "@/firebase";
-
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  deleteDoc,
-  doc,
-} from "firebase/firestore";
+import { Badge } from "@/components/ui/badge";
+import { Clock, BookOpen, Award, FileText, ArrowRight, Play, RefreshCw } from "lucide-react";
 
 interface MockTestListProps {
+  tests: any[];
+  attempts: any[];
+  activeSessions: any[];
+  category: string;
   examId: string;
-  examSlug: string;
-  categorySlug: string;
 }
 
-const formatCompactNumber = (num: number) => {
-  if (num >= 1000000)
-    return (num / 1000000).toFixed(1).replace(".0", "") + "M+";
-  if (num >= 1000) return (num / 1000).toFixed(1).replace(".0", "") + "K+";
-  return String(num);
-};
-
-function TestLibrarySkeleton() {
-  return (
-    <div className="space-y-4 px-4 w-full">
-      <div className="h-5 w-24 bg-white/5 rounded animate-pulse" />
-      <div className="h-10 w-full bg-white/5 rounded-xl animate-pulse" />
-      <div className="space-y-2 w-full">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-32 w-full bg-white/5 rounded-xl animate-pulse"
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export const MockTestList = ({
-  examId,
-  examSlug,
-  categorySlug,
-}: MockTestListProps) => {
-  const { user } = useUser();
-  const db = useFirestore();
-  const router = useRouter();
-
-  const [selectedTypeId, setSelectedTypeId] = useState("");
-  const [selectedSubTypeId, setSelectedSubTypeId] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  // ─────────────────────────────────────────────────────────
-  // FETCH TYPES
-  // ─────────────────────────────────────────────────────────
-  const typesQuery = useMemoFirebase(
-    () =>
-      db
-        ? query(
-            collection(db, "exams", examId, "mockTypes"),
-            orderBy("order", "asc")
-          )
-        : null,
-    [db, examId]
-  );
-  const { data: mockTypes, loading: typesLoading } =
-    useCollection<any>(typesQuery);
-
-  useEffect(() => {
-    if (mockTypes && mockTypes.length > 0 && !selectedTypeId) {
-      setSelectedTypeId(mockTypes[0].id);
-    }
-  }, [mockTypes, selectedTypeId]);
-
-  // ─────────────────────────────────────────────────────────
-  // FETCH MOCKS
-  // ─────────────────────────────────────────────────────────
-  const mocksQuery = useMemoFirebase(
-    () =>
-      db
-        ? query(
-            collection(db, "mockTests"),
-            where("examId", "==", examId),
-            where("status", "==", "Published")
-          )
-        : null,
-    [db, examId]
-  );
-  const { data: tests, loading: testsLoading } = useCollection<any>(mocksQuery);
-
-  // ─────────────────────────────────────────────────────────
-  // FETCH ATTEMPTS
-  // ─────────────────────────────────────────────────────────
-  const attemptsQuery = useMemoFirebase(
-    () =>
-      db && user
-        ? query(
-            collection(db, "users", user.uid, "mockAttempts"),
-            where("examId", "==", examId),
-            orderBy("completedAt", "desc")
-          )
-        : null,
-    [db, user?.uid, examId]
-  );
-  const { data: attempts, loading: attemptsLoading } =
-    useCollection<any>(attemptsQuery);
-
-  // ─────────────────────────────────────────────────────────
-  // FETCH ACTIVE SESSIONS
-  // activeMocks subcollection mein Firestore session documents hain.
-  // Yeh tab bhi rehte hain jab user tab close kar de.
-  // ─────────────────────────────────────────────────────────
-  const activeSessionsQuery = useMemoFirebase(
-    () =>
-      db && user
-        ? query(collection(db, "users", user.uid, "activeMocks"))
-        : null,
-    [db, user?.uid]
-  );
-  const { data: activeSessions, loading: activeSessionsLoading } =
-    useCollection<any>(activeSessionsQuery);
-
-  // ─────────────────────────────────────────────────────────
-  // STATUS READY — jab tak attempts aur activeSessions load na ho
-  // tab tak loader dikhao (sirf logged-in users ke liye)
-  // ─────────────────────────────────────────────────────────
-  const [statusReady, setStatusReady] = useState(false);
-
-  useEffect(() => {
-    if (!user) {
-      setStatusReady(true);
-      return;
-    }
-    if (!attemptsLoading && !activeSessionsLoading) {
-      setStatusReady(true);
-    }
-  }, [user, attemptsLoading, activeSessionsLoading]);
-
-  const statusLoading = !!user && !statusReady;
-
-  // ─────────────────────────────────────────────────────────
-  // SUB TYPES
-  // ─────────────────────────────────────────────────────────
-  const mockSubTypes = useMemo(() => {
-    if (!tests || !selectedTypeId) return [];
-    const typeTests = tests.filter((t) => t.typeId === selectedTypeId);
-    const map = new Map();
-    typeTests.forEach((test) => {
-      if (test.subTypeId && !map.has(test.subTypeId)) {
-        map.set(test.subTypeId, {
-          id: test.subTypeId,
-          title: test.subTypeName || "Untitled",
-        });
-      }
-    });
-    return Array.from(map.values());
-  }, [tests, selectedTypeId]);
-
-  useEffect(() => {
-    if (mockSubTypes.length > 0) {
-      setSelectedSubTypeId(mockSubTypes[0].id);
-    } else {
-      setSelectedSubTypeId("all");
-    }
-  }, [mockSubTypes]);
-
-  // ─────────────────────────────────────────────────────────
-  // FILTERED TESTS
-  // ─────────────────────────────────────────────────────────
-  const filteredTests = useMemo(() => {
-    if (!tests) return [];
-    return tests.filter((test) => {
-      const matchesType = test.typeId === selectedTypeId;
-      const matchesSubType =
-        selectedSubTypeId === "all" || test.subTypeId === selectedSubTypeId;
-      const matchesSearch = test.title
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase());
-      return matchesType && matchesSubType && matchesSearch;
-    });
-  }, [tests, selectedTypeId, selectedSubTypeId, searchQuery]);
-
-  // ─────────────────────────────────────────────────────────
-  // STATUS MAP
-  // Key insight: activeMocks document ID = mockId hai.
-  // session.id = Firestore document ID = mockId
-  // session.mockId = explicitly saved field = mockId
-  // Dono same hain. Reliable key: session.id (document ID)
-  //
-  // FIX: Pehle activeSession check karo, phir latestAttempt.
-  // Agar activeSession hai toh "Resume" dikhao chahe attempt bhi ho.
-  // ─────────────────────────────────────────────────────────
+export default function MockTestList({ tests, attempts, activeSessions, category, examId }: MockTestListProps) {
+  
+  // FIX 3: Robust Active Status Mapping with Client-side Local Storage fallbacks
   const mockStatusMap = useMemo(() => {
-    const map: Record<string, { latestAttempt?: any; activeSession?: any }> =
-      {};
+    const map: Record<string, { latestAttempt?: any; activeSession?: any }> = {};
 
-    // Active sessions — document ID hi mockId hai
+    // 1. Cloud (Firestore) active mock sessions load
     activeSessions?.forEach((session) => {
-      // session.id = Firestore doc ID = mockId
-      // session.mockId = explicitly stored field = same value
-      const key = session.id; // document ID use karo — always reliable
+      const key = session.id || session.mockId;
       if (key) {
         map[key] = { ...map[key], activeSession: session };
       }
     });
 
-    // Latest attempts — har mock ke liye sirf pehla (latest) attempt
+    // 2. LocalStorage active backup intercept logic
+    if (typeof window !== "undefined") {
+      tests?.forEach((test) => {
+        const localActiveToken = localStorage.getItem(`test_active_${test.id}`);
+        // Agar local token active hai par cloud par sync pipeline lag hai, create artificial session pointer
+        if (localActiveToken === "true" && !map[test.id]?.activeSession) {
+          map[test.id] = {
+            ...map[test.id],
+            activeSession: { id: test.id, isLocalFallback: true },
+          };
+        }
+      });
+    }
+
+    // 3. User historic submission attempts mapping 
     attempts?.forEach((attempt) => {
-      if (attempt.mockId && !map[attempt.mockId]?.latestAttempt) {
-        map[attempt.mockId] = {
-          ...map[attempt.mockId],
-          latestAttempt: attempt,
-        };
+      if (attempt.mockId) {
+        const existing = map[attempt.mockId];
+        // Only prioritize latest submitted timestamp record
+        if (!existing?.latestAttempt || attempt.submittedAt > existing.latestAttempt.submittedAt) {
+          map[attempt.mockId] = {
+            ...map[attempt.mockId],
+            latestAttempt: attempt,
+          };
+        }
       }
     });
 
     return map;
-  }, [attempts, activeSessions]);
+  }, [attempts, activeSessions, tests]);
 
-  // ─────────────────────────────────────────────────────────
-  // TOTALS
-  // ─────────────────────────────────────────────────────────
-  const totalMocks = tests?.length || 0;
-  const totalQuestions =
-    tests?.reduce((sum, mock) => sum + (mock.totalQuestions || 0), 0) || 0;
-
-  // ─────────────────────────────────────────────────────────
-  // REATTEMPT — cloud session delete karo, localStorage clear karo
-  // ─────────────────────────────────────────────────────────
-  const handleReattempt = async (mockId: string, baseUrl: string) => {
-    if (!db || !user) return;
-    try {
-      await deleteDoc(doc(db, "users", user.uid, "activeMocks", mockId));
-    } catch (e) {
-      console.warn("Cloud session delete failed:", e);
-    }
-    localStorage.removeItem(`test_active_${mockId}`);
-    localStorage.removeItem(`test_progress_${mockId}`);
-    localStorage.removeItem(`test_end_${mockId}`);
-    localStorage.removeItem(`test_start_${mockId}`);
-    window.location.href = baseUrl;
-  };
-
-  if (typesLoading && !mockTypes) {
-    return <TestLibrarySkeleton />;
+  if (!tests || tests.length === 0) {
+    return (
+      <div className="text-center py-12 border rounded-xl bg-card/50">
+        <FileText className="w-12 h-12 text-muted-foreground/60 mx-auto mb-3" />
+        <h3 className="text-lg font-semibold">No Mock Tests Available</h3>
+        <p className="text-sm text-muted-foreground max-w-sm mx-auto mt-1">We are compiling question arrays for this exam syllabus. Check back shortly.</p>
+      </div>
+    );
   }
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden space-y-4 px-4 sm:px-6 raw-container">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 w-full">
-        <h2 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap">
-          <LayoutGrid className="w-4 h-4 text-primary" />
-          Test Library
-          {!testsLoading && (
-            <span className="hidden sm:inline text-[10px] uppercase tracking-widest opacity-60 ml-2">
-              ({totalMocks} Series •{" "}
-              {formatCompactNumber(totalQuestions)} Questions)
-            </span>
-          )}
-        </h2>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {tests.map((test) => {
+        const status = mockStatusMap[test.id];
+        const hasActiveSession = !!status?.activeSession;
+        const hasCompletedAttempt = !!status?.latestAttempt;
 
-        <div className="relative w-full md:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Find specific module..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white/5 border border-white/5 rounded-xl h-10 pl-10 pr-4 text-xs outline-none focus:border-primary/40 transition-all"
-          />
-        </div>
-      </div>
+        return (
+          <Card key={test.id} className="flex flex-col relative overflow-hidden group hover:shadow-md transition-all duration-200 border border-muted">
+            {/* Action status ribbon markers */}
+            {hasActiveSession && (
+              <div className="absolute top-0 right-0 bg-amber-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-bl-lg uppercase tracking-wide animate-pulse">
+                In Progress
+              </div>
+            )}
+            
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Badge variant="outline" className="text-xs bg-accent/30 capitalize">{test.type || "Full Test"}</Badge>
+                {hasCompletedAttempt && <Badge className="text-xs bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400">Attempted</Badge>}
+              </div>
+              <CardTitle className="text-lg font-bold group-hover:text-primary transition-colors line-clamp-1">{test.title}</CardTitle>
+              <CardDescription className="text-xs text-muted-foreground">Syllabus test coverage module packet</CardDescription>
+            </CardHeader>
 
-      {/* TYPE TABS */}
-      <div className="w-full overflow-x-auto hide-scrollbar flex">
-        <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 gap-1 w-full sm:w-auto">
-          {mockTypes?.map((type) => (
-            <button
-              key={type.id}
-              onClick={() => setSelectedTypeId(type.id)}
-              className={cn(
-                "flex-1 sm:flex-initial text-center px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
-                selectedTypeId === type.id
-                  ? "bg-background text-primary shadow-sm"
-                  : "text-muted-foreground hover:text-white"
-              )}
-            >
-              {type.title}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* SUB TYPES */}
-      {selectedTypeId && mockSubTypes.length > 0 && (
-        <div className="w-full overflow-x-auto hide-scrollbar">
-          <div className="flex gap-2 min-w-max pb-1 pr-4">
-            {mockSubTypes.map((sub: any) => (
-              <button
-                key={sub.id}
-                onClick={() => setSelectedSubTypeId(sub.id)}
-                className={cn(
-                  "w-[130px] min-h-[80px] rounded-xl p-3 text-left border transition-all shrink-0 flex flex-col justify-between",
-                  selectedSubTypeId === sub.id
-                    ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                    : "bg-white/5 border-white/5 hover:border-primary/30"
-                )}
-              >
-                <div className="text-sm font-bold leading-tight line-clamp-2">
-                  {sub.title}
+            <CardContent className="pb-5 flex-1 flex flex-col justify-between gap-5">
+              {/* Feature Metrics metadata vectors rows */}
+              <div className="grid grid-cols-2 gap-3 text-xs font-medium text-muted-foreground">
+                <div className="flex items-center gap-2 bg-accent/40 p-2 rounded-lg">
+                  <Clock className="w-4 h-4 text-primary/70 shrink-0" />
+                  <span>{test.durationMinutes || 60} Minutes</span>
                 </div>
-                <div className="text-[10px] opacity-70 mt-2">
-                  {tests?.filter((t) => t.subTypeId === sub.id).length} Tests
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* MOCK LIST */}
-      <div className="w-full grid grid-cols-1 gap-3">
-        {testsLoading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-32 rounded-xl bg-white/5 animate-pulse w-full"
-            />
-          ))
-        ) : filteredTests.length === 0 ? (
-          <div className="w-full py-12 text-center border border-dashed border-white/10 rounded-xl">
-            <FileText className="w-8 h-8 text-muted-foreground opacity-10 mx-auto mb-2" />
-            <p className="text-muted-foreground text-[11px] font-medium">
-              No mocks available.
-            </p>
-          </div>
-        ) : (
-          filteredTests.map((test) => {
-            const status = mockStatusMap[test.id] || {};
-            const qCount = Number(test.totalQuestions) || 0;
-            const marksPerQ = Number(test.marksPerQuestion) || 1;
-            const totalMarks = test.fullMarks || qCount * marksPerQ;
-            const testUrl = `/exams/${categorySlug}/${examSlug}/mock/${test.id}`;
-
-            return (
-              <div
-                key={test.id}
-                className="w-full bg-card border border-white/5 rounded-xl p-4 hover:border-primary/30 transition-all box-border"
-              >
-                {/* TOP */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    {test.isFree ? (
-                      <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[8px] px-1.5 py-0.5 uppercase">
-                        Free
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] px-1.5 py-0.5 uppercase">
-                        Live
-                      </Badge>
-                    )}
-                  </div>
-
-                  <h3 className="text-base font-bold leading-tight break-words">
-                    {test.title}
-                  </h3>
-
-                  <div className="flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <FileText className="w-3.5 h-3.5 text-primary/70" />
-                      <span>{test.totalQuestions} Questions</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-cyan-400/70" />
-                      <span>{test.durationMinutes} Mins</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Target className="w-3.5 h-3.5 text-emerald-400/70" />
-                      <span>{totalMarks} Marks</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* DIVIDER */}
-                <div className="h-px bg-white/5 my-3" />
-
-                {/* BUTTONS — Priority: activeSession > latestAttempt > fresh start */}
-                <div className="flex gap-2 w-full">
-                  {!user ? (
-                    <Button
-                      onClick={() => {
-                        const callback = encodeURIComponent(
-                          window.location.pathname
-                        );
-                        router.push(`/signin?callbackUrl=${callback}`);
-                      }}
-                      className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold"
-                    >
-                      Login to Start
-                    </Button>
-                  ) : statusLoading ? (
-                    <div className="w-full h-10 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center">
-                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : status.activeSession ? (
-                    // ─── ACTIVE SESSION HAI — Resume dikhao ───
-                    // Yeh tab dikhega jab:
-                    // 1. User test ke beech mein tha aur tab close kar diya
-                    // 2. User ne refresh kiya (localStorage se restore hoga page.tsx mein)
-                    <Link href={testUrl} className="w-full">
-                      <Button className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold gap-1.5">
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Resume Test
-                      </Button>
-                    </Link>
-                  ) : status.latestAttempt ? (
-                    // ─── ATTEMPT HAI, ACTIVE SESSION NAHI — Reattempt/Result ───
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={() => handleReattempt(test.id, testUrl)}
-                        className="flex-1 h-10 rounded-xl border-white/10 text-xs font-bold"
-                      >
-                        Reattempt
-                      </Button>
-                      <Link
-                        href={`/exams/${categorySlug}/${examSlug}/mock/${test.id}/result/${status.latestAttempt?.id}`}
-                        className="flex-1"
-                      >
-                        <Button className="w-full h-10 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold">
-                          Result
-                        </Button>
-                      </Link>
-                    </>
-                  ) : (
-                    // ─── FRESH START ───
-                    <Link href={testUrl} className="w-full">
-                      <Button className="w-full h-10 rounded-xl bg-primary hover:bg-primary/90 text-white text-xs font-bold gap-1.5">
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        Start Test
-                      </Button>
-                    </Link>
-                  )}
+                <div className="flex items-center gap-2 bg-accent/40 p-2 rounded-lg">
+                  <BookOpen className="w-4 h-4 text-primary/70 shrink-0" />
+                  <span>{test.totalQuestions || 100} Qs</span>
                 </div>
               </div>
-            );
-          })
-        )}
-      </div>
+
+              {/* Conditional Action Render Button footer pipeline */}
+              <div className="w-full pt-2 border-t flex flex-col gap-2">
+                {hasActiveSession ? (
+                  /* FIX 4: Corrected dynamic conditional routing paths button text */
+                  <Link href={`/exams/${category}/${examId}/mock/${test.id}`} className="w-full">
+                    <Button className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin-slow" />
+                      Resume Test
+                    </Button>
+                  </Link>
+                ) : (
+                  <Link href={`/exams/${category}/${examId}/mock/${test.id}`} className="w-full">
+                    <Button variant={hasCompletedAttempt ? "outline" : "default"} className="w-full font-semibold flex items-center justify-center gap-2">
+                      {hasCompletedAttempt ? (
+                        <>
+                          <RefreshCw className="w-4 h-4" /> Re-attempt Test
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4" /> Start Test
+                        </>
+                      )}
+                    </Button>
+                  </Link>
+                )}
+
+                {hasCompletedAttempt && (
+                  <Link href={`/exams/${category}/${examId}/mock/${test.id}/result/${status.latestAttempt.attemptId}`} className="w-full">
+                    <Button variant="ghost" size="sm" className="w-full text-xs text-primary font-medium flex items-center justify-center gap-1.5 hover:bg-primary/5">
+                      <Award className="w-3.5 h-3.5" /> View Last Performance Report <ArrowRight className="w-3 h-3 ml-0.5" />
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
-};
+}
