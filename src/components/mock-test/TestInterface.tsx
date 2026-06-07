@@ -53,55 +53,6 @@ interface Props {
   onSubmit: () => void;
 }
 
-// ─── LIVE COUNTDOWN COMPONENT (FIXED DEPENDENCY) ───
-const TimerDisplay = React.memo(
-  ({ targetEndTime, onTimeout }: { targetEndTime: number; onTimeout: () => void }) => {
-    const [timeLeft, setTimeLeft] = useState<number>(0);
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-    useEffect(() => {
-      if (!targetEndTime) return;
-
-      const tick = () => {
-        const remaining = Math.max(0, Math.floor((targetEndTime - Date.now()) / 1000));
-        setTimeLeft(remaining);
-        
-        if (remaining <= 0) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          onTimeout();
-        }
-      };
-
-      tick(); // Immediate execute on mount/refresh
-      
-      // Clear any existing active intervals before starting a fresh one
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = setInterval(tick, 1000);
-
-      return () => {
-        if (timerRef.current) clearInterval(timerRef.current);
-      };
-    }, [targetEndTime, onTimeout]); // Added proper targetEndTime reactive tracking
-
-    const formatTime = (s: number) => {
-      const h = Math.floor(s / 3600);
-      const m = Math.floor((s % 3600) / 60);
-      const sec = s % 60;
-      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-    };
-
-    return (
-      <div className="flex items-center gap-1 bg-white/5 rounded-xl px-2.5 py-1 sm:px-4 sm:py-1.5 border border-white/5 shrink-0">
-        <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
-        <span className={cn("text-[13px] sm:text-sm font-mono font-bold tracking-tight", timeLeft < 300 ? "text-rose-500 animate-pulse" : "text-accent")}>
-          {formatTime(timeLeft)}
-        </span>
-      </div>
-    );
-  }
-);
-TimerDisplay.displayName = "TimerDisplay";
-
 export const TestInterface = ({
   testData,
   userLanguage: initialLang,
@@ -112,6 +63,7 @@ export const TestInterface = ({
   const { user } = useUser();
   const db = useFirestore();
 
+  // ─── MAIN APP STATES ───
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(() => {
     if (typeof window === "undefined") return 0;
     try {
@@ -135,12 +87,14 @@ export const TestInterface = ({
 
   const [isPaused, setIsPaused] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  const [targetEndTime, setTargetEndTime] = useState<number | null>(null);
+  
+  // Master state for time tracking (Seconds remaining)
+  const [timeLeft, setTimeLeft] = useState<number>(testData.durationMinutes * 60);
 
   const currentQuestion = testData.questions[currentQuestionIndex];
   const currentSection = testData.sections.find((s) => s.id === currentQuestion?.sectionId);
 
-  // ─── INSTANT TIMER UNFREEZE ENGINE ON MOUNT/REFRESH ───
+  // ─── 1. TIMER INITIALIZATION ON MOUNT (LOOP-PROOF) ───
   useEffect(() => {
     const savedProgress = localStorage.getItem(`test_progress_${testData.id}`);
     let remainingSeconds = testData.durationMinutes * 60;
@@ -161,25 +115,57 @@ export const TestInterface = ({
       return;
     }
 
-    const calculatedEndTime = Date.now() + remainingSeconds * 1000;
-    
-    // Direct synchronous updates to fire execution loops immediately
-    setTargetEndTime(calculatedEndTime);
-    localStorage.setItem(`test_end_${testData.id}`, String(calculatedEndTime));
+    setTimeLeft(remainingSeconds);
     localStorage.setItem(`test_active_${testData.id}`, "true");
-  }, [testData.id, testData.durationMinutes, onSubmit]);
+  }, [testData.id, testData.durationMinutes]);
 
-  const getRemainingSeconds = useCallback(() => {
-    if (!targetEndTime) return testData.durationMinutes * 60;
-    return Math.max(0, Math.floor((targetEndTime - Date.now()) / 1000));
-  }, [targetEndTime, testData.durationMinutes]);
+  // ─── 2. MASTER UNIFIED CLOCK INTERVAL (1 INTERACTION FOR TICK & PER-QUESTION TIME) ───
+  useEffect(() => {
+    if (isPaused || showSubmitConfirm || !currentQuestion) return;
 
-  // BEFOREUNLOAD CRASH SAFETY NET
+    const masterClock = setInterval(() => {
+      // Decrease Main Timer
+      setTimeLeft((prevTime) => {
+        if (prevTime <= 1) {
+          clearInterval(masterClock);
+          onSubmit();
+          return 0;
+        }
+        return prevTime - 1;
+      });
+
+      // Increase individual question time spend safely without overwrite
+      setResponses((prevResponses) => {
+        const qId = currentQuestion.id;
+        const existing = prevResponses[qId];
+        if (existing) {
+          return {
+            ...prevResponses,
+            [qId]: {
+              ...existing,
+              timeSpentSeconds: (existing.timeSpentSeconds || 0) + 1,
+            },
+          };
+        }
+        return {
+          ...prevResponses,
+          [qId]: {
+            questionId: qId,
+            selectedOptionId: null,
+            status: "not-visited",
+            timeSpentSeconds: 1,
+          },
+        };
+      });
+    }, 1000);
+
+    return () => clearInterval(masterClock);
+  }, [currentQuestion?.id, isPaused, showSubmitConfirm, setResponses, onSubmit]);
+
+  // ─── 3. SYNCHRONOUS BEFOREUNLOAD BACKUP ───
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (!targetEndTime) return;
       const startTime = localStorage.getItem(`test_start_${testData.id}`) || String(Date.now());
-      const currentRemaining = getRemainingSeconds();
 
       const sessionData = {
         mockId: testData.id,
@@ -190,26 +176,22 @@ export const TestInterface = ({
         userLanguage: currentLang,
         currentQuestionIndex,
         startedAt: parseInt(startTime, 10),
-        endTime: targetEndTime,
-        timeLeftSeconds: currentRemaining,
+        timeLeftSeconds: timeLeft, // Saves perfect frozen timestamp reference
       };
 
       localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(sessionData));
-      localStorage.setItem(`test_active_${testData.id}`, "true");
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [testData, responses, currentLang, currentQuestionIndex, targetEndTime, getRemainingSeconds]);
+  }, [testData, responses, currentLang, currentQuestionIndex, timeLeft]);
 
-  // AUTOSAVE CLOUD ROUTINE
+  // ─── 4. AUTOSAVE BACKGROUND CLOUD SYNC LOOP ───
   useEffect(() => {
-    if (!targetEndTime) return;
     if (isPaused || showSubmitConfirm) return;
 
     const interval = setInterval(async () => {
       const startTime = localStorage.getItem(`test_start_${testData.id}`) || String(Date.now());
-      const currentRemaining = getRemainingSeconds();
 
       const sessionData = {
         mockId: testData.id,
@@ -220,8 +202,7 @@ export const TestInterface = ({
         userLanguage: currentLang,
         currentQuestionIndex,
         startedAt: parseInt(startTime, 10),
-        endTime: targetEndTime,
-        timeLeftSeconds: currentRemaining,
+        timeLeftSeconds: timeLeft,
       };
 
       localStorage.setItem(`test_progress_${testData.id}`, JSON.stringify(sessionData));
@@ -234,29 +215,21 @@ export const TestInterface = ({
             { merge: true }
           );
         } catch (e) {
-          console.warn("Autosave Firestore failed:", e);
+          console.warn("Autosave Firestore delayed:", e);
         }
       }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm, targetEndTime, getRemainingSeconds]);
+  }, [user, db, testData, responses, currentLang, currentQuestionIndex, isPaused, showSubmitConfirm, timeLeft]);
 
-  // PER-QUESTION COUNTER LABS
-  useEffect(() => {
-    if (isPaused || showSubmitConfirm || !currentQuestion) return;
-    const timer = setInterval(() => {
-      setResponses((prev) => {
-        const qId = currentQuestion.id;
-        const existing = prev[qId];
-        if (existing) {
-          return { ...prev, [qId]: { ...existing, timeSpentSeconds: (existing.timeSpentSeconds || 0) + 1 } };
-        }
-        return { ...prev, [qId]: { questionId: qId, selectedOptionId: null, status: "not-visited", timeSpentSeconds: 1 } };
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [currentQuestion?.id, isPaused, showSubmitConfirm, setResponses]);
+  // ─── UTILITY HELPERS ───
+  const formatTime = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  };
 
   const handleOptionSelect = useCallback(
     (optionId: string | number) => {
@@ -357,11 +330,15 @@ export const TestInterface = ({
           </h1>
         </div>
 
-        {/* TIMER AND CONTROL FLOW */}
+        {/* TIMER AND PAUSE CONTROLS INTEGRATED */}
         <div className="shrink-0 flex items-center gap-1.5">
-          {targetEndTime && (
-            <TimerDisplay targetEndTime={targetEndTime} onTimeout={handleFinalSubmit} />
-          )}
+          <div className="flex items-center gap-1 bg-white/5 rounded-xl px-2.5 py-1 sm:px-4 sm:py-1.5 border border-white/5 shrink-0">
+            <Clock className="w-3.5 h-3.5 text-accent shrink-0" />
+            <span className={cn("text-[13px] sm:text-sm font-mono font-bold tracking-tight", timeLeft < 300 ? "text-rose-500 animate-pulse" : "text-accent")}>
+              {formatTime(timeLeft)}
+            </span>
+          </div>
+
           <Button variant="ghost" size="icon" onClick={() => setIsPaused(true)}
             className="text-muted-foreground hover:text-white h-8 w-8 sm:h-9 sm:w-auto sm:px-3 shrink-0">
             <Pause className="w-4 h-4 sm:mr-2" />
@@ -398,7 +375,7 @@ export const TestInterface = ({
         </div>
       </header>
 
-      {/* SECTION SELECTION ROWS */}
+      {/* SECTION TABS */}
       <div className="bg-slate-900/30 border-b border-white/5 flex items-center justify-between px-4 md:px-6 py-2 shrink-0 z-40">
         <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {testData.sections.map((section) => (
@@ -423,7 +400,7 @@ export const TestInterface = ({
         </div>
       </div>
 
-      {/* BODY FRAME PANEL */}
+      {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex overflow-hidden relative">
         <div className="flex-1 overflow-y-auto bg-slate-900/10 custom-scrollbar p-4 md:p-10">
           <div className="max-w-4xl mx-auto space-y-6 md:space-y-8 pb-32 md:pb-20">
@@ -497,7 +474,7 @@ export const TestInterface = ({
         </aside>
       </div>
 
-      {/* FOOTER ACTIONS BAR */}
+      {/* FOOTER */}
       <footer className="h-auto border-t border-white/5 bg-slate-900/90 backdrop-blur-xl flex flex-col md:flex-row items-center justify-between px-4 md:px-6 py-4 shrink-0 z-50 gap-4">
         <div className="flex gap-2 w-full md:w-auto overflow-x-auto hide-scrollbar">
           <Button variant="outline" onClick={handleMarkForReview}
@@ -523,7 +500,7 @@ export const TestInterface = ({
         </div>
       </footer>
 
-      {/* SUBMIT MODAL */}
+      {/* SUBMIT DIALOG */}
       <Dialog open={showSubmitConfirm} onOpenChange={setShowSubmitConfirm}>
         <DialogContent className="glass border-white/10 w-[95%] sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 text-white">
           <DialogHeader className="mb-6">
@@ -567,7 +544,7 @@ export const TestInterface = ({
         </DialogContent>
       </Dialog>
 
-      {/* PAUSE MODAL */}
+      {/* PAUSE DIALOG */}
       <Dialog open={isPaused} onOpenChange={setIsPaused}>
         <DialogContent className="glass border-white/10 sm:max-w-md w-[95%] bg-slate-900 text-white">
           <DialogHeader>
