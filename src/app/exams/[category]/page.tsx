@@ -10,12 +10,10 @@ import { Footer } from "@/components/Footer";
 import ExamSidebar from "@/components/ExamSidebar";
 import {
   BookOpen,
-  Award,
   ChevronRight,
   AlertCircle,
   Loader2,
   FileText,
-  BarChart2,
 } from "lucide-react";
 
 interface Exam {
@@ -23,15 +21,14 @@ interface Exam {
   name: string;
   slug: string;
   description?: string;
-  mockCount?: number;
-  totalQuestions?: number;
-  totalMarks?: number;
+  mockCount: number;
+  totalQuestions: number;
   difficulty?: string;
   categoryId: string;
 }
 
-// Format numbers: 1300 → 1.3k, 100 → 100
 function formatNum(n: number): string {
+  if (!n || n === 0) return "0";
   if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + "k";
   return String(n);
 }
@@ -95,6 +92,17 @@ export default function CategoryExamsPage() {
 
         examsSnapshot.forEach((doc) => {
           const data = doc.data();
+
+          // Debug: console mein sabhi fields dekho
+          console.log(`[EXAM] ${doc.id}:`, {
+            mockCount: data.mockCount,
+            testsCount: data.testsCount,
+            mocksCount: data.mocksCount,
+            questionCount: data.questionCount,
+            totalQuestions: data.totalQuestions,
+            questionsCount: data.questionsCount,
+          });
+
           if (data.isActive === false) return;
 
           const catSlug: string = (data.categorySlug || "").toLowerCase();
@@ -115,15 +123,19 @@ export default function CategoryExamsPage() {
               name: data.name || "Untitled Exam",
               slug: data.slug || doc.id,
               description: data.description || "",
-              // mockCount field directly
-              mockCount: data.mockCount || data.testsCount || 0,
-              // all question count field variations
-              totalQuestions:
-                data.questionCount ||
-                data.totalQuestions ||
-                data.questionsCount ||
+              mockCount:
+                data.mockCount ??
+                data.testsCount ??
+                data.mocksCount ??
+                data.mock_count ??
                 0,
-              totalMarks: data.totalMarks || 100,
+              totalQuestions:
+                data.questionCount ??
+                data.totalQuestions ??
+                data.questionsCount ??
+                data.question_count ??
+                data.noOfQuestions ??
+                0,
               difficulty: data.difficulty || "Medium",
               categoryId: data.categoryId || "",
             });
@@ -145,11 +157,11 @@ export default function CategoryExamsPage() {
   const difficultyConfig = (d?: string) => {
     switch (d?.toLowerCase()) {
       case "easy":
-        return { label: "Easy", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
+        return { cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25" };
       case "hard":
-        return { label: "Hard", cls: "bg-red-500/15 text-red-400 border-red-500/20" };
+        return { cls: "bg-red-500/15 text-red-400 border-red-500/25" };
       default:
-        return { label: d || "Medium", cls: "bg-amber-500/15 text-amber-400 border-amber-500/20" };
+        return { cls: "bg-amber-500/15 text-amber-400 border-amber-500/25" };
     }
   };
 
@@ -157,18 +169,17 @@ export default function CategoryExamsPage() {
     <div className="min-h-screen bg-background flex flex-col">
       <Navbar />
 
-      {/* pt-16 compensates fixed navbar height */}
       <div className="flex flex-1 pt-16">
         <ExamSidebar currentCategory={categoryParam} />
 
-        <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 lg:p-10 space-y-6">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 space-y-5">
           {/* Breadcrumb */}
-          <nav className="flex items-center gap-1.5 text-sm text-muted-foreground bg-muted/40 px-3 py-2 rounded-xl border w-fit max-w-full overflow-hidden">
-            <Link href="/" className="hover:text-foreground transition-colors shrink-0">
+          <nav className="flex items-center gap-1.5 text-sm text-muted-foreground bg-muted/40 px-3 py-2 rounded-xl border w-fit">
+            <Link href="/" className="hover:text-foreground transition-colors">
               Home
             </Link>
-            <ChevronRight className="w-3.5 h-3.5 opacity-50 shrink-0" />
-            <span className="text-foreground font-semibold uppercase truncate">
+            <ChevronRight className="w-3.5 h-3.5 opacity-50" />
+            <span className="text-foreground font-semibold uppercase">
               {categoryParam}
             </span>
           </nav>
@@ -186,8 +197,10 @@ export default function CategoryExamsPage() {
           {/* Loading */}
           {loading && (
             <div className="flex flex-col items-center justify-center py-24">
-              <Loader2 className="h-10 w-10 text-primary animate-spin" />
-              <p className="mt-4 text-muted-foreground text-sm">Exams load ho rahe hain...</p>
+              <Loader2 className="h-9 w-9 text-primary animate-spin" />
+              <p className="mt-3 text-muted-foreground text-sm">
+                Exams load ho rahe hain...
+              </p>
             </div>
           )}
 
@@ -201,8 +214,8 @@ export default function CategoryExamsPage() {
 
           {/* Empty */}
           {!loading && !error && exams.length === 0 && (
-            <div className="flex flex-col items-center justify-center min-h-[280px] border border-dashed rounded-2xl p-8 text-center bg-card">
-              <BookOpen className="w-12 h-12 text-muted-foreground/30 mb-4" />
+            <div className="flex flex-col items-center justify-center min-h-[260px] border border-dashed rounded-2xl p-8 text-center bg-card">
+              <BookOpen className="w-11 h-11 text-muted-foreground/30 mb-3" />
               <p className="text-base font-semibold text-muted-foreground">
                 Is category mein abhi koi exam available nahi hai.
               </p>
@@ -212,77 +225,75 @@ export default function CategoryExamsPage() {
             </div>
           )}
 
-          {/* Exam Cards */}
+          {/* Exam Cards — testbook style, compact */}
           {!loading && !error && exams.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
               {exams.map((exam) => {
                 const diff = difficultyConfig(exam.difficulty);
                 return (
                   <div
                     key={exam.id}
-                    className="group relative bg-card border rounded-2xl shadow-sm hover:shadow-lg hover:border-primary/40 transition-all duration-300 flex flex-col justify-between overflow-hidden"
+                    className="group relative bg-card border rounded-2xl hover:border-primary/40 hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden"
                   >
-                    {/* Top accent line */}
-                    <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/0 via-primary/60 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    {/* Hover top accent */}
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                    <div className="p-5 space-y-3">
-                      {/* Difficulty badge */}
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${diff.cls}`}>
-                        {diff.label}
+                    <div className="p-4 flex flex-col gap-2.5 flex-1">
+                      {/* Difficulty */}
+                      <span
+                        className={`self-start px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${diff.cls}`}
+                      >
+                        {exam.difficulty || "Medium"}
                       </span>
 
-                      {/* Exam name */}
-                      <h3 className="text-base font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2 leading-snug">
+                      {/* Name */}
+                      <h3 className="text-[15px] font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2 leading-snug">
                         {exam.name}
                       </h3>
 
                       {/* Description */}
-                      <p className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">
+                      <p className="text-xs text-muted-foreground line-clamp-1">
                         {exam.description || "Is exam ke liye mock tests available hain."}
                       </p>
 
-                      {/* Stats: Mocks | Questions | Marks */}
-                      <div className="grid grid-cols-3 gap-2 border-t border-border/60 pt-4">
-                        {/* Mock Tests */}
-                        <div className="flex flex-col items-center gap-1 bg-muted/60 rounded-xl p-2.5">
-                          <FileText className="h-3.5 w-3.5 text-primary/70" />
-                          <span className="text-sm font-bold text-foreground leading-none">
-                            {formatNum(exam.mockCount ?? 0)}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground leading-none">
-                            Mocks
-                          </span>
+                      {/* Stats row — horizontal, compact */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-border/50 mt-auto">
+                        {/* Mocks */}
+                        <div className="flex items-center gap-1.5 bg-muted/70 rounded-lg px-3 py-1.5 flex-1">
+                          <FileText className="h-3.5 w-3.5 text-primary/80 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-foreground leading-none">
+                              {formatNum(exam.mockCount)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                              Mock Tests
+                            </div>
+                          </div>
                         </div>
+
+                        {/* Divider */}
+                        <div className="w-px h-8 bg-border/60 shrink-0" />
 
                         {/* Questions */}
-                        <div className="flex flex-col items-center gap-1 bg-muted/60 rounded-xl p-2.5">
-                          <BookOpen className="h-3.5 w-3.5 text-primary/70" />
-                          <span className="text-sm font-bold text-foreground leading-none">
-                            {formatNum(exam.totalQuestions ?? 0)}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground leading-none">
-                            Questions
-                          </span>
-                        </div>
-
-                        {/* Marks */}
-                        <div className="flex flex-col items-center gap-1 bg-muted/60 rounded-xl p-2.5">
-                          <Award className="h-3.5 w-3.5 text-primary/70" />
-                          <span className="text-sm font-bold text-foreground leading-none">
-                            {formatNum(exam.totalMarks ?? 100)}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground leading-none">
-                            Marks
-                          </span>
+                        <div className="flex items-center gap-1.5 bg-muted/70 rounded-lg px-3 py-1.5 flex-1">
+                          <BookOpen className="h-3.5 w-3.5 text-primary/80 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-foreground leading-none">
+                              {formatNum(exam.totalQuestions)}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                              Questions
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* CTA Button */}
-                    <div className="px-5 pb-5 pt-1">
+                    {/* CTA */}
+                    <div className="px-4 pb-4">
                       <Link
                         href={`/exams/${categoryParam}/${exam.slug || exam.id}`}
-                        className="w-full inline-flex items-center justify-center bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-semibold text-sm py-2.5 px-4 rounded-xl transition-all duration-200 gap-1.5"
+                        className="w-full inline-flex items-center justify-center bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-semibold text-sm py-2.5 rounded-xl transition-all duration-150 gap-1"
                       >
                         View Mock Tests
                         <ChevronRight className="h-4 w-4" />
