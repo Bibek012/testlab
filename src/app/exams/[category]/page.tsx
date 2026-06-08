@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
-import { useFirestore } from "@/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import React, { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
+import * as firebaseServices from "@/firebase"; 
+import { collection, query, where, getDocs } from "firebase/firestore";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
-import ExamSidebar from "@/components/ExamSidebar";
 import { BookOpen, Clock, Award, ChevronRight, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 
 interface Exam {
@@ -20,15 +19,18 @@ interface Exam {
   totalMarks?: number;
   difficulty?: string;
   categoryId: string;
+  categorySlug?: string;
 }
 
-export default function CategoryExamsPage() {
-  const router = useRouter();
-  const params = useParams();
-  const categoryParam = params.category as string;
+interface PageProps {
+  params: Promise<{ category: string }> | { category: string };
+}
 
-  // ✅ Hook ko component level pe call karo — useEffect ke bahar
-  const db = useFirestore();
+export default function CategoryExamsPage({ params }: PageProps) {
+  const router = useRouter();
+  const resolvedParams = params instanceof Promise ? use(params) : params;
+  const rawCategory = resolvedParams?.category || "";
+  const categoryParam = Array.isArray(rawCategory) ? rawCategory[0] : rawCategory;
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [categoryName, setCategoryName] = useState<string>("");
@@ -36,9 +38,13 @@ export default function CategoryExamsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // ✅ db ab useEffect ke andar directly available hai
+    const db = firebaseServices.db || 
+               firebaseServices.firestore || 
+               (firebaseServices as any).default?.db || 
+               (firebaseServices as any).default;
+
     if (!db) {
-      setError("Firebase initialize nahi ho pa raha. Thodi der baad try karein.");
+      setError("Firebase Configuration missing. Database initialize nahi ho pa raha hai.");
       setLoading(false);
       return;
     }
@@ -53,39 +59,50 @@ export default function CategoryExamsPage() {
       setError(null);
       try {
         let matchedCategoryId = categoryParam;
+        let matchedCategorySlug = categoryParam;
         let finalCategoryName = "";
 
-        // 1. Category name dhundho
-        const categoriesSnapshot = await getDocs(collection(db, "examCategories"));
+        // 1. Fetch Categories securely to resolve name, id, and slug
+        const categoriesRef = collection(db, "examCategories");
+        const categoriesSnapshot = await getDocs(categoriesRef);
+        
         const categoryDoc = categoriesSnapshot.docs.find(
-          (doc) => doc.id === categoryParam || doc.data().slug === categoryParam
+          doc => doc.id === categoryParam || doc.data().slug === categoryParam
         );
 
         if (categoryDoc) {
           matchedCategoryId = categoryDoc.id;
-          finalCategoryName = categoryDoc.data().title || categoryDoc.data().name || categoryParam;
+          matchedCategorySlug = categoryDoc.data().slug || categoryParam;
+          finalCategoryName = categoryDoc.data().name || "Exams";
         } else {
+          // Fallback parsing name from parameter string
           finalCategoryName = categoryParam
             .split("-")
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(" ");
         }
         setCategoryName(finalCategoryName);
 
-        // 2. Us category ke exams fetch karo
-        const examsSnapshot = await getDocs(collection(db, "exams"));
+        // 2. Fetch Exams with Multi-Field Flexible Matching
+        const examsRef = collection(db, "exams");
+        const examsSnapshot = await getDocs(examsRef);
+        
         const fetchedExams: Exam[] = [];
-
         examsSnapshot.forEach((doc) => {
           const data = doc.data();
+          
+          // Ensure exam is active
           if (data.isActive !== false) {
-            const matchesCategory =
-              data.categoryId === matchedCategoryId ||
+            // CRITICAL FIX: Matching database's categoryId OR categorySlug OR raw param string
+            const isCategoryMatch = 
+              data.categoryId === matchedCategoryId || 
               data.categoryId === categoryParam ||
+              data.categorySlug === matchedCategorySlug ||
+              data.categorySlug === categoryParam ||
               data.category === categoryParam ||
-              data.categorySlug === categoryParam;
+              categoryParam === "all";
 
-            if (matchesCategory) {
+            if (isCategoryMatch) {
               fetchedExams.push({
                 id: doc.id,
                 name: data.name || "Untitled Exam",
@@ -96,6 +113,7 @@ export default function CategoryExamsPage() {
                 totalMarks: data.totalMarks || 100,
                 difficulty: data.difficulty || "Medium",
                 categoryId: data.categoryId || "",
+                categorySlug: data.categorySlug || ""
               });
             }
           }
@@ -103,130 +121,149 @@ export default function CategoryExamsPage() {
 
         setExams(fetchedExams);
       } catch (err: any) {
-        console.error("Firestore error:", err);
-        setError("Data load karne mein dikkat aayi. Kripya page refresh karein.");
+        console.error("Firestore loading error:", err);
+        setError("Database se data lane me dikkat hui. Kripya reload karein.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchCategoryAndExams();
-  }, [db, categoryParam]); // ✅ db dependency mein hai
+  }, [categoryParam]);
+
+  const safeCategorySlug = String(categoryParam || "all");
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
       <Navbar />
 
-      <div className="flex flex-1">
-        <ExamSidebar currentCategory={categoryParam} />
-
-        <main className="flex-1 p-6 md:p-10 space-y-6">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 p-3 rounded-xl border w-fit">
-            <Link href="/" className="hover:text-foreground transition-colors">Home</Link>
-            <ChevronRight className="w-4 h-4 opacity-60" />
-            <span className="text-foreground font-medium uppercase">{categoryParam}</span>
+      <main className="flex-grow container mx-auto px-4 py-8 sm:px-6 lg:px-8 max-w-7xl">
+        {/* Breadcrumb Navigation Row */}
+        <div className="mb-6 flex items-center justify-between">
+          <button 
+            onClick={() => router.back()}
+            className="inline-flex items-center text-sm font-medium text-slate-600 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Peeche Jayein
+          </button>
+          <div className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono px-2 py-1 rounded-md">
+            exams / {safeCategorySlug}
           </div>
+        </div>
 
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">
-              {loading ? "Loading..." : categoryName || "Exams"}
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Apna exam select karein aur mock test shuru karein.
+        {/* Dynamic Header Display Card */}
+        <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-100 dark:border-slate-700">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            {loading ? "Loading Category..." : categoryName || "Exams List"}
+          </h1>
+          <p className="mt-2 text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-3xl">
+            Apne targeted exam ka chayan karein aur apni kamzoriyo ko door karne ke liye mock tests lagayein.
+          </p>
+        </div>
+
+        {/* Loading Spinner Block */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
+            <p className="mt-4 text-slate-500 dark:text-slate-400 text-sm font-medium">
+              Mock tests aur exams khoje ja rahe hain...
             </p>
           </div>
+        )}
 
-          {/* Loading */}
-          {loading && (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="h-10 w-10 text-primary animate-spin" />
-              <p className="mt-4 text-muted-foreground text-sm">Exams load ho rahe hain...</p>
+        {/* Error Feedback Banner */}
+        {error && !loading && (
+          <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-xl p-5 max-w-xl mx-auto my-6 text-center">
+            <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-red-800 dark:text-red-300">{error}</p>
+          </div>
+        )}
+
+        {/* Ultra Elegant Empty State View UI */}
+        {!loading && !error && exams.length === 0 && (
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-8 sm:p-12 text-center max-w-xl mx-auto shadow-sm my-6">
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-950/50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <BookOpen className="h-6 w-6 text-blue-500" />
             </div>
-          )}
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Koi test active nahi mila</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+              Is category ke liye jald hi naye tests publish kiye jayenge. Kripya tab tak anya categories check karein.
+            </p>
+            <Link 
+              href="/"
+              className="mt-6 inline-flex bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-6 py-2.5 rounded-xl transition-all"
+            >
+              Main Dashboard
+            </Link>
+          </div>
+        )}
 
-          {/* Error */}
-          {error && !loading && (
-            <div className="border border-destructive/30 bg-destructive/10 rounded-xl p-6 text-center max-w-md mx-auto">
-              <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
-              <p className="text-sm font-semibold text-destructive">{error}</p>
-            </div>
-          )}
-
-          {/* Empty */}
-          {!loading && !error && exams.length === 0 && (
-            <div className="flex flex-col items-center justify-center min-h-[250px] border border-dashed rounded-2xl p-8 text-center bg-card">
-              <BookOpen className="w-12 h-12 text-muted-foreground/40 mb-4" />
-              <p className="text-lg font-medium text-muted-foreground">
-                Is category mein abhi koi exam available nahi hai.
-              </p>
-              <p className="text-sm text-muted-foreground/60 mt-1">
-                Humaari team naye exams add kar rahi hai, thodi der baad check karein.
-              </p>
-            </div>
-          )}
-
-          {/* Exam Cards */}
-          {!loading && !error && exams.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {exams.map((exam) => (
-                <div
-                  key={exam.id}
-                  className="group bg-card border rounded-2xl shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300 flex flex-col justify-between overflow-hidden"
-                >
-                  <div className="p-6 space-y-3">
+        {/* Fully Flexible Responsive Cards Grid Matrix */}
+        {!loading && !error && exams.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {exams.map((exam) => (
+              <div 
+                key={exam.id}
+                className="group bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-xl hover:border-blue-300 dark:hover:border-blue-900 transition-all duration-300 flex flex-col justify-between overflow-hidden"
+              >
+                <div className="p-6">
+                  <div className="flex items-center justify-between gap-2 mb-3">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                      exam.difficulty?.toLowerCase() === "easy"
-                        ? "bg-emerald-500/10 text-emerald-500"
-                        : exam.difficulty?.toLowerCase() === "hard"
-                        ? "bg-red-500/10 text-red-500"
-                        : "bg-amber-500/10 text-amber-500"
+                      exam.difficulty?.toLowerCase() === 'easy' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' :
+                      exam.difficulty?.toLowerCase() === 'hard' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400' :
+                      'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
                     }`}>
                       {exam.difficulty || "Medium"}
                     </span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      ID: {exam.id.substring(0, 5)}
+                    </span>
+                  </div>
 
-                    <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                      {exam.name}
-                    </h3>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+                    {exam.name}
+                  </h3>
+                  
+                  <p className="mt-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-2 min-h-[40px]">
+                    {exam.description || "Is mock test ke liye koi explicit description available nahi hai."}
+                  </p>
 
-                    <p className="text-sm text-muted-foreground line-clamp-2 min-h-[40px]">
-                      {exam.description || "Is exam ke liye mock tests available hain."}
-                    </p>
-
-                    <div className="grid grid-cols-3 gap-2 border-t pt-4 text-center">
-                      <div className="bg-muted p-2 rounded-xl">
-                        <Clock className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                        <span className="block text-xs font-bold">{exam.duration} Min</span>
-                        <span className="text-[10px] text-muted-foreground">Time</span>
-                      </div>
-                      <div className="bg-muted p-2 rounded-xl">
-                        <BookOpen className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                        <span className="block text-xs font-bold">{exam.totalQuestions}</span>
-                        <span className="text-[10px] text-muted-foreground">Questions</span>
-                      </div>
-                      <div className="bg-muted p-2 rounded-xl">
-                        <Award className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-                        <span className="block text-xs font-bold">{exam.totalMarks}</span>
-                        <span className="text-[10px] text-muted-foreground">Marks</span>
-                      </div>
+                  {/* Specification Counter Icons Grid */}
+                  <div className="mt-5 grid grid-cols-3 gap-2 border-t border-slate-100 dark:border-slate-700/50 pt-4 text-center">
+                    <div className="bg-slate-50 dark:bg-slate-900/40 p-2 rounded-xl">
+                      <Clock className="h-4 w-4 mx-auto mb-1 text-slate-400" />
+                      <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">{exam.duration} Min</span>
+                      <span className="text-[10px] text-slate-400 block">Samaay</span>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-900/40 p-2 rounded-xl">
+                      <BookOpen className="h-4 w-4 mx-auto mb-1 text-slate-400" />
+                      <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">{exam.totalQuestions}</span>
+                      <span className="text-[10px] text-slate-400 block">Prashna</span>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-900/40 p-2 rounded-xl">
+                      <Award className="h-4 w-4 mx-auto mb-1 text-slate-400" />
+                      <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">{exam.totalMarks}</span>
+                      <span className="text-[10px] text-slate-400 block">Ank</span>
                     </div>
                   </div>
-
-                  <div className="px-6 pb-6 pt-2">
-                    <Link
-                      href={`/exams/${categoryParam}/${exam.slug || exam.id}`}
-                      className="w-full inline-flex items-center justify-center bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm py-3 px-4 rounded-xl transition-all duration-200"
-                    >
-                      View Mock Tests
-                      <ChevronRight className="ml-1.5 h-4 w-4" />
-                    </Link>
-                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </main>
-      </div>
+
+                {/* Secure Dynamic Link Action Button wrapper */}
+                <div className="px-6 pb-6 pt-2 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-50 dark:border-slate-700/30">
+                  <Link 
+                    href={`/exams/${safeCategorySlug}/${String(exam.slug || exam.id)}`}
+                    className="w-full inline-flex items-center justify-center bg-white hover:bg-blue-600 dark:bg-slate-900 dark:hover:bg-blue-600 border border-slate-200 hover:border-blue-600 dark:border-slate-700 dark:hover:border-blue-600 text-slate-700 hover:text-white dark:text-slate-300 dark:hover:text-white font-semibold text-sm py-3 px-4 rounded-xl shadow-sm transition-all duration-200 group/btn"
+                  >
+                    View Mock Tests
+                    <ChevronRight className="ml-1.5 h-4 w-4 transform group-hover/btn:translate-x-1 transition-transform" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
 
       <Footer />
     </div>
