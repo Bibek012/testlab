@@ -1,31 +1,54 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/firebase/config";
 import Link from "next/link";
-import { ChevronRight, BookOpen, GraduationCap } from "lucide-react";
+import { useParams } from "next/navigation";
+import { ChevronRight, BookOpen, GraduationCap, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import ExamSidebar from "@/components/ExamSidebar";
+import { useFirestore } from "@/firebase";
 
-// Sirf category param hai — examId NAHI
-interface PageProps {
-  params: Promise<{
-    category: string;
-  }>;
-}
+export default function CategoryPage() {
+  const params = useParams();
+  const category = params.category as string;
+  const db = useFirestore();
 
-export default async function CategoryPage({ params }: PageProps) {
-  const { category } = await params;
+  const [exams, setExams] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Is category ke saare exams fetch karo
-  const examsRef = collection(db, "exams");
-  const q = query(examsRef, where("categorySlug", "==", category));
-  const querySnapshot = await getDocs(q);
+  useEffect(() => {
+    if (!db || !category) return;
 
-  const exams = querySnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+    const fetchExams = async () => {
+      try {
+        const examsRef = collection(db, "exams");
+        const q = query(examsRef, where("categorySlug", "==", category));
+        const querySnapshot = await getDocs(q);
+        const data = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setExams(data);
+      } catch (error) {
+        console.error("Exams fetch error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchExams();
+  }, [db, category]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-muted-foreground text-sm">Loading exams...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -62,8 +85,8 @@ export default async function CategoryPage({ params }: PageProps) {
                 Is category mein abhi koi exam available nahi hai.
               </p>
               <p className="text-sm text-muted-foreground/60 mt-1">
-                Humaari team naye exams add kar rahi hai, kripya thodi der baad
-                check karein.
+                Humaari team naye exams add kar rahi hai, thodi der baad check
+                karein.
               </p>
             </div>
           ) : (
