@@ -3,15 +3,16 @@ import { db } from "@/firebase/config"; // Firebase configuration path
 import ExamCard from "@/components/ExamCard";
 import ExamSidebar from "@/components/ExamSidebar";
 
+// Params ko Promise type mein wrap kiya gaya hai kyunki Next.js ke naye versions mein params async hote hain
 interface PageProps {
-  params: {
+  params: Promise<{
     category: string;
-  };
+  }>;
 }
 
 export default async function CategoryExamsPage({ params }: PageProps) {
-  // 1. URL path se category parameter nikalen (e.g., 'ssc' ya 'bihar')
-  const { category } = params;
+  // 1. URL path se category parameter nikalne ke liye params ko await karein
+  const { category } = await params;
 
   // 2. Firestore query banayein jisse sirf selected category filter ho
   const examsRef = collection(db, "exams");
