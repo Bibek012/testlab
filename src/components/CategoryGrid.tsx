@@ -63,7 +63,7 @@ export const CategoryGrid = () => {
             return (
               <Link
                 key={cat.id}
-                href={`/exams/${cat.slug}`}  {/* ✅ FIXED */}
+                href={`/exams/${cat.slug}`}
                 className="group relative p-8 rounded-2xl bg-card border border-white/10 hover:border-primary/50 transition-all duration-500 overflow-hidden glow-hover block"
               >
                 <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
