@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
 import { db } from "@/firebase";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -21,18 +21,20 @@ interface Exam {
   categoryId: string;
 }
 
-interface Category {
-  id: string;
-  name: string;
-  slug?: string;
+// Next.js 13/14/15 safe type for page components
+interface PageProps {
+  params: Promise<{ category: string }> | { category: string };
 }
 
-export default function CategoryExamsPage() {
-  const params = useParams();
+export default function CategoryExamsPage({ params }: PageProps) {
   const router = useRouter();
   
-  // URL se category slug ya ID nikalna
-  const categoryParam = params?.category as string;
+  // Params ko safely unwrap karne ke liye React.use() ya normal check use karenge
+  const resolvedParams = params instanceof Promise ? use(params) : params;
+  const rawCategory = resolvedParams?.category || "";
+  
+  // Hamesha ensure karein ki categoryParam ek clean string ho
+  const categoryParam = Array.isArray(rawCategory) ? rawCategory[0] : rawCategory;
 
   const [exams, setExams] = useState<Exam[]>([]);
   const [categoryName, setCategoryName] = useState<string>("");
@@ -40,52 +42,47 @@ export default function CategoryExamsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!categoryParam) return;
+    if (!categoryParam) {
+      setLoading(false);
+      return;
+    }
 
     const fetchCategoryAndExams = async () => {
       setLoading(true);
       setError(null);
       try {
         let matchedCategoryId = categoryParam;
-        let finalCategoryName = "Exams";
+        let finalCategoryName = "";
 
-        // 1. Pehle check karein ki kya categoryParam ek valid Category ID ya Slug hai
-        // Hum 'examCategories' collection me check karenge
+        // 1. Fetch from 'examCategories' to resolve slug vs ID
         const categoriesRef = collection(db, "examCategories");
         const categoriesSnapshot = await getDocs(categoriesRef);
         
-        let categoryDoc = categoriesSnapshot.docs.find(
+        const categoryDoc = categoriesSnapshot.docs.find(
           doc => doc.id === categoryParam || doc.data().slug === categoryParam
         );
 
         if (categoryDoc) {
           matchedCategoryId = categoryDoc.id;
-          finalCategoryName = categoryDoc.data().name;
-          setCategoryName(finalCategoryName);
+          finalCategoryName = categoryDoc.data().name || "Exams";
         } else {
-          // Agar database me category direct nahi mili toh raw slug ko capital karke temporary name banayein
-          const formattedName = categoryParam
+          // Fallback UI title decoration from slug text
+          finalCategoryName = categoryParam
             .split("-")
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(" ");
-          setCategoryName(formattedName);
         }
+        setCategoryName(finalCategoryName);
 
-        // 2. Exams fetch karne ki query
+        // 2. Query exams securely
         const examsRef = collection(db, "exams");
-        
-        // Flexible Query: Jo categoryId aur slug dono ke aaspas flexible ho
-        const q = query(
-          examsRef, 
-          where("isActive", "==", true)
-        );
-        
+        const q = query(examsRef, where("isActive", "==", true));
         const examsSnapshot = await getDocs(q);
+        
         const fetchedExams: Exam[] = [];
-
         examsSnapshot.forEach((doc) => {
           const data = doc.data();
-          // Validation Check: categoryId match ho rahi hai ya exam ka khud ka category field param se match ho raha hai
+          // Flexible mapping matches fields safely
           if (
             data.categoryId === matchedCategoryId || 
             data.categoryId === categoryParam ||
@@ -107,8 +104,8 @@ export default function CategoryExamsPage() {
 
         setExams(fetchedExams);
       } catch (err: any) {
-        console.error("Error fetching exams:", err);
-        setError("Data load karne me dikkat aayi. Kripya dobara koshish karein.");
+        console.error("Firestore loading error:", err);
+        setError("Database se sampark nahi ho paya. Kripya reload karein.");
       } finally {
         setLoading(false);
       }
@@ -117,14 +114,15 @@ export default function CategoryExamsPage() {
     fetchCategoryAndExams();
   }, [categoryParam]);
 
+  // Fallback safe string creation for layout paths
+  const safeCategorySlug = String(categoryParam || "all");
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
       <Navbar />
 
-      {/* Main Container */}
       <main className="flex-grow container mx-auto px-4 py-8 sm:px-6 lg:px-8 max-w-7xl">
-        
-        {/* Back Button & Breadcrumb */}
+        {/* Navigation Row */}
         <div className="mb-6 flex items-center justify-between">
           <button 
             onClick={() => router.back()}
@@ -133,77 +131,72 @@ export default function CategoryExamsPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Peeche Jayein
           </button>
-          
-          <div className="text-xs text-slate-400 font-mono hidden sm:block">
-            Route: exams / {categoryParam}
+          <div className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-mono px-2 py-1 rounded-md">
+            exams / {safeCategorySlug}
           </div>
         </div>
 
-        {/* Dynamic Title Section */}
-        <div className="mb-10 bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700 transition-all">
+        {/* Dynamic Premium Header Card */}
+        <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-100 dark:border-slate-700">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            {loading ? "Loading Category..." : categoryName}
+            {loading ? "Loading Category..." : categoryName || "Exams List"}
           </h1>
           <p className="mt-2 text-sm sm:text-base text-slate-500 dark:text-slate-400 max-w-3xl">
-            Apne pasandida exam ko chuniye aur mock test dekar apni tayaari ko parakhiye. Sabhi tests naye exam pattern par aadharit hain.
+            Apne targeted exam ka chayan karein aur apni kamzoriyo ko door karne ke liye mock tests lagayein.
           </p>
         </div>
 
-        {/* Loading State UI */}
+        {/* Loading UI State */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
-            <p className="mt-4 text-slate-500 dark:text-slate-400 text-sm animate-pulse">
-              Exams dhundhe ja rahe hain, kripya thoda intezar karein...
+            <p className="mt-4 text-slate-500 dark:text-slate-400 text-sm font-medium">
+              Mock tests aur exams khoje ja rahe hain...
             </p>
           </div>
         )}
 
-        {/* Error State UI */}
+        {/* Error Notification Block */}
         {error && !loading && (
-          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl p-4 flex items-start gap-3 max-w-2xl mx-auto my-12">
-            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h3 className="text-sm font-bold text-red-800 dark:text-red-300">Galti Hui!</h3>
-              <p className="text-xs text-red-700 dark:text-red-400 mt-1">{error}</p>
-              <button 
-                onClick={() => window.location.reload()} 
-                className="mt-3 text-xs bg-red-100 hover:bg-red-200 dark:bg-red-900 dark:hover:bg-red-800 text-red-800 dark:text-red-200 font-semibold px-3 py-1.5 rounded-lg transition-colors"
-              >
-                Dubara Koshish Karen
-              </button>
-            </div>
+          <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-xl p-5 max-w-xl mx-auto my-6 text-center">
+            <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-red-800 dark:text-red-300">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="mt-4 text-xs bg-white border border-red-200 text-red-700 px-4 py-2 rounded-lg font-medium shadow-sm hover:bg-red-50"
+            >
+              Page Refersh Karein
+            </button>
           </div>
         )}
 
-        {/* Empty State UI (No Exams Found) */}
+        {/* Clean Empty View UI */}
         {!loading && !error && exams.length === 0 && (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-8 sm:p-12 text-center max-w-xl mx-auto my-8 shadow-sm">
-            <div className="w-16 h-16 bg-blue-50 dark:bg-blue-950/40 rounded-full flex items-center justify-center mx-auto mb-4">
-              <BookOpen className="h-8 w-8 text-blue-500" />
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 p-8 sm:p-12 text-center max-w-xl mx-auto shadow-sm my-6">
+            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-950/50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <BookOpen className="h-6 w-6 text-blue-500" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Koi Exam Nahi Mila</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm mx-auto">
-              Hame is category ke andar abhi koi active exam nahi mila. Kripya Firestore me check karein ki kya exams me sahi <code className="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded text-red-500 font-mono text-xs">categoryId</code> set hai.
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Koi test active nahi mila</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+              Is category ke liye jald hi naye tests publish kiye jayenge. Kripya tab tak anya categories check karein.
             </p>
             <Link 
               href="/"
-              className="mt-6 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-5 py-2.5 rounded-xl shadow-md shadow-blue-500/20 transition-all hover:-translate-y-0.5"
+              className="mt-6 inline-flex bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-6 py-2.5 rounded-xl transition-all"
             >
-              Home Page Par Jayein
+              Main Dashboard
             </Link>
           </div>
         )}
 
-        {/* Fully Flexible Responsive Grid Cards Section */}
+        {/* Responsive Grid Layout */}
         {!loading && !error && exams.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {exams.map((exam) => (
               <div 
                 key={exam.id}
-                className="group bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/80 shadow-sm hover:shadow-xl hover:border-blue-200 dark:hover:border-blue-900/60 transition-all duration-300 flex flex-col justify-between overflow-hidden"
+                className="group bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-xl hover:border-blue-300 dark:hover:border-blue-900 transition-all duration-300 flex flex-col justify-between overflow-hidden"
               >
-                {/* Card Top / Header */}
                 <div className="p-6">
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -213,8 +206,8 @@ export default function CategoryExamsPage() {
                     }`}>
                       {exam.difficulty || "Medium"}
                     </span>
-                    <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                      ID: {exam.id.substring(0, 5)}...
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      ID: {exam.id.substring(0, 5)}
                     </span>
                   </div>
 
@@ -223,22 +216,22 @@ export default function CategoryExamsPage() {
                   </h3>
                   
                   <p className="mt-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-2 min-h-[40px]">
-                    {exam.description || "Is exam ke liye koi specific description upalabdh nahi hai."}
+                    {exam.description || "Is mock test ke liye koi explicit description available nahi hai."}
                   </p>
 
-                  {/* Badges Info Grid */}
+                  {/* Badges Matrix */}
                   <div className="mt-5 grid grid-cols-3 gap-2 border-t border-slate-100 dark:border-slate-700/50 pt-4 text-center">
-                    <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl">
+                    <div className="bg-slate-50 dark:bg-slate-900/40 p-2 rounded-xl">
                       <Clock className="h-4 w-4 mx-auto mb-1 text-slate-400" />
                       <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">{exam.duration} Min</span>
                       <span className="text-[10px] text-slate-400 block">Samaay</span>
                     </div>
-                    <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl">
+                    <div className="bg-slate-50 dark:bg-slate-900/40 p-2 rounded-xl">
                       <BookOpen className="h-4 w-4 mx-auto mb-1 text-slate-400" />
                       <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">{exam.totalQuestions}</span>
                       <span className="text-[10px] text-slate-400 block">Prashna</span>
                     </div>
-                    <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-xl">
+                    <div className="bg-slate-50 dark:bg-slate-900/40 p-2 rounded-xl">
                       <Award className="h-4 w-4 mx-auto mb-1 text-slate-400" />
                       <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">{exam.totalMarks}</span>
                       <span className="text-[10px] text-slate-400 block">Ank</span>
@@ -246,10 +239,10 @@ export default function CategoryExamsPage() {
                   </div>
                 </div>
 
-                {/* Card Action Button */}
+                {/* Secure URL Construction Action Wrapper */}
                 <div className="px-6 pb-6 pt-2 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-50 dark:border-slate-700/30">
                   <Link 
-                    href={`/exams/${categoryParam}/${exam.slug}`}
+                    href={`/exams/${safeCategorySlug}/${String(exam.slug || exam.id)}`}
                     className="w-full inline-flex items-center justify-center bg-white hover:bg-blue-600 dark:bg-slate-900 dark:hover:bg-blue-600 border border-slate-200 hover:border-blue-600 dark:border-slate-700 dark:hover:border-blue-600 text-slate-700 hover:text-white dark:text-slate-300 dark:hover:text-white font-semibold text-sm py-3 px-4 rounded-xl shadow-sm transition-all duration-200 group/btn"
                   >
                     View Mock Tests
