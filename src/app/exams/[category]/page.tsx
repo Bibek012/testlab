@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import * as firebaseServices from "@/firebase"; 
 import { collection, query, where, getDocs } from "firebase/firestore";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 import { BookOpen, Clock, Award, ChevronRight, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 
 interface Exam {
