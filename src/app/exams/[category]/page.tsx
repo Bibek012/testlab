@@ -2,11 +2,12 @@
 
 import React, { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { db } from "@/firebase";
+// Yahan hum default aur named dono tarike se firebase initialize checking karenge
+import * as firebaseServices from "@/firebase"; 
 import { collection, query, where, getDocs } from "firebase/firestore";
 import Link from "next/link";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 import { BookOpen, Clock, Award, ChevronRight, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 
 interface Exam {
@@ -21,19 +22,14 @@ interface Exam {
   categoryId: string;
 }
 
-// Next.js 13/14/15 safe type for page components
 interface PageProps {
   params: Promise<{ category: string }> | { category: string };
 }
 
 export default function CategoryExamsPage({ params }: PageProps) {
   const router = useRouter();
-  
-  // Params ko safely unwrap karne ke liye React.use() ya normal check use karenge
   const resolvedParams = params instanceof Promise ? use(params) : params;
   const rawCategory = resolvedParams?.category || "";
-  
-  // Hamesha ensure karein ki categoryParam ek clean string ho
   const categoryParam = Array.isArray(rawCategory) ? rawCategory[0] : rawCategory;
 
   const [exams, setExams] = useState<Exam[]>([]);
@@ -42,6 +38,20 @@ export default function CategoryExamsPage({ params }: PageProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Sahi Firestore instance nikalne ka flexible tarika
+    // Aapke firebase module me db, firestore ya default export kuch bhi ho, ye use nikaal lega
+    const db = firebaseServices.db || 
+               firebaseServices.firestore || 
+               (firebaseServices as any).default?.db || 
+               (firebaseServices as any).default;
+
+    if (!db) {
+      console.error("Firebase DB instance nahi mila! Kripya src/firebase/config.ts me export check karein.");
+      setError("Firebase Configuration missing. Database initialize nahi ho pa raha hai.");
+      setLoading(false);
+      return;
+    }
+
     if (!categoryParam) {
       setLoading(false);
       return;
@@ -54,7 +64,7 @@ export default function CategoryExamsPage({ params }: PageProps) {
         let matchedCategoryId = categoryParam;
         let finalCategoryName = "";
 
-        // 1. Fetch from 'examCategories' to resolve slug vs ID
+        // 1. Fetch Categories securely
         const categoriesRef = collection(db, "examCategories");
         const categoriesSnapshot = await getDocs(categoriesRef);
         
@@ -66,7 +76,6 @@ export default function CategoryExamsPage({ params }: PageProps) {
           matchedCategoryId = categoryDoc.id;
           finalCategoryName = categoryDoc.data().name || "Exams";
         } else {
-          // Fallback UI title decoration from slug text
           finalCategoryName = categoryParam
             .split("-")
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -74,38 +83,42 @@ export default function CategoryExamsPage({ params }: PageProps) {
         }
         setCategoryName(finalCategoryName);
 
-        // 2. Query exams securely
+        // 2. Query exams safely
         const examsRef = collection(db, "exams");
-        const q = query(examsRef, where("isActive", "==", true));
-        const examsSnapshot = await getDocs(q);
+        // Bina condition ke fetch karke locally filter karenge taaki crash na ho agar index missing ho
+        const examsSnapshot = await getDocs(examsRef);
         
         const fetchedExams: Exam[] = [];
         examsSnapshot.forEach((doc) => {
           const data = doc.data();
-          // Flexible mapping matches fields safely
-          if (
-            data.categoryId === matchedCategoryId || 
-            data.categoryId === categoryParam ||
-            data.category === categoryParam
-          ) {
-            fetchedExams.push({
-              id: doc.id,
-              name: data.name || "Untitled Exam",
-              slug: data.slug || doc.id,
-              description: data.description || "",
-              duration: data.duration || data.timeLimit || 60,
-              totalQuestions: data.totalQuestions || data.questionsCount || 0,
-              totalMarks: data.totalMarks || 100,
-              difficulty: data.difficulty || "Medium",
-              categoryId: data.categoryId || ""
-            });
+          // Active check aur category matching
+          if (data.isActive !== false) {
+            if (
+              data.categoryId === matchedCategoryId || 
+              data.categoryId === categoryParam ||
+              data.category === categoryParam ||
+              matchedCategoryId === "all" || 
+              categoryParam === "all"
+            ) {
+              fetchedExams.push({
+                id: doc.id,
+                name: data.name || "Untitled Exam",
+                slug: data.slug || doc.id,
+                description: data.description || "",
+                duration: data.duration || data.timeLimit || 60,
+                totalQuestions: data.totalQuestions || data.questionsCount || 0,
+                totalMarks: data.totalMarks || 100,
+                difficulty: data.difficulty || "Medium",
+                categoryId: data.categoryId || ""
+              });
+            }
           }
         });
 
         setExams(fetchedExams);
       } catch (err: any) {
         console.error("Firestore loading error:", err);
-        setError("Database se sampark nahi ho paya. Kripya reload karein.");
+        setError("Database se data lane me dikkat hui. Kripya check karein.");
       } finally {
         setLoading(false);
       }
@@ -114,7 +127,6 @@ export default function CategoryExamsPage({ params }: PageProps) {
     fetchCategoryAndExams();
   }, [categoryParam]);
 
-  // Fallback safe string creation for layout paths
   const safeCategorySlug = String(categoryParam || "all");
 
   return (
@@ -122,7 +134,7 @@ export default function CategoryExamsPage({ params }: PageProps) {
       <Navbar />
 
       <main className="flex-grow container mx-auto px-4 py-8 sm:px-6 lg:px-8 max-w-7xl">
-        {/* Navigation Row */}
+        {/* Breadcrumb row */}
         <div className="mb-6 flex items-center justify-between">
           <button 
             onClick={() => router.back()}
@@ -136,7 +148,7 @@ export default function CategoryExamsPage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Dynamic Premium Header Card */}
+        {/* Dynamic Heading Card */}
         <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-100 dark:border-slate-700">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             {loading ? "Loading Category..." : categoryName || "Exams List"}
@@ -161,12 +173,7 @@ export default function CategoryExamsPage({ params }: PageProps) {
           <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-xl p-5 max-w-xl mx-auto my-6 text-center">
             <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
             <p className="text-sm font-semibold text-red-800 dark:text-red-300">{error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="mt-4 text-xs bg-white border border-red-200 text-red-700 px-4 py-2 rounded-lg font-medium shadow-sm hover:bg-red-50"
-            >
-              Page Refersh Karein
-            </button>
+            <p className="text-xs text-slate-500 mt-1">Kripya verify karein ki firebase config me database sahi se exported hai.</p>
           </div>
         )}
 
@@ -239,7 +246,7 @@ export default function CategoryExamsPage({ params }: PageProps) {
                   </div>
                 </div>
 
-                {/* Secure URL Construction Action Wrapper */}
+                {/* Secure URL Action */}
                 <div className="px-6 pb-6 pt-2 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-50 dark:border-slate-700/30">
                   <Link 
                     href={`/exams/${safeCategorySlug}/${String(exam.slug || exam.id)}`}
