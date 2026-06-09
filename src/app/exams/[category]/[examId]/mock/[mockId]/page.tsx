@@ -95,9 +95,32 @@ export default function MockTestEnginePage() {
   );
   const { data: questions, loading: questionsLoading } = useCollection<any>(questionsQuery);
 
+  // ─── sectionId inject (agar Firestore questions mein sectionId nahi hai) ───
+  const questionsWithSectionId = useMemo(() => {
+    if (!questions || !sections || sections.length === 0) return questions;
+
+    // Check karo kisi question mein valid sectionId hai ya nahi
+    const hasSectionId = questions.some(
+      (q) => q.sectionId && q.sectionId !== "default"
+    );
+    if (hasSectionId) return questions;
+
+    // sectionId nahi hai — sections ke questionCount se assign karo
+    const result = questions.map((q) => ({ ...q }));
+    let idx = 0;
+    for (const section of sections) {
+      const count = section.questionCount || 0;
+      for (let i = idx; i < idx + count && i < result.length; i++) {
+        result[i].sectionId = section.id;
+      }
+      idx += count;
+    }
+    return result;
+  }, [questions, sections]);
+
   // ─── testData assemble ───
   const testData = useMemo<MockTestData | null>(() => {
-    if (!mockMetadata || !questions) return null;
+    if (!mockMetadata || !questionsWithSectionId) return null;
     return {
       id: mockMetadata.id,
       title: mockMetadata.title,
@@ -108,7 +131,7 @@ export default function MockTestEnginePage() {
       negativeMarks: Number(mockMetadata.negativeMarks || 0),
       fullMarks:
         Number(mockMetadata.fullMarks) ||
-        questions.length * Number(mockMetadata.marksPerQuestion || 1),
+        questionsWithSectionId.length * Number(mockMetadata.marksPerQuestion || 1),
       sections:
         sections && sections.length > 0
           ? sections.map((section: any, index: number) => ({
@@ -118,7 +141,7 @@ export default function MockTestEnginePage() {
               questionCount: section.questionCount || 0,
             }))
           : [{ id: "default", title: { en: "General", hn: "सामान्य" } }],
-      questions: questions
+      questions: questionsWithSectionId
         .filter((q: any) => q && (q.question || q.en || q.en_html))
         .map((q: any, index: number) => {
           const base = q.question || q;
@@ -153,7 +176,7 @@ export default function MockTestEnginePage() {
         })
         .sort((a: any, b: any) => (a.order || 0) - (b.order || 0)),
     };
-  }, [mockMetadata, sections, questions]);
+  }, [mockMetadata, sections, questionsWithSectionId]);
 
   const dashboardUrl = `/exams/${category || "all"}/${examId}`;
 
@@ -296,10 +319,10 @@ export default function MockTestEnginePage() {
       )}
 
       {step === "instructions" && (
-        <InstructionsStep 
-          testData={testData} 
-          userLanguage={userLanguage} 
-          onStart={() => setStep("config")} 
+        <InstructionsStep
+          testData={testData}
+          userLanguage={userLanguage}
+          onStart={() => setStep("config")}
         />
       )}
       {step === "config" && (
